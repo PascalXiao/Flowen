@@ -319,6 +319,87 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   ];
 
   const timeZone = item.space?.timezone ?? "Asia/Shanghai";
+  /**
+   * 节点下的子工作项：经配置的关联列出来，可以在这里新建（自动关联）；排期联动时显示它们的排期范围，
+   * 能排期的人可以一键把节点排期改成这个范围。
+   */
+  const nodeSubItemsView = (node: {
+    key: string;
+    name: string;
+    subItems?: { type: string; relation: string; scheduleLinked?: boolean };
+  }) => {
+    const config = node.subItems;
+    if (!config) return null;
+    const linked = linkedByName(config.relation).filter((w): w is Linked => !!w);
+    const day = (ms: number | null | undefined) => (ms == null ? null : dayInTimeZone(ms, timeZone));
+    const spanOf = (w: Linked) => {
+      const starts = w.nodes.flatMap((n) => (n.plannedStart == null ? [] : [day(n.plannedStart) as Day]));
+      const ends = w.nodes.flatMap((n) => (n.plannedEnd == null ? [] : [day(n.plannedEnd) as Day]));
+      return starts.length && ends.length ? { start: Math.min(...starts), end: Math.max(...ends) } : null;
+    };
+    const spans = linked.flatMap((w) => {
+      const span = spanOf(w);
+      return span ? [span] : [];
+    });
+    const total = spans.length
+      ? { start: Math.min(...spans.map((x) => x.start)), end: Math.max(...spans.map((x) => x.end)) }
+      : null;
+    return (
+      <div aria-label={`${node.name}的子工作项`} role="group" className="flex flex-col gap-1.5 text-sm">
+        <span className="text-fg-muted">子工作项（{config.type}）</span>
+        <ul className="flex flex-col gap-1">
+          {linked.map((w) => {
+            const span = spanOf(w);
+            return (
+              <li key={w.id} className="flex items-center gap-2">
+                <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-brand-500 hover:underline">
+                  {w.name}
+                </Link>
+                <StatusTag status={w.status} />
+                {span && (
+                  <span className="text-xs text-fg-subtle">
+                    {dayToIso(span.start)} ~ {dayToIso(span.end)}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+          {linked.length === 0 && <li className="text-fg-subtle">还没有子工作项。</li>}
+        </ul>
+        {canWrite && !frozen && (
+          <form
+            className="flex gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.elements.namedItem("name") as HTMLInputElement;
+              const name = input.value.trim();
+              if (!name) return;
+              input.value = "";
+              run(mutators.workItem.createNodeSubItem({ id: newId(), workItemId: item.id, nodeKey: node.key, name }));
+            }}
+          >
+            <Input name="name" aria-label={`在${node.name}下新建${config.type}`} placeholder={`新${config.type}名称`} />
+            <Button type="submit" variant="outline" size="sm" className="h-8">
+              新建
+            </Button>
+          </form>
+        )}
+        {config.scheduleLinked && (
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-fg-muted">
+              子工作项排期：{total ? `${dayToIso(total.start)} ~ ${dayToIso(total.end)}` : "还没有排期"}
+            </span>
+            {total && canPlan(node.key) && (
+              <Button size="sm" variant="outline" onClick={() => setPlan(node.key, total.start, total.end)}>
+                按子工作项更新节点排期
+              </Button>
+            )}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   /** 节点上的估分、实际工时输入（失焦时保存）。 */
   const effortView = (node: {
     key: string;
@@ -961,6 +1042,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                           ))}
                         </div>
                         {effortView(node)}
+                        {nodeSubItemsView(node)}
                         {node.relatedInfo?.length ? (
                           <dl
                             aria-label={`${node.name}的关联信息`}

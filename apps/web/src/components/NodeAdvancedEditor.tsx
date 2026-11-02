@@ -105,6 +105,49 @@ export function NodeAdvancedEditor({
           checked={!!data.restricted}
           onChange={(v) => onChange({ restricted: v || undefined })}
         />
+        {/* 节点下的子工作项：类型 + 关联，可选排期联动 */}
+        <div className="flex flex-col gap-1.5 text-sm">
+          <span className="text-fg-muted">节点下的子工作项</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              aria-label="子工作项类型"
+              placeholder="类型名"
+              className="h-8 w-32"
+              value={data.subItems?.type ?? ""}
+              onChange={(e) =>
+                onChange({
+                  subItems:
+                    e.target.value || data.subItems?.relation
+                      ? { ...data.subItems, type: e.target.value, relation: data.subItems?.relation ?? "" }
+                      : undefined,
+                })
+              }
+            />
+            <Input
+              aria-label="子工作项关联"
+              placeholder="关联名"
+              className="h-8 w-40"
+              value={data.subItems?.relation ?? ""}
+              onChange={(e) =>
+                onChange({
+                  subItems:
+                    e.target.value || data.subItems?.type
+                      ? { ...data.subItems, type: data.subItems?.type ?? "", relation: e.target.value }
+                      : undefined,
+                })
+              }
+            />
+          </div>
+          {data.subItems && (
+            <Check
+              label="排期联动（节点排期按子工作项的排期范围更新）"
+              checked={!!data.subItems.scheduleLinked}
+              onChange={(v) =>
+                data.subItems && onChange({ subItems: { ...data.subItems, scheduleLinked: v || undefined } })
+              }
+            />
+          )}
+        </div>
         {/* 估分、实际工时、完成时排期必填 */}
         {(() => {
           const effort = data.effort ?? {};

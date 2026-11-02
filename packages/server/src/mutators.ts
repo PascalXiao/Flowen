@@ -11,6 +11,8 @@ import {
   copyWorkItemArgs,
   createComment,
   createCommentArgs,
+  createNodeSubItem,
+  createNodeSubItemArgs,
   createSubItem,
   createSubItemArgs,
   createTask,
@@ -148,6 +150,26 @@ export const serverMutators = defineMutators(mutators, {
         },
         // 引擎在初始化时算出的节点变化（开始节点完成、后续节点开始、裁剪、阶段改写）
         ...flowEvents(spaceId, args.id, events),
+      ]);
+    }),
+    createNodeSubItem: defineMutator(createNodeSubItemArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, flowVersionId, events, typeId } = await createNodeSubItem(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.id,
+          kind: "workItemCreated",
+          payload: { typeId, flowVersionId, name: args.name },
+          actor: ctx.userID,
+        },
+        ...flowEvents(spaceId, args.id, events),
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "subItemCreated",
+          payload: { node: args.nodeKey, subItemId: args.id, name: args.name },
+          actor: ctx.userID,
+        },
       ]);
     }),
     createSubItem: defineMutator(createSubItemArgs, async ({ tx, args, ctx }) => {

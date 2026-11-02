@@ -268,14 +268,20 @@ export const queries = defineQueries({
         .related("outgoing", (r) =>
           r
             .related("to", (w) =>
-              w.related("fieldValues", visibleFieldValues(ctx.userID)).related("type", (t) => t.related("fields")),
+              w
+                .related("fieldValues", visibleFieldValues(ctx.userID))
+                .related("type", (t) => t.related("fields"))
+                .related("nodes"),
             )
             .related("def"),
         )
         .related("incoming", (r) =>
           r
             .related("from", (w) =>
-              w.related("fieldValues", visibleFieldValues(ctx.userID)).related("type", (t) => t.related("fields")),
+              w
+                .related("fieldValues", visibleFieldValues(ctx.userID))
+                .related("type", (t) => t.related("fields"))
+                .related("nodes"),
             )
             .related("def"),
         )

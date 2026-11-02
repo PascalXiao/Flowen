@@ -286,6 +286,9 @@ export const flowDefinitionSchema = z.object({
         .array(z.object({ relation: z.string().min(1).max(100), field: z.string().min(1).max(200) }))
         .max(30)
         .optional(),
+      subItems: z
+        .object({ type: z.string().min(1), relation: z.string().min(1), scheduleLinked: z.boolean().optional() })
+        .optional(),
       effort: z
         .object({
           points: z.boolean().optional(),

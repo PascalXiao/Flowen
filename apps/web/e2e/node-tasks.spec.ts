@@ -179,3 +179,43 @@ test("a node asks for estimate and actual hours, and hours are required to compl
   await again.getByRole("button", { name: "确认完成" }).click();
   await expect(page.getByText("流程已走完。")).toBeVisible();
 });
+
+test("a node creates linked sub work items and can take its schedule from them", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await signUp(page, "Pascal", `node-sub-${suffix}@example.com`);
+  await createSpace(page, `节点子工作项 ${suffix}`);
+  await openSettings(page);
+  await page.getByLabel("新类型名称").fill("项目");
+  await page.getByRole("button", { name: "新建类型" }).click();
+  await createRelation(page, { from: "项目", to: "项目", name: "关联SKU" });
+  await openTypeConfig(page, "项目");
+  await typeTab(page, "流程");
+  await page.getByLabel("新模板名称").fill("默认流程");
+  await page.getByRole("button", { name: "新建模板" }).click();
+  await page.getByRole("link", { name: "默认流程" }).click();
+  const node = (name: string) => page.locator(".react-flow__node", { hasText: name });
+  const editor = page.getByRole("main");
+  await node("开始").click();
+  await page.getByRole("button", { name: "添加节点" }).click();
+  await editor.getByLabel("节点名称").fill("立项");
+  await editor.getByText("节点设置", { exact: true }).click();
+  await editor.getByLabel("子工作项类型").fill("项目");
+  await editor.getByLabel("子工作项关联").fill("关联SKU");
+  await editor.getByLabel("排期联动（节点排期按子工作项的排期范围更新）").check();
+  await page.getByRole("button", { name: "发布" }).click();
+  await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
+  await closeTypeConfig(page);
+
+  await openItems(page);
+  await createItem(page, "面霜项目", { label: "项目名称" });
+  const group = page
+    .getByRole("main")
+    .getByRole("region", { name: "立项" })
+    .getByRole("group", { name: "立项的子工作项" });
+  await group.getByLabel("在立项下新建项目").fill("50ml 装");
+  await group.getByRole("button", { name: "新建" }).click();
+  await expect(group.getByRole("link", { name: "50ml 装" })).toBeVisible();
+  // 子工作项有了排期，节点可以按它更新
+  await expect(group).toContainText("子工作项排期：");
+  await expect(page.getByRole("main").getByRole("region", { name: "关联SKU" })).toContainText("50ml 装");
+});

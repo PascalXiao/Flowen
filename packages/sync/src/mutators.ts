@@ -65,7 +65,7 @@ import {
 import { zql } from "./schema.gen.ts";
 import { setBusinessLines, setBusinessLinesArgs, setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
 import { transitionArgs, transitionStatus } from "./status.ts";
-import { createSubItem, createSubItemArgs } from "./subitems.ts";
+import { createNodeSubItem, createNodeSubItemArgs, createSubItem, createSubItemArgs } from "./subitems.ts";
 import {
   createTask,
   createTaskArgs,
@@ -269,6 +269,9 @@ export const mutators = defineMutators({
     }),
     createSubItem: defineMutator(createSubItemArgs, async ({ tx, args, ctx }) => {
       await createSubItem(tx, args, ctx.userID);
+    }),
+    createNodeSubItem: defineMutator(createNodeSubItemArgs, async ({ tx, args, ctx }) => {
+      await createNodeSubItem(tx, args, ctx.userID);
     }),
     transition: defineMutator(transitionArgs, async ({ tx, args, ctx }) => {
       await transitionStatus(tx, args, ctx.userID);
