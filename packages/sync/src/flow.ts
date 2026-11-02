@@ -293,6 +293,8 @@ export async function confirmNode(
   const events = fieldChanges.length > 0 ? flow.engine.onFieldsChanged(flow.state, flow.fields) : [];
 
   // 节点要求完成时填好实际工时、排期
+  if (node.effort?.ownersRequired && (flow.state.nodes[args.nodeKey]?.owners.length ?? 0) === 0)
+    throw new Error(`节点「${node.name}」要先指定负责人才能完成。`);
   if (node.effort?.hours === "required" || node.effort?.scheduleRequired) {
     const instance = await tx.run(zql.nodeInstance.where("id", nodeInstanceId(args.workItemId, args.nodeKey)).one());
     if (node.effort.hours === "required" && instance?.actualHours == null)

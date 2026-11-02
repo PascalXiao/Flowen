@@ -172,6 +172,11 @@ export function NodeAdvancedEditor({
                 />
               )}
               <Check
+                label="完成时负责人必填"
+                checked={!!effort.ownersRequired}
+                onChange={(v) => set({ ownersRequired: v || undefined })}
+              />
+              <Check
                 label="完成时排期必填"
                 checked={!!effort.scheduleRequired}
                 onChange={(v) => set({ scheduleRequired: v || undefined })}

@@ -294,6 +294,7 @@ export const flowDefinitionSchema = z.object({
           points: z.boolean().optional(),
           hours: z.enum(["show", "required"]).optional(),
           scheduleRequired: z.boolean().optional(),
+          ownersRequired: z.boolean().optional(),
         })
         .optional(),
       nodeInfo: z
