@@ -11,13 +11,13 @@ import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
 import { withLineOptions } from "@/lib/fields";
 import {
+  allColumns,
+  columnSources,
   defaultColumnKeys,
-  fieldColumn,
   type ListColumn,
   type ListContext,
   type ListField,
   type ListItem,
-  systemColumns,
 } from "@/lib/list-columns";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +52,13 @@ type SpaceLike = {
   name: string;
   members: readonly { userId: string; user?: { name: string } | null | undefined }[];
   businessLines: readonly { id: string; name: string; parentId: string | null; disabled: boolean | null }[];
-  workItemTypes: readonly { id: string; name: string; fields: readonly ListField[] }[];
+  workItemTypes: readonly {
+    id: string;
+    name: string;
+    fields: readonly ListField[];
+    roles: readonly { key: string; name: string }[];
+    flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
+  }[];
 };
 
 /**
@@ -103,8 +109,9 @@ export function WorkItemList({
     userName: (id) => names.get(id) ?? id,
     spaceName: space.name,
     typeName: (id) => space.workItemTypes.find((t) => t.id === id)?.name ?? "",
+    ...columnSources(space.workItemTypes.filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id))),
   };
-  const available = [...systemColumns(ctx), ...[...fields.values()].map((f) => fieldColumn(f, ctx))];
+  const available = allColumns(ctx);
   const byKey = new Map(available.map((c) => [c.key, c]));
   const shown: { key: string; width?: number }[] = (
     display.columns ?? defaultColumnKeys(fields).map((key) => ({ key }))

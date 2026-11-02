@@ -31,6 +31,11 @@ export interface ListContext {
   userName: (id: string) => string;
   spaceName: string;
   typeName: (typeId: string) => string;
+  /** 能做成列的角色和节点（各类型合在一起，按键去重）。 */
+  roles?: readonly { key: string; name: string }[];
+  nodes?: readonly { name: string }[];
+  /** 今天（YYYY-MM-DD），算延期用。 */
+  today?: string;
 }
 
 export interface ListColumn {
@@ -151,6 +156,91 @@ const time = (ms: number | null | undefined) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+/** 计划日期（存的是 UTC 零点）转 YYYY-MM-DD。 */
+const dayOf = (ms: number | null | undefined) => (ms == null ? null : new Date(ms).toISOString().slice(0, 10));
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+const todayOf = (ctx: ListContext) => ctx.today ?? new Date().toISOString().slice(0, 10);
+
+/** 进行中节点的排期范围。 */
+function inProgressSpan(item: ListItem) {
+  const nodes = item.nodes.filter((n) => n.state === "inProgress");
+  const starts = nodes.flatMap((n) => (n.plannedStart == null ? [] : [dayOf(n.plannedStart) as string]));
+  const ends = nodes.flatMap((n) => (n.plannedEnd == null ? [] : [dayOf(n.plannedEnd) as string]));
+  return starts.length && ends.length
+    ? { start: starts.sort()[0] as string, end: ends.sort()[ends.length - 1] as string }
+    : null;
+}
+/** 进行中节点最多延期了几天（计划结束早于今天）。 */
+function delayDays(item: ListItem, today: string) {
+  if (item.status !== "inProgress") return 0;
+  const ends = item.nodes.flatMap((n) =>
+    n.state === "inProgress" && n.plannedEnd != null ? [dayOf(n.plannedEnd) as string] : [],
+  );
+  return Math.max(0, ...ends.map((end) => daysBetween(end, today)));
+}
+/** 当前（最早开始的进行中）节点已经停留了几天。 */
+function stayDays(item: ListItem, today: string) {
+  const starts = item.nodes.flatMap((n) =>
+    n.state === "inProgress" && n.actualStart != null ? [dayOf(n.actualStart) as string] : [],
+  );
+  return starts.length ? daysBetween(starts.sort()[0] as string, today) : null;
+}
+/** 预计完成：没跳过的节点里最晚的计划结束。 */
+function expectedEnd(item: ListItem) {
+  const ends = item.nodes.flatMap((n) =>
+    n.state !== "skipped" && n.plannedEnd != null ? [dayOf(n.plannedEnd) as string] : [],
+  );
+  return ends.length ? (ends.sort()[ends.length - 1] as string) : null;
+}
+
+const NODE_STATE_TEXT: Record<string, string> = {
+  notStarted: "未开始",
+  inProgress: "进行中",
+  completed: "已完成",
+  skipped: "已跳过",
+};
+
+/** 节点列：这个节点的状态和计划排期。按节点名对上（各流程里同名的节点算一列），键是 node:节点名。 */
+export function nodeColumn(node: { name: string }): ListColumn {
+  const of = (i: ListItem) => {
+    const key = nodeFlowOf(i.flowVersion?.definition)?.nodes.find((d) => d.name === node.name)?.key;
+    return key ? i.nodes.find((n) => n.nodeKey === key) : undefined;
+  };
+  return {
+    key: `node:${node.name}`,
+    title: `节点：${node.name}`,
+    width: 190,
+    render: (i) => {
+      const n = of(i);
+      if (!n) return none;
+      const span =
+        n.plannedStart != null && n.plannedEnd != null ? `${dayOf(n.plannedStart)} ~ ${dayOf(n.plannedEnd)}` : "";
+      return (
+        <span className="inline-flex items-center gap-1.5 truncate">
+          <Tag tone={n.state === "inProgress" ? "brand" : n.state === "completed" ? "success" : "neutral"}>
+            {NODE_STATE_TEXT[n.state ?? "notStarted"] ?? n.state}
+          </Tag>
+          <span className="text-fg-muted tabular-nums">{span}</span>
+        </span>
+      );
+    },
+    value: (i) => dayOf(of(i)?.plannedEnd) ?? "",
+  };
+}
+
+/** 角色列：担任这个角色的人。键是 role:角色键。 */
+export function roleColumn(role: { key: string; name: string }, ctx: ListContext): ListColumn {
+  const ids = (i: ListItem) => i.roleMembers.filter((m) => m.roleKey === role.key).map((m) => m.userId);
+  return {
+    key: `role:${role.key}`,
+    title: `角色：${role.name}`,
+    width: 140,
+    render: (i) => <People ids={ids(i)} name={ctx.userName} />,
+    value: (i) => ids(i).map(ctx.userName).join("、"),
+  };
+}
+
 /** 系统列（工作项本身的属性和由流程算出的信息）。名称列另外处理，总在第一列。 */
 export function systemColumns(ctx: ListContext): ListColumn[] {
   return [
@@ -179,6 +269,43 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       width: 160,
       render: (i) => <span className="truncate">{inProgressNodes(i) || none}</span>,
       value: (i) => inProgressNodes(i),
+    },
+    {
+      key: "schedule",
+      title: "进行中节点排期",
+      width: 190,
+      render: (i) => {
+        const span = inProgressSpan(i);
+        return span ? <span className="tabular-nums">{`${span.start} ~ ${span.end}`}</span> : none;
+      },
+      value: (i) => inProgressSpan(i)?.end ?? "",
+    },
+    {
+      key: "delay",
+      title: "延期",
+      width: 100,
+      render: (i) => {
+        const days = delayDays(i, todayOf(ctx));
+        return days > 0 ? <Tag tone="danger">延期 {days} 天</Tag> : none;
+      },
+      value: (i) => delayDays(i, todayOf(ctx)),
+    },
+    {
+      key: "stay",
+      title: "当前节点停留",
+      width: 120,
+      render: (i) => {
+        const days = stayDays(i, todayOf(ctx));
+        return days === null ? none : <span className="tabular-nums">{days} 天</span>;
+      },
+      value: (i) => stayDays(i, todayOf(ctx)) ?? -1,
+    },
+    {
+      key: "expectedEnd",
+      title: "预计完成",
+      width: 120,
+      render: (i) => <span className="tabular-nums">{expectedEnd(i) ?? "—"}</span>,
+      value: (i) => expectedEnd(i) ?? "",
     },
     {
       key: "type",
@@ -215,6 +342,36 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       render: (i) => <People ids={[i.createdBy]} name={ctx.userName} />,
       value: (i) => ctx.userName(i.createdBy),
     },
+  ];
+}
+
+/** 角色列、节点列的来源：这些类型的角色和流程当前版本里的节点（按名称去重）。 */
+export function columnSources(
+  types: readonly {
+    roles: readonly { key: string; name: string }[];
+    flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
+  }[],
+) {
+  const roles = new Map<string, string>();
+  const nodes = new Set<string>();
+  for (const t of types) {
+    for (const r of t.roles) if (!roles.has(r.key)) roles.set(r.key, r.name);
+    for (const f of t.flowTemplates)
+      for (const n of nodeFlowOf(f.currentVersion?.definition)?.nodes ?? []) nodes.add(n.name);
+  }
+  return {
+    roles: [...roles].map(([key, name]) => ({ key, name })),
+    nodes: [...nodes].map((name) => ({ name })),
+  };
+}
+
+/** 全部可选的列：系统列、字段列、角色列、节点列。 */
+export function allColumns(ctx: ListContext): ListColumn[] {
+  return [
+    ...systemColumns(ctx),
+    ...[...ctx.fields.values()].map((f) => fieldColumn(f, ctx)),
+    ...(ctx.roles ?? []).map((r) => roleColumn(r, ctx)),
+    ...(ctx.nodes ?? []).map((n) => nodeColumn(n)),
   ];
 }
 

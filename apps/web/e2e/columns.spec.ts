@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeTypeConfig, oemSpace, openItems, openSettings, openTypeConfig, typeTab } from "./helpers";
+import { closeTypeConfig, createItem, oemSpace, openItems, openSettings, openTypeConfig, typeTab } from "./helpers";
 
 test("admins set the default columns of a work item list", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -33,4 +33,28 @@ test("admins set the default columns of a work item list", async ({ page }) => {
   await typeTab(page, "列");
   await page.getByRole("button", { name: "恢复默认" }).click();
   await expect(page.getByRole("checkbox", { name: "显示列 创建者" })).toBeChecked();
+});
+
+test("role, node and schedule columns show who does what and how a work item is doing", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await oemSpace(page, "Pascal", `role-columns-${suffix}@example.com`, `角色列 ${suffix}`);
+  await openSettings(page);
+  await openTypeConfig(page, "项目");
+  await typeTab(page, "列");
+  await page.getByRole("checkbox", { name: "显示列 角色：NPD" }).check();
+  await page.getByRole("checkbox", { name: "显示列 节点：需求立项提案" }).check();
+  await page.getByRole("checkbox", { name: "显示列 延期" }).check();
+  await page.getByRole("checkbox", { name: "显示列 预计完成" }).check();
+  await page.getByRole("button", { name: "保存默认列" }).click();
+  await expect(page.getByText("已保存")).toBeVisible();
+  await closeTypeConfig(page);
+
+  await openItems(page, "项目");
+  await createItem(page, "面霜立项");
+  await openItems(page, "项目");
+  const grid = page.getByRole("grid");
+  for (const name of ["角色：NPD", "节点：需求立项提案", "延期", "预计完成"])
+    await expect(grid.getByRole("columnheader", { name })).toBeVisible();
+  const row = grid.getByRole("row").filter({ hasText: "面霜立项" });
+  await expect(row).toContainText("进行中");
 });

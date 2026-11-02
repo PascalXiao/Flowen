@@ -24,6 +24,7 @@ import { ErrorBanner, PageBody } from "@/components/ui/page";
 import { Tabs } from "@/components/ui/tabs";
 import type { ListDisplay } from "@/components/WorkItemList";
 import { withLineOptions } from "@/lib/fields";
+import { columnSources } from "@/lib/list-columns";
 import { newId } from "@/lib/utils";
 
 /** 新建字段时可选的类型，按飞书项目的字段类型分组。 */
@@ -473,6 +474,14 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
         <Section title="默认显示的列">
           <ColumnsEditor
             fields={fields}
+            sources={columnSources([
+              {
+                roles: type.roles,
+                flowTemplates: type.flowTemplates.map((t) => ({
+                  currentVersion: t.versions.find((v) => v.id === t.currentVersionId),
+                })),
+              },
+            ])}
             value={(type.defaultDisplay as ListDisplay | null) ?? null}
             canManage={isAdmin}
             onSave={async (display) => {

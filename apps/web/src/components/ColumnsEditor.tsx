@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { ListDisplay } from "@/components/WorkItemList";
-import { defaultColumnKeys, fieldColumn, type ListField, systemColumns } from "@/lib/list-columns";
+import { allColumns, defaultColumnKeys, type ListField } from "@/lib/list-columns";
 
 type Column = { key: string; title: string };
 
@@ -13,24 +13,21 @@ type Column = { key: string; title: string };
  */
 export function ColumnsEditor({
   fields,
+  sources = {},
   value,
   canManage,
   onSave,
 }: {
   fields: readonly ListField[];
+  /** 角色列、节点列的来源。 */
+  sources?: { roles?: readonly { key: string; name: string }[]; nodes?: readonly { name: string }[] };
   value: ListDisplay | null;
   canManage: boolean;
   onSave: (display: ListDisplay | null) => Promise<boolean>;
 }) {
   const fieldMap = new Map(fields.filter((f) => f.dataType !== "relation").map((f) => [f.key, f]));
-  const ctx = { fields: fieldMap, userName: (id: string) => id, spaceName: "", typeName: () => "" };
-  const all: Column[] = [
-    ...systemColumns(ctx).map((c) => ({ key: c.key, title: c.title })),
-    ...[...fieldMap.values()].map((f) => {
-      const c = fieldColumn(f, ctx);
-      return { key: c.key, title: c.title };
-    }),
-  ];
+  const ctx = { fields: fieldMap, userName: (id: string) => id, spaceName: "", typeName: () => "", ...sources };
+  const all: Column[] = allColumns(ctx).map((c) => ({ key: c.key, title: c.title }));
   const known = new Set(all.map((c) => c.key));
   const initial = (value?.columns ?? defaultColumnKeys(fieldMap).map((key) => ({ key }))).map((c) => c.key);
   const [keys, setKeys] = useState(() => initial.filter((k) => known.has(k)));
