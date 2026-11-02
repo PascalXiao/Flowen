@@ -3,8 +3,8 @@ import { type Condition, evaluate } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
-import { ArrowDownUp, Group, Palette, Plus, Search, Star, Trash2, X } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { ArrowDownUp, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -27,7 +27,27 @@ export interface ListDisplay {
   sort?: { key: string; desc?: boolean }[];
   groupBy?: string | null;
   colors?: { when: Condition; color: string }[];
+  /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
+  frozen?: number;
+  /** 行高：低、中、高、超高。 */
+  rowHeight?: "low" | "medium" | "high" | "xhigh";
+  /** 底部汇总行：列键 → 统计方式。 */
+  summary?: Record<string, SummaryKind>;
 }
+type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";
+const SUMMARY_TEXT: Record<SummaryKind, string> = {
+  count: "计数",
+  filled: "已填写",
+  empty: "未填写",
+  filledPct: "已填写百分比",
+  sum: "求和",
+  avg: "平均值",
+  max: "最大值",
+  min: "最小值",
+};
+const ROW_HEIGHTS = { low: ["低", 36], medium: ["中", 52], high: ["高", 72], xhigh: ["超高", 96] } as const;
+type RowHeight = keyof typeof ROW_HEIGHTS;
+const SELECTION_WIDTH = 48;
 
 type Tab = "all" | "recent" | "created" | "involved" | "followed" | "starred";
 const TABS: readonly (readonly [Tab, string])[] = [
@@ -148,6 +168,9 @@ export function WorkItemList({
     for (const workItemId of ids) zero.mutate(mutators.mark.set({ workItemId, kind, on }));
   };
 
+  const frozen = Math.min(display.frozen ?? 0, shown.length);
+  const rowHeight: RowHeight = display.rowHeight ?? "low";
+
   const columns = [
     {
       title: "名称",
@@ -170,14 +193,19 @@ export function WorkItemList({
         </span>
       ),
     },
-    ...shown.map((c) => {
+    ...shown.map((c, index) => {
       const col = byKey.get(c.key) as ListColumn;
       return {
         title: col.title,
         dataIndex: col.key,
         key: col.key,
         width: c.width ?? col.width,
-        render: (_: unknown, item: ListItem) => <div className="min-w-0 truncate">{col.render(item)}</div>,
+        ...(index < frozen && { fixed: "left" as const }),
+        render: (_: unknown, item: ListItem) => (
+          <div className={rowHeight === "low" ? "min-w-0 truncate" : "line-clamp-3 min-w-0 break-all"}>
+            {col.render(item)}
+          </div>
+        ),
       };
     }),
     {
@@ -247,6 +275,15 @@ export function WorkItemList({
             value={display.colors ?? []}
             onChange={(colors) => onDisplay({ ...display, colors })}
           />
+          <FreezeButton
+            columns={shown.map((c) => byKey.get(c.key) as ListColumn)}
+            value={frozen}
+            onChange={(n) => onDisplay({ ...display, frozen: n || undefined })}
+          />
+          <RowHeightButton
+            value={rowHeight}
+            onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
+          />
           <SemiInput
             aria-label="搜索工作项"
             prefix={<Search className="ml-2 size-4 text-fg-subtle" />}
@@ -293,13 +330,35 @@ export function WorkItemList({
           }}
           scroll={{ x: "max-content" }}
           rowSelection={{
+            width: SELECTION_WIDTH,
+            fixed: true,
             selectedRowKeys: selected,
             onChange: (keys?: (string | number)[]) => setSelected((keys ?? []).map(String)),
           }}
           onRow={(item?: ListItem) => {
             const color = item && colorOf(item);
-            return color ? { style: { background: color } } : {};
+            return { style: { height: ROW_HEIGHTS[rowHeight][1], ...(color && { background: color }) } };
           }}
+          footer={
+            rows.length > 0 ? (
+              <SummaryRow
+                cells={[
+                  { key: "__select", width: SELECTION_WIDTH },
+                  { key: "name", width: 240 },
+                  ...shown.map((c) => {
+                    const col = byKey.get(c.key) as ListColumn;
+                    return { key: c.key, width: c.width ?? col.width, col };
+                  }),
+                  { key: "__add", width: 56 },
+                ]}
+                rows={rows}
+                value={display.summary ?? {}}
+                onChange={(summary) =>
+                  onDisplay({ ...display, summary: Object.keys(summary).length ? summary : undefined })
+                }
+              />
+            ) : undefined
+          }
           {...(groupCol && {
             groupBy: (item?: ListItem) => (item ? String(groupCol.value(item) ?? "") : "") || "（空）",
             renderGroupSection: (key?: string | number) => (
@@ -406,6 +465,191 @@ function ColumnPicker({
         <Plus className="size-4" />
       </button>
     </Popover>
+  );
+}
+
+/**
+ * 底部汇总行：每列下面选一种统计方式（计数、已填写、求和…），按当前筛选和搜索后的全部行算。
+ * 和表格列宽对齐，横向跟着表格滚动。
+ */
+function SummaryRow({
+  cells,
+  rows,
+  value,
+  onChange,
+}: {
+  cells: { key: string; width: number; col?: ListColumn }[];
+  rows: readonly ListItem[];
+  value: Record<string, SummaryKind>;
+  onChange: (summary: Record<string, SummaryKind>) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // 表格会把列撑满宽度，所以按表头单元格的实际宽度排，并跟着表体横向滚动
+  const [widths, setWidths] = useState<number[]>([]);
+  useEffect(() => {
+    const el = ref.current;
+    const table = el?.closest(".semi-table-wrapper");
+    const body = table?.querySelector<HTMLElement>(".semi-table-body");
+    const head = table?.querySelector("thead tr:last-child");
+    if (!el || !body || !head) return;
+    const measure = () => {
+      const next = [...head.children].map((th) => (th as HTMLElement).offsetWidth);
+      setWidths((prev) => (prev.join() === next.join() ? prev : next));
+      el.scrollLeft = body.scrollLeft;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    for (const th of head.children) observer.observe(th);
+    body.addEventListener("scroll", measure);
+    return () => {
+      observer.disconnect();
+      body.removeEventListener("scroll", measure);
+    };
+  });
+  const compute = (col: ListColumn, kind: SummaryKind): string => {
+    const values = rows.map((r) => col.value(r));
+    const filled = values.filter((v) => v !== null && v !== "").length;
+    const nums = values.filter((v): v is number => typeof v === "number");
+    const round = (n: number) => String(Math.round(n * 100) / 100);
+    switch (kind) {
+      case "count":
+        return String(values.length);
+      case "filled":
+        return String(filled);
+      case "empty":
+        return String(values.length - filled);
+      case "filledPct":
+        return `${round((filled / values.length) * 100)}%`;
+      case "sum":
+        return round(nums.reduce((a, b) => a + b, 0));
+      case "avg":
+        return nums.length ? round(nums.reduce((a, b) => a + b, 0) / nums.length) : "—";
+      case "max":
+        return nums.length ? round(Math.max(...nums)) : "—";
+      case "min":
+        return nums.length ? round(Math.min(...nums)) : "—";
+    }
+  };
+  const set = (key: string, kind: SummaryKind | null) => {
+    const next = { ...value };
+    if (kind) next[key] = kind;
+    else delete next[key];
+    onChange(next);
+  };
+  return (
+    <div ref={ref} role="row" aria-label="汇总" className="-mx-4 -my-3 overflow-hidden">
+      <div className="flex w-max text-sm">
+        {cells.map(({ key, width: fallback, col }, index) => {
+          const width = widths.length === cells.length ? widths[index] : fallback;
+          const kind = value[key];
+          const kinds = (Object.keys(SUMMARY_TEXT) as SummaryKind[]).filter(
+            (k) => col?.numeric || !["sum", "avg", "max", "min"].includes(k),
+          );
+          return (
+            <div key={key} role="cell" style={{ width }} className="shrink-0 px-2 py-1.5">
+              {key === "name" && <span className="text-fg-muted">共 {rows.length} 条</span>}
+              {col && (
+                <Dropdown
+                  trigger="click"
+                  motion={false}
+                  position="top"
+                  render={
+                    <Dropdown.Menu>
+                      <Dropdown.Item active={!kind} onClick={() => set(key, null)}>
+                        不统计
+                      </Dropdown.Item>
+                      {kinds.map((k) => (
+                        <Dropdown.Item key={k} active={kind === k} onClick={() => set(key, k)}>
+                          {SUMMARY_TEXT[k]}
+                        </Dropdown.Item>
+                      ))}
+                    </Dropdown.Menu>
+                  }
+                >
+                  <button
+                    type="button"
+                    aria-label={`${col.title}的汇总`}
+                    className={cn(
+                      "w-full truncate rounded px-1 text-left hover:bg-hover",
+                      kind ? "text-fg" : "text-fg-subtle",
+                    )}
+                  >
+                    {kind ? `${SUMMARY_TEXT[kind]} ${compute(col, kind)}` : "统计"}
+                  </button>
+                </Dropdown>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 冻结列：名称列总是冻结，这里选再冻结到第几列。 */
+function FreezeButton({
+  columns,
+  value,
+  onChange,
+}: {
+  columns: ListColumn[];
+  value: number;
+  onChange: (frozen: number) => void;
+}) {
+  return (
+    <Dropdown
+      trigger="click"
+      motion={false}
+      position="bottomLeft"
+      render={
+        <Dropdown.Menu>
+          <Dropdown.Item active={value === 0} onClick={() => onChange(0)}>
+            只冻结名称列
+          </Dropdown.Item>
+          {columns.slice(0, 10).map((c, i) => (
+            <Dropdown.Item key={c.key} active={value === i + 1} onClick={() => onChange(i + 1)}>
+              冻结到「{c.title}」
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      }
+    >
+      <button
+        type="button"
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
+          value ? "text-brand-500" : "text-fg",
+        )}
+      >
+        <Pin className="size-4" />
+        {value ? `冻结 ${value + 1} 列` : "冻结"}
+      </button>
+    </Dropdown>
+  );
+}
+
+/** 行高：低、中、高、超高；高一些时单元格内容可以折行（最多 3 行）。 */
+function RowHeightButton({ value, onChange }: { value: RowHeight; onChange: (h: RowHeight) => void }) {
+  return (
+    <Dropdown
+      trigger="click"
+      motion={false}
+      position="bottomLeft"
+      render={
+        <Dropdown.Menu>
+          {(Object.keys(ROW_HEIGHTS) as RowHeight[]).map((h) => (
+            <Dropdown.Item key={h} active={value === h} onClick={() => onChange(h)}>
+              {ROW_HEIGHTS[h][0]}
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      }
+    >
+      <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover">
+        <Rows3 className="size-4" />
+        行高：{ROW_HEIGHTS[value][0]}
+      </button>
+    </Dropdown>
   );
 }
 

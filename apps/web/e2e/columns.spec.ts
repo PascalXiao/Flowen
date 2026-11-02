@@ -58,3 +58,38 @@ test("role, node and schedule columns show who does what and how a work item is 
   const row = grid.getByRole("row").filter({ hasText: "面霜立项" });
   await expect(row).toContainText("进行中");
 });
+
+test("the list freezes columns, changes row height and sums up columns at the bottom", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await oemSpace(page, "Pascal", `list-summary-${suffix}@example.com`, `汇总行 ${suffix}`);
+  await openItems(page, "项目");
+  await createItem(page, "面霜立项");
+  await openItems(page, "项目");
+  await createItem(page, "精华立项");
+  await openItems(page, "项目");
+  const grid = page.getByRole("grid");
+  await expect(grid.getByRole("row").filter({ hasText: "精华立项" })).toBeVisible();
+
+  // 底部汇总：「创建者」列计数、已填写百分比
+  const summary = page.getByRole("row", { name: "汇总", exact: true });
+  await expect(summary).toContainText("共 2 条");
+  await summary.getByRole("button", { name: "创建者的汇总" }).click();
+  await page.getByRole("menuitem", { name: "计数" }).click();
+  await expect(summary.getByRole("button", { name: "创建者的汇总" })).toHaveText("计数 2");
+  await summary.getByRole("button", { name: "创建者的汇总" }).click();
+  await expect(page.getByRole("menuitem", { name: "求和" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "已填写百分比" }).click();
+  await expect(summary.getByRole("button", { name: "创建者的汇总" })).toHaveText("已填写百分比 100%");
+
+  // 冻结到第一个显示的列
+  await page.getByRole("button", { name: "冻结" }).click();
+  await page.getByRole("menuitem").filter({ hasText: "冻结到" }).first().click();
+  await expect(page.getByRole("button", { name: "冻结 2 列" })).toBeVisible();
+  await expect(grid.locator("thead th.semi-table-cell-fixed-left")).toHaveCount(3);
+
+  // 行高改成「高」
+  await page.getByRole("button", { name: "行高：低" }).click();
+  await page.getByRole("menuitem", { name: "高", exact: true }).click();
+  const row = grid.getByRole("row").filter({ hasText: "面霜立项" });
+  await expect.poll(async () => (await row.boundingBox())?.height).toBeGreaterThanOrEqual(70);
+});

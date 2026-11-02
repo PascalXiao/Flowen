@@ -45,6 +45,8 @@ export interface ListColumn {
   render: (item: ListItem) => ReactNode;
   /** 排序和分组用的值。 */
   value: (item: ListItem) => string | number | null;
+  /** 数字列：底部汇总可以求和、平均、最大、最小。 */
+  numeric?: boolean;
 }
 
 const TONES: TagTone[] = ["brand", "violet", "teal", "warning", "success", "danger"];
@@ -283,6 +285,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
     {
       key: "delay",
       title: "延期",
+      numeric: true,
       width: 100,
       render: (i) => {
         const days = delayDays(i, todayOf(ctx));
@@ -293,6 +296,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
     {
       key: "stay",
       title: "当前节点停留",
+      numeric: true,
       width: 120,
       render: (i) => {
         const days = stayDays(i, todayOf(ctx));
@@ -382,6 +386,7 @@ export function fieldColumn(field: ListField, ctx: ListContext): ListColumn {
     key: `field:${field.key}`,
     title: field.name,
     width: wide ? 180 : 130,
+    numeric: field.dataType === "number" || field.dataType === "formula",
     render: (i) => renderFieldValue(field, fieldValueOf(i, field.key), ctx.userName),
     value: (i) => {
       const v = fieldValueOf(i, field.key);

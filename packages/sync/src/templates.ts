@@ -89,6 +89,11 @@ export const setDefaultDisplayArgs = z.object({
       columns: z.array(z.object({ key: z.string(), width: z.number().optional() })).max(60).optional(),
       sort: z.array(z.object({ key: z.string(), desc: z.boolean().optional() })).max(5).optional(),
       groupBy: z.string().nullable().optional(),
+      frozen: z.number().int().min(0).max(10).optional(),
+      rowHeight: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+      summary: z
+        .record(z.string(), z.enum(["count", "filled", "empty", "filledPct", "sum", "avg", "max", "min"]))
+        .optional(),
     })
     .nullable(),
 });

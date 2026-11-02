@@ -398,7 +398,15 @@ export interface ViewDisplay {
   groupBy?: string | null;
   /** 行着色：满足条件的行用这个颜色。 */
   colors?: { when: Condition; color: string }[];
+  /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
+  frozen?: number;
+  /** 行高：低、中、高、超高。 */
+  rowHeight?: "low" | "medium" | "high" | "xhigh";
+  /** 底部汇总行：列键 → 统计方式。 */
+  summary?: Record<string, SummaryKind>;
 }
+/** 汇总行的统计方式：计数、已填写、未填写、已填写百分比、求和、平均、最大、最小。 */
+export type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";
 
 export const savedView = pgTable("saved_view", {
   id: text("id").primaryKey(),

@@ -43,6 +43,11 @@ export const viewDisplay = z.object({
     .array(z.object({ when: z.json(), color: z.string().max(32) }))
     .max(20)
     .optional(),
+  frozen: z.number().int().min(0).max(10).optional(),
+  rowHeight: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  summary: z
+    .record(z.string(), z.enum(["count", "filled", "empty", "filledPct", "sum", "avg", "max", "min"]))
+    .optional(),
 });
 
 export const createViewArgs = z.object({
