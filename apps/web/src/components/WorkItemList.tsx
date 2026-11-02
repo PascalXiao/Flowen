@@ -537,7 +537,7 @@ function SummaryRow({
     onChange(next);
   };
   return (
-    <div ref={ref} role="row" aria-label="汇总" className="-mx-4 -my-3 overflow-hidden">
+    <div ref={ref} role="group" aria-label="汇总" className="-mx-4 -my-3 overflow-hidden">
       <div className="flex w-max text-sm">
         {cells.map(({ key, width: fallback, col }, index) => {
           const width = widths.length === cells.length ? widths[index] : fallback;
@@ -546,7 +546,7 @@ function SummaryRow({
             (k) => col?.numeric || !["sum", "avg", "max", "min"].includes(k),
           );
           return (
-            <div key={key} role="cell" style={{ width }} className="shrink-0 px-2 py-1.5">
+            <div key={key} style={{ width }} className="shrink-0 px-2 py-1.5">
               {key === "name" && <span className="text-fg-muted">共 {rows.length} 条</span>}
               {col && (
                 <Dropdown

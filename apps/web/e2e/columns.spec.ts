@@ -71,7 +71,7 @@ test("the list freezes columns, changes row height and sums up columns at the bo
   await expect(grid.getByRole("row").filter({ hasText: "精华立项" })).toBeVisible();
 
   // 底部汇总：「创建者」列计数、已填写百分比
-  const summary = page.getByRole("row", { name: "汇总", exact: true });
+  const summary = page.getByRole("group", { name: "汇总", exact: true });
   await expect(summary).toContainText("共 2 条");
   await summary.getByRole("button", { name: "创建者的汇总" }).click();
   await page.getByRole("menuitem", { name: "计数" }).click();
