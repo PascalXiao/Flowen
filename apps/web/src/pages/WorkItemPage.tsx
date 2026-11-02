@@ -319,6 +319,59 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   ];
 
   const timeZone = item.space?.timezone ?? "Asia/Shanghai";
+  /** 节点上的估分、实际工时输入（失焦时保存）。 */
+  const effortView = (node: {
+    key: string;
+    name: string;
+    effort?: { points?: boolean; hours?: "show" | "required" };
+  }) => {
+    if (!node.effort?.points && !node.effort?.hours) return null;
+    const runtime = states.get(node.key);
+    const editable = canPlan(node.key);
+    const save = (key: "points" | "actualHours", raw: string) => {
+      const value = raw.trim() === "" ? null : Number(raw);
+      if (value !== null && !Number.isFinite(value)) return;
+      if ((runtime?.[key] ?? null) === value) return;
+      run(mutators.node.setEffort({ workItemId: item.id, nodeKey: node.key, [key]: value }));
+    };
+    return (
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        {node.effort.points && (
+          <label className="flex items-center gap-1.5">
+            <span className="text-fg-muted">估分：</span>
+            <Input
+              key={`p-${runtime?.points ?? ""}`}
+              type="number"
+              min={0}
+              aria-label={`${node.name}估分`}
+              className="h-7 w-24"
+              defaultValue={runtime?.points ?? ""}
+              readOnly={!editable}
+              onBlur={(e) => save("points", e.target.value)}
+            />
+          </label>
+        )}
+        {node.effort.hours && (
+          <label className="flex items-center gap-1.5">
+            <span className="text-fg-muted">
+              实际工时{node.effort.hours === "required" && <span className="text-danger-500">*</span>}：
+            </span>
+            <Input
+              key={`h-${runtime?.actualHours ?? ""}`}
+              type="number"
+              min={0}
+              aria-label={`${node.name}实际工时`}
+              className="h-7 w-24"
+              defaultValue={runtime?.actualHours ?? ""}
+              readOnly={!editable}
+              onBlur={(e) => save("actualHours", e.target.value)}
+            />
+            <span className="text-fg-subtle">小时</span>
+          </label>
+        )}
+      </div>
+    );
+  };
   /** 节点信息：某个节点的负责人、排期（能排期的人可以改）、结论。流程里没有这个节点时不显示。 */
   const nodeInfoView = (ref: string, info: readonly string[] | undefined, label: string | undefined, key: string) => {
     const def = graph?.nodes.find((n) => n.key === ref || n.name === ref);
@@ -907,6 +960,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                             </span>
                           ))}
                         </div>
+                        {effortView(node)}
                         {node.relatedInfo?.length ? (
                           <dl
                             aria-label={`${node.name}的关联信息`}

@@ -286,6 +286,13 @@ export const flowDefinitionSchema = z.object({
         .array(z.object({ relation: z.string().min(1).max(100), field: z.string().min(1).max(200) }))
         .max(30)
         .optional(),
+      effort: z
+        .object({
+          points: z.boolean().optional(),
+          hours: z.enum(["show", "required"]).optional(),
+          scheduleRequired: z.boolean().optional(),
+        })
+        .optional(),
       nodeInfo: z
         .array(z.object({ node: z.string().min(1), info: z.array(z.enum(["owner", "schedule", "conclusion"])).optional() }))
         .max(50)

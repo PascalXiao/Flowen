@@ -176,6 +176,13 @@
       "when": 1793357661461,
       "tag": "0024_type_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793585642767,
+      "tag": "0025_node_effort",
+      "breakpoints": true
     }
   ]
 }

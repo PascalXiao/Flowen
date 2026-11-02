@@ -98,6 +98,11 @@ export interface NodeDefinition {
    * 给负责人确认时参考（对照飞书节点表单里的「关联信息」）。
    */
   relatedInfo?: { relation: string; field: string }[];
+  /**
+   * 节点上的估分、实际工时（对照飞书节点的「默认显示字段」：估分、实际工时），
+   * 以及确认完成时是否必须填好实际工时、排期。
+   */
+  effort?: { points?: boolean; hours?: "show" | "required"; scheduleRequired?: boolean };
   /** 节点上显示的别的节点的信息（负责人、排期、结论），如立项时先给后面的节点排期。 */
   nodeInfo?: { node: string; info?: ("owner" | "schedule" | "conclusion")[] }[];
   /** 节点到达时把工作项阶段改成这个值。 */

@@ -53,6 +53,11 @@ export const setPlanArgs = z.object({
 });
 export type SetPlanArgs = z.output<typeof setPlanArgs>;
 
+/** 节点的估分、实际工时；不传的不改，传 null 清空。 */
+export const setEffortArgs = nodeActionArgs.extend({
+  points: z.number().min(0).max(100000).nullable().optional(),
+  actualHours: z.number().min(0).max(100000).nullable().optional(),
+});
 export const setRoleArgs = z.object({ workItemId: z.string(), roleKey: z.string(), userIds: z.array(z.string()) });
 export type SetRoleArgs = z.output<typeof setRoleArgs>;
 
@@ -287,6 +292,14 @@ export async function confirmNode(
   }
   const events = fieldChanges.length > 0 ? flow.engine.onFieldsChanged(flow.state, flow.fields) : [];
 
+  // 节点要求完成时填好实际工时、排期
+  if (node.effort?.hours === "required" || node.effort?.scheduleRequired) {
+    const instance = await tx.run(zql.nodeInstance.where("id", nodeInstanceId(args.workItemId, args.nodeKey)).one());
+    if (node.effort.hours === "required" && instance?.actualHours == null)
+      throw new Error(`节点「${node.name}」要先填实际工时才能完成。`);
+    if (node.effort.scheduleRequired && (instance?.plannedStart == null || instance?.plannedEnd == null))
+      throw new Error(`节点「${node.name}」要先填排期才能完成。`);
+  }
   const openTasks = await tx.run(
     zql.nodeTask.where("workItemId", args.workItemId).where("nodeKey", args.nodeKey).where("done", false),
   );
@@ -554,6 +567,25 @@ export async function setNodePlan(tx: Transaction, args: SetPlanArgs, userID: st
     });
   }
   await saveFlow(tx, flow, structuredClone(flow.state));
+  return { spaceId: flow.spaceId };
+}
+
+/** 填节点的估分、实际工时：节点负责人、可操作角色和空间管理员。 */
+export async function setNodeEffort(
+  tx: Transaction,
+  args: z.output<typeof setEffortArgs>,
+  userID: string,
+): Promise<{ spaceId: string }> {
+  const flow = await loadForAction(tx, args.workItemId, userID);
+  if (!flow.state.nodes[args.nodeKey]) throw new Error("节点不存在。");
+  if (!canOperateNode(flow, args.nodeKey, userID))
+    throw new Error("只有节点负责人、可操作角色或空间管理员可以填估分和工时。");
+  await tx.mutate.nodeInstance.update({
+    id: nodeInstanceId(args.workItemId, args.nodeKey),
+    ...(args.points !== undefined && { points: args.points }),
+    ...(args.actualHours !== undefined && { actualHours: args.actualHours }),
+    updatedAt: Date.now(),
+  });
   return { spaceId: flow.spaceId };
 }
 

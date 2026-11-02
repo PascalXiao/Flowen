@@ -28,9 +28,11 @@ import {
   restoreWorkItem,
   rollbackNode,
   setCalendarArgs,
+  setEffortArgs,
   setFieldArgs,
   setFieldValue,
   setFrozenArgs,
+  setNodeEffort,
   setNodePlan,
   setPlanArgs,
   setRoleArgs,
@@ -253,6 +255,22 @@ export const serverMutators = defineMutators(mutators, {
     rollback: defineMutator(nodeActionArgs, async ({ tx, args, ctx }) => {
       const { spaceId, events } = await rollbackNode(tx, args, ctx.userID);
       await append(tx, ctx, flowEvents(spaceId, args.workItemId, events));
+    }),
+    setEffort: defineMutator(setEffortArgs, async ({ tx, args, ctx }) => {
+      const { spaceId } = await setNodeEffort(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "nodeEffortChanged",
+          payload: {
+            node: args.nodeKey,
+            ...(args.points !== undefined && { points: args.points }),
+            ...(args.actualHours !== undefined && { actualHours: args.actualHours }),
+          },
+          actor: ctx.userID,
+        },
+      ]);
     }),
     setPlan: defineMutator(setPlanArgs, async ({ tx, args, ctx }) => {
       const { spaceId } = await setNodePlan(tx, args, ctx.userID);

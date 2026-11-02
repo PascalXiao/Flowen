@@ -105,6 +105,37 @@ export function NodeAdvancedEditor({
           checked={!!data.restricted}
           onChange={(v) => onChange({ restricted: v || undefined })}
         />
+        {/* 估分、实际工时、完成时排期必填 */}
+        {(() => {
+          const effort = data.effort ?? {};
+          const set = (patch: Partial<NonNullable<typeof data.effort>>) => {
+            const next = { ...effort, ...patch };
+            for (const k of Object.keys(next) as (keyof typeof next)[]) if (next[k] === undefined) delete next[k];
+            onChange({ effort: Object.keys(next).length > 0 ? next : undefined });
+          };
+          return (
+            <>
+              <Check label="显示估分" checked={!!effort.points} onChange={(v) => set({ points: v || undefined })} />
+              <Check
+                label="显示实际工时"
+                checked={!!effort.hours}
+                onChange={(v) => set({ hours: v ? "show" : undefined })}
+              />
+              {effort.hours && (
+                <Check
+                  label="完成时实际工时必填"
+                  checked={effort.hours === "required"}
+                  onChange={(v) => set({ hours: v ? "required" : "show" })}
+                />
+              )}
+              <Check
+                label="完成时排期必填"
+                checked={!!effort.scheduleRequired}
+                onChange={(v) => set({ scheduleRequired: v || undefined })}
+              />
+            </>
+          );
+        })()}
         <div className="flex flex-wrap items-center gap-2 text-sm">
           相对排期：结束日为
           <Select

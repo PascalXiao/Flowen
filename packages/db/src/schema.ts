@@ -598,6 +598,9 @@ export const nodeInstance = pgTable(
     verdicts: jsonb("verdicts").$type<Record<string, { value: string | null; comment?: string | null }>>(),
     /** 节点字段的值：节点字段键 → 值。 */
     fields: jsonb("fields").$type<Record<string, unknown>>(),
+    /** 估分（人天等，按团队习惯）和实际工时（小时）。 */
+    points: doublePrecision("points"),
+    actualHours: doublePrecision("actual_hours"),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("node_instance_work_item_node").on(t.workItemId, t.nodeKey)],

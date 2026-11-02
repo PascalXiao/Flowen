@@ -49,6 +49,13 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       return `阶段变为「${str(p.to)}」`;
     case "templateUpgraded":
       return "把流程升级到了模板的最新版本";
+    case "nodeEffortChanged": {
+      const parts = [
+        p.points !== undefined && `估分 ${p.points ?? "清空"}`,
+        p.actualHours !== undefined && `实际工时 ${p.actualHours ?? "清空"}`,
+      ].filter(Boolean);
+      return `把${node()}的${parts.join("、")}`;
+    }
     case "workItemTerminated":
       return p.reason ? `终止了工作项，原因：${str(p.reason)}` : "终止了工作项";
     case "workItemRestored":

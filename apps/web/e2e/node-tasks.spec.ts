@@ -136,3 +136,46 @@ test("a node shows related info from the linked work item", async ({ page }) => 
   await choose(group.getByLabel("添加关联项目"), { label: "面霜项目" });
   await expect(info.getByLabel("品牌")).toHaveText("ddg");
 });
+
+test("a node asks for estimate and actual hours, and hours are required to complete it", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await signUp(page, "Pascal", `effort-${suffix}@example.com`);
+  await createSpace(page, `估分工时 ${suffix}`);
+  await openSettings(page);
+  await page.getByLabel("新类型名称").fill("需求");
+  await page.getByRole("button", { name: "新建类型" }).click();
+  await openTypeConfig(page, "需求");
+  await typeTab(page, "流程");
+  await page.getByLabel("新模板名称").fill("默认流程");
+  await page.getByRole("button", { name: "新建模板" }).click();
+  await page.getByRole("link", { name: "默认流程" }).click();
+  const node = (name: string) => page.locator(".react-flow__node", { hasText: name });
+  const editor = page.getByRole("main");
+  await node("开始").click();
+  await page.getByRole("button", { name: "添加节点" }).click();
+  await editor.getByLabel("节点名称").fill("财务分析");
+  await editor.getByText("节点设置", { exact: true }).click();
+  await editor.getByLabel("显示估分").check();
+  await editor.getByLabel("显示实际工时").check();
+  await editor.getByLabel("完成时实际工时必填").check();
+  await page.getByRole("button", { name: "发布" }).click();
+  await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
+  await closeTypeConfig(page);
+
+  await openItems(page);
+  await createItem(page, "面霜立项", { label: "需求名称" });
+  const current = page.getByRole("main").getByRole("region", { name: "财务分析" });
+  await current.getByLabel("财务分析估分").fill("3");
+  await current.getByLabel("财务分析估分").blur();
+  // 没填实际工时不能完成
+  await current.getByRole("button", { name: "确认完成" }).click();
+  await expect(page.getByRole("alert")).toContainText("要先填实际工时才能完成");
+  await current.getByLabel("财务分析实际工时").fill("6");
+  await current.getByLabel("财务分析实际工时").blur();
+  await page.reload();
+  const again = page.getByRole("main").getByRole("region", { name: "财务分析" });
+  await expect(again.getByLabel("财务分析估分")).toHaveValue("3");
+  await expect(again.getByLabel("财务分析实际工时")).toHaveValue("6");
+  await again.getByRole("button", { name: "确认完成" }).click();
+  await expect(page.getByText("流程已走完。")).toBeVisible();
+});

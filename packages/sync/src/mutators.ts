@@ -30,6 +30,8 @@ import {
   pressButtonArgs,
   recomputeFlow,
   rollbackNode,
+  setEffortArgs,
+  setNodeEffort,
   setNodePlan,
   setPlanArgs,
   setRoleArgs,
@@ -293,6 +295,9 @@ export const mutators = defineMutators({
     }),
     setPlan: defineMutator(setPlanArgs, async ({ tx, args, ctx }) => {
       await setNodePlan(tx, args, ctx.userID);
+    }),
+    setEffort: defineMutator(setEffortArgs, async ({ tx, args, ctx }) => {
+      await setNodeEffort(tx, args, ctx.userID);
     }),
     completeBySubItems: defineMutator(nodeActionArgs, async ({ tx, args, ctx }) => {
       await completeBySubItems(tx, args, ctx.userID);
