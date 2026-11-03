@@ -78,6 +78,13 @@ type SpaceLike = {
     fields: readonly ListField[];
     roles: readonly { key: string; name: string }[];
     flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
+    relationDefs: readonly {
+      id: string;
+      fromTypeId: string;
+      toTypeId: string;
+      name: string;
+      reverseName: string | null;
+    }[];
   }[];
 };
 
@@ -129,7 +136,10 @@ export function WorkItemList({
     userName: (id) => names.get(id) ?? id,
     spaceName: space.name,
     typeName: (id) => space.workItemTypes.find((t) => t.id === id)?.name ?? "",
-    ...columnSources(space.workItemTypes.filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id))),
+    ...columnSources(
+      space.workItemTypes.filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id)),
+      space.workItemTypes.map((t) => ({ ...t, fields: withLineOptions(t.fields, space.businessLines) })),
+    ),
   };
   const available = allColumns(ctx);
   const byKey = new Map(available.map((c) => [c.key, c]));
@@ -537,6 +547,7 @@ function SummaryRow({
     onChange(next);
   };
   return (
+    // biome-ignore lint/a11y/useSemanticElements: 汇总行是表格底部的一组格子，用 fieldset 会带上表单的默认样式
     <div ref={ref} role="group" aria-label="汇总" className="-mx-4 -my-3 overflow-hidden">
       <div className="flex w-max text-sm">
         {cells.map(({ key, width: fallback, col }, index) => {

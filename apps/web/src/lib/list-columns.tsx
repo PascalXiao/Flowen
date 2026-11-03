@@ -10,6 +10,7 @@ import {
 } from "@fp/engine";
 import type { queries } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { StageTag, StatusTag, Tag, type TagTone } from "@/components/ui/tag";
@@ -34,8 +35,21 @@ export interface ListContext {
   /** 能做成列的角色和节点（各类型合在一起，按键去重）。 */
   roles?: readonly { key: string; name: string }[];
   nodes?: readonly { name: string }[];
+  /** 能做成列的自定义关联（关联列和关联字段列）。 */
+  relations?: readonly ListRelation[];
   /** 今天（YYYY-MM-DD），算延期用。 */
   today?: string;
+}
+
+/**
+ * 一条自定义关联在本端的样子：out = 本端是关联的发起方（字段名是关联名），
+ * in = 本端是被关联方（互相关联时的另一端字段名）。fields 是另一端工作项类型的字段。
+ */
+export interface ListRelation {
+  defId: string;
+  dir: "out" | "in";
+  name: string;
+  fields: readonly ListField[];
 }
 
 export interface ListColumn {
@@ -133,7 +147,7 @@ export function renderFieldValue(field: ListField, value: unknown, name: (id: st
   }
 }
 
-function fieldValueOf(item: ListItem, key: string): unknown {
+function fieldValueOf(item: { fieldValues: readonly { fieldKey: string; value: unknown }[] }, key: string): unknown {
   return item.fieldValues.find((v) => v.fieldKey === key)?.value ?? null;
 }
 
@@ -243,6 +257,105 @@ export function roleColumn(role: { key: string; name: string }, ctx: ListContext
   };
 }
 
+type Linked = {
+  id: string;
+  name: string;
+  stage: string | null;
+  fieldValues: readonly { fieldKey: string; value: unknown }[];
+};
+/** 这条关联连着的工作项。 */
+function linkedOf(item: ListItem, rel: ListRelation): Linked[] {
+  const out =
+    rel.dir === "out"
+      ? item.outgoing.filter((r) => r.relationDefId === rel.defId).map((r) => r.to)
+      : item.incoming.filter((r) => r.relationDefId === rel.defId).map((r) => r.from);
+  return out.filter((w): w is NonNullable<typeof w> => !!w) as unknown as Linked[];
+}
+const relKey = (rel: Pick<ListRelation, "dir" | "defId">) => `${rel.dir}:${rel.defId}`;
+
+/** 关联列：关联着的工作项名称，点开在抽屉里看。键是 rel:out|in:关联定义 id。 */
+export function relationColumn(rel: ListRelation): ListColumn {
+  return {
+    key: `rel:${relKey(rel)}`,
+    title: rel.name,
+    width: 180,
+    render: (i) => {
+      const linked = linkedOf(i, rel);
+      if (!linked.length) return none;
+      return (
+        <span className="inline-flex min-w-0 gap-1.5" title={linked.map((w) => w.name).join("、")}>
+          {linked.map((w) => (
+            <Link
+              key={w.id}
+              className="truncate text-brand-500 hover:underline"
+              from="/spaces/$spaceId/$typeKey"
+              to="."
+              search={(prev) => ({ ...prev, item: w.id })}
+            >
+              {w.name}
+            </Link>
+          ))}
+        </span>
+      );
+    },
+    value: (i) =>
+      linkedOf(i, rel)
+        .map((w) => w.name)
+        .join("、"),
+  };
+}
+
+/**
+ * 关联字段列：关联着的工作项的某个字段（飞书项目视图里的「关联字段」，如「关联项目 · 优先级」）。
+ * 关联了多个时每个的值都列出来。键是 relf:out|in:关联定义 id:字段键；字段键 $stage 是对方的阶段。
+ */
+export function relatedFieldColumn(rel: ListRelation, field: ListField | "stage", ctx: ListContext): ListColumn {
+  const fieldKey = field === "stage" ? "$stage" : field.key;
+  const title = `${rel.name} · ${field === "stage" ? "状态" : field.name}`;
+  const values = (i: ListItem) =>
+    linkedOf(i, rel)
+      .map((w) => (field === "stage" ? w.stage : fieldValueOf(w, fieldKey)))
+      .filter((v) => !(v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)));
+  const numeric = field !== "stage" && (field.dataType === "number" || field.dataType === "formula");
+  return {
+    key: `relf:${relKey(rel)}:${fieldKey}`,
+    title,
+    width: 160,
+    numeric,
+    render: (i) => {
+      const vs = values(i);
+      if (!vs.length) return none;
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {vs.map((v, n) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 同一个值可能出现多次
+            <span key={n} className="inline-flex min-w-0">
+              {field === "stage" ? <StageTag stage={String(v)} /> : renderFieldValue(field, v, ctx.userName)}
+            </span>
+          ))}
+        </span>
+      );
+    },
+    value: (i) => {
+      const vs = values(i);
+      if (!vs.length) return null;
+      if (numeric) return vs.reduce<number>((sum, v) => sum + Number(v), 0);
+      if (field === "stage") return vs.map(String).join("、");
+      const spec = { name: field.name, dataType: field.dataType as never, options: field.options };
+      return vs.map((v) => formatFieldValue(spec, v, ctx.userName)).join("、");
+    },
+  };
+}
+
+/** 一条关联能加的列：关联本身，加上对方的状态和每个字段（关联、公式之外的字段也能显示）。 */
+export function relationColumns(rel: ListRelation, ctx: ListContext): ListColumn[] {
+  return [
+    relationColumn(rel),
+    relatedFieldColumn(rel, "stage", ctx),
+    ...rel.fields.filter((f) => f.dataType !== "relation").map((f) => relatedFieldColumn(rel, f, ctx)),
+  ];
+}
+
 /** 系统列（工作项本身的属性和由流程算出的信息）。名称列另外处理，总在第一列。 */
 export function systemColumns(ctx: ListContext): ListColumn[] {
   return [
@@ -349,12 +462,27 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
   ];
 }
 
-/** 角色列、节点列的来源：这些类型的角色和流程当前版本里的节点（按名称去重）。 */
+type RelationDefLike = {
+  id: string;
+  fromTypeId: string;
+  toTypeId: string;
+  name: string;
+  reverseName: string | null;
+};
+type SourceType = {
+  id?: string;
+  roles: readonly { key: string; name: string }[];
+  flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
+};
+
+/**
+ * 角色列、节点列、关联列的来源：这些类型的角色、流程当前版本里的节点（按名称去重），
+ * 以及从这些类型出发的关联、指向这些类型并在这一端有字段名的互相关联。
+ * space 是空间里所有类型（带字段和关联定义），用来找关联另一端的字段。
+ */
 export function columnSources(
-  types: readonly {
-    roles: readonly { key: string; name: string }[];
-    flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
-  }[],
+  types: readonly SourceType[],
+  space: readonly { id: string; fields: readonly ListField[]; relationDefs: readonly RelationDefLike[] }[] = [],
 ) {
   const roles = new Map<string, string>();
   const nodes = new Set<string>();
@@ -363,19 +491,29 @@ export function columnSources(
     for (const f of t.flowTemplates)
       for (const n of nodeFlowOf(f.currentVersion?.definition)?.nodes ?? []) nodes.add(n.name);
   }
+  const ids = new Set(types.flatMap((t) => (t.id ? [t.id] : [])));
+  const fieldsOf = (typeId: string) => space.find((t) => t.id === typeId)?.fields ?? [];
+  const relations: ListRelation[] = [];
+  for (const d of space.flatMap((t) => t.relationDefs)) {
+    if (ids.has(d.fromTypeId)) relations.push({ defId: d.id, dir: "out", name: d.name, fields: fieldsOf(d.toTypeId) });
+    if (ids.has(d.toTypeId) && d.reverseName)
+      relations.push({ defId: d.id, dir: "in", name: d.reverseName, fields: fieldsOf(d.fromTypeId) });
+  }
   return {
     roles: [...roles].map(([key, name]) => ({ key, name })),
     nodes: [...nodes].map((name) => ({ name })),
+    relations,
   };
 }
 
-/** 全部可选的列：系统列、字段列、角色列、节点列。 */
+/** 全部可选的列：系统列、字段列、角色列、节点列、关联列和关联字段列。 */
 export function allColumns(ctx: ListContext): ListColumn[] {
   return [
     ...systemColumns(ctx),
     ...[...ctx.fields.values()].map((f) => fieldColumn(f, ctx)),
     ...(ctx.roles ?? []).map((r) => roleColumn(r, ctx)),
     ...(ctx.nodes ?? []).map((n) => nodeColumn(n)),
+    ...(ctx.relations ?? []).flatMap((r) => relationColumns(r, ctx)),
   ];
 }
 

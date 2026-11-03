@@ -474,14 +474,21 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
         <Section title="默认显示的列">
           <ColumnsEditor
             fields={fields}
-            sources={columnSources([
-              {
-                roles: type.roles,
-                flowTemplates: type.flowTemplates.map((t) => ({
-                  currentVersion: t.versions.find((v) => v.id === t.currentVersionId),
-                })),
-              },
-            ])}
+            sources={columnSources(
+              [
+                {
+                  id: type.id,
+                  roles: type.roles,
+                  flowTemplates: type.flowTemplates.map((t) => ({
+                    currentVersion: t.versions.find((v) => v.id === t.currentVersionId),
+                  })),
+                },
+              ],
+              (space?.workItemTypes ?? []).map((t) => ({
+                ...t,
+                fields: withLineOptions(t.fields, space?.businessLines),
+              })),
+            )}
             value={(type.defaultDisplay as ListDisplay | null) ?? null}
             canManage={isAdmin}
             onSave={async (display) => {
@@ -779,6 +786,7 @@ function CopySettings({
     <Section title="复制配置">
       <fieldset disabled={!canManage} className="flex flex-col gap-3 text-sm">
         <p className="text-fg-muted">复制工作项时，勾选的字段、关联和角色不带到新工作项上。</p>
+        {/* biome-ignore lint/a11y/useSemanticElements: 已经在 fieldset 里，这里只是给一组勾选框起名 */}
         <div role="group" aria-label="复制时不带的字段" className="grid max-h-64 grid-cols-3 gap-1 overflow-y-auto">
           {items.map((it) => (
             <Label key={it.value} className="flex items-center gap-1.5 font-normal">
@@ -792,6 +800,7 @@ function CopySettings({
             </Label>
           ))}
         </div>
+        {/* biome-ignore lint/a11y/useSemanticElements: 已经在 fieldset 里，这里只是给一组勾选框起名 */}
         <div role="group" aria-label="复制时不带的角色" className="grid grid-cols-3 gap-1">
           {roles.map((r) => (
             <Label key={r.key} className="flex items-center gap-1.5 font-normal">

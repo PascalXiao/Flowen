@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { ListDisplay } from "@/components/WorkItemList";
-import { allColumns, defaultColumnKeys, type ListField } from "@/lib/list-columns";
+import { allColumns, defaultColumnKeys, type ListField, type ListRelation } from "@/lib/list-columns";
 
 type Column = { key: string; title: string };
 
@@ -19,8 +19,12 @@ export function ColumnsEditor({
   onSave,
 }: {
   fields: readonly ListField[];
-  /** 角色列、节点列的来源。 */
-  sources?: { roles?: readonly { key: string; name: string }[]; nodes?: readonly { name: string }[] };
+  /** 角色列、节点列、关联列的来源。 */
+  sources?: {
+    roles?: readonly { key: string; name: string }[];
+    nodes?: readonly { name: string }[];
+    relations?: readonly ListRelation[];
+  };
   value: ListDisplay | null;
   canManage: boolean;
   onSave: (display: ListDisplay | null) => Promise<boolean>;

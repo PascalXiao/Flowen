@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { closeTypeConfig, createItem, oemSpace, openItems, openSettings, openTypeConfig, typeTab } from "./helpers";
+import {
+  choose,
+  closeTypeConfig,
+  createItem,
+  createRelation,
+  oemSpace,
+  openItems,
+  openSettings,
+  openTypeConfig,
+  typeTab,
+} from "./helpers";
 
 test("admins set the default columns of a work item list", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -92,4 +102,33 @@ test("the list freezes columns, changes row height and sums up columns at the bo
   await page.getByRole("menuitem", { name: "高", exact: true }).click();
   const row = grid.getByRole("row").filter({ hasText: "面霜立项" });
   await expect.poll(async () => (await row.boundingBox())?.height).toBeGreaterThanOrEqual(70);
+});
+
+test("relation columns show linked work items and their fields", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await oemSpace(page, "Pascal", `relation-columns-${suffix}@example.com`, `关联列 ${suffix}`);
+  await createRelation(page, { from: "项目", to: "项目", name: "前置项目", reverseName: "后续项目" });
+  await openItems(page, "项目");
+  for (const name of ["新品 A", "新品 B"]) {
+    await createItem(page, name);
+    await openItems(page, "项目");
+  }
+  await page.getByRole("link", { name: "新品 B" }).click();
+  const forward = page.getByRole("main").getByRole("region", { name: "前置项目" });
+  await choose(forward.getByLabel("添加前置项目"), { label: "新品 A" });
+  await expect(forward.getByRole("link", { name: "新品 A" })).toBeVisible();
+
+  // 表头「+」里加上关联列、另一端的关联列和关联字段列
+  await openItems(page, "项目");
+  for (const name of ["前置项目", "后续项目", "前置项目 · 状态"]) {
+    await page.getByRole("button", { name: "添加列" }).click();
+    await page.getByRole("checkbox", { name, exact: true }).check();
+    await page.keyboard.press("Escape");
+  }
+  const grid = page.getByRole("grid");
+  for (const name of ["前置项目", "后续项目", "前置项目 · 状态"])
+    await expect(grid.getByRole("columnheader", { name, exact: true })).toBeVisible();
+  // 新品 A 出现两次：自己的名称，和新品 B 的「前置项目」；新品 B 同样出现在新品 A 的「后续项目」里
+  await expect(grid.getByRole("link", { name: "新品 A", exact: true })).toHaveCount(2);
+  await expect(grid.getByRole("link", { name: "新品 B", exact: true })).toHaveCount(2);
 });

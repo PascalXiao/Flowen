@@ -228,15 +228,28 @@ export const queries = defineQueries({
       if (args.tab === "followed") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "follow"));
       if (args.tab === "starred") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "star"));
       if (args.tab === "recent") q = q.whereExists("visits", (v) => v.where("userId", me));
-      return q
-        .related("type")
-        .related("flowVersion")
-        .related("fieldValues", visibleFieldValues(me))
-        .related("roleMembers")
-        .related("nodes")
-        .related("marks", (m) => m.where("userId", me))
-        .related("visits", (v) => v.where("userId", me))
-        .orderBy("createdAt", "desc");
+      return (
+        q
+          .related("type")
+          .related("flowVersion")
+          .related("fieldValues", visibleFieldValues(me))
+          .related("roleMembers")
+          .related("nodes")
+          // 自定义关联（两个方向）连同另一端的名称、状态和字段值：关联列、关联字段列要显示
+          .related("outgoing", (r) =>
+            r
+              .where("relationDefId", "IS NOT", null)
+              .related("to", (w) => w.related("fieldValues", visibleFieldValues(me))),
+          )
+          .related("incoming", (r) =>
+            r
+              .where("relationDefId", "IS NOT", null)
+              .related("from", (w) => w.related("fieldValues", visibleFieldValues(me))),
+          )
+          .related("marks", (m) => m.where("userId", me))
+          .related("visits", (v) => v.where("userId", me))
+          .orderBy("createdAt", "desc")
+      );
     }),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
       zql.workItem
