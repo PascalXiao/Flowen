@@ -362,6 +362,28 @@ export const queries = defineQueries({
         )
         .related("workItem", (w) => w.related("space").related("flowVersion")),
     ),
+    /** 已办的节点：我参与的工作项里，某个时间之后完成的节点（负责人里有没有自己由前端判断）。 */
+    doneNodes: defineQuery(z.object({ since: z.number() }), ({ args, ctx }) =>
+      zql.workItem
+        .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .whereExists("roleMembers", (r) => r.where("userId", ctx.userID))
+        .whereExists("nodes", (n) => n.where("state", "completed").where("actualEnd", ">=", args.since))
+        .related("space")
+        .related("type")
+        .related("flowVersion")
+        .related("nodes", (n) => n.where("state", "completed").where("actualEnd", ">=", args.since)),
+    ),
+    /** 已办的子任务：分给我、某个时间之后完成的。 */
+    doneTasks: defineQuery(z.object({ since: z.number() }), ({ args, ctx }) =>
+      zql.nodeTask
+        .where("assigneeId", ctx.userID)
+        .where("done", true)
+        .where("doneAt", ">=", args.since)
+        .whereExists("workItem", (w) =>
+          w.whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID))),
+        )
+        .related("workItem", (w) => w.related("space").related("flowVersion")),
+    ),
   },
   search: {
     /**
