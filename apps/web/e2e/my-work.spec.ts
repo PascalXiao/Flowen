@@ -22,6 +22,13 @@ test("my work lists the nodes I own and the tasks assigned to me, grouped by due
   await expect(node).toContainText("节点");
   const overdue = page.getByRole("list", { name: "已逾期" });
   await expect(overdue.getByRole("listitem", { name: "准备立项材料" })).toContainText("2020-01-02");
+  const stats = page.getByRole("group", { name: "统计" });
+  await expect(stats.getByRole("button", { name: "已逾期 1" })).toBeVisible();
+  // 点「已逾期」卡片只看逾期的
+  await stats.getByRole("button", { name: "已逾期 1" }).click();
+  await expect(node).toHaveCount(0);
+  await stats.getByRole("button", { name: /^待办 / }).click();
+  await expect(node).toBeVisible();
 
   await page.getByRole("tab", { name: "子任务" }).click();
   await expect(node).toHaveCount(0);
@@ -31,6 +38,16 @@ test("my work lists the nodes I own and the tasks assigned to me, grouped by due
   await expect(page.getByRole("listitem", { name: "准备立项材料" })).toHaveCount(0);
   await page.getByRole("tab", { name: "全部" }).click();
   await expect(node).toBeVisible();
+
+  // 已办：本周完成的子任务
+  await expect(stats.getByRole("button", { name: "已完成（本周） 1" })).toBeVisible();
+  await stats.getByRole("button", { name: "已完成（本周） 1" }).click();
+  await expect(page.getByRole("list", { name: "已办" }).getByRole("listitem", { name: "准备立项材料" })).toContainText(
+    "完成",
+  );
+  await page.getByRole("tablist", { name: "时间范围" }).getByRole("tab", { name: "本月" }).click();
+  await expect(stats.getByRole("button", { name: "已完成（本月） 1" })).toBeVisible();
+  await page.getByRole("tablist", { name: "待办和已办" }).getByRole("tab", { name: /待办/ }).click();
 
   await node.getByRole("link", { name: /新品 W/ }).click();
   await expect(page.getByRole("heading", { name: "新品 W" })).toBeVisible();
