@@ -23,6 +23,7 @@ import {
   MULTI_VALUE_FIELD_TYPES,
   type NumberFormat,
   OPTION_FIELD_TYPES,
+  type VoteConfig,
 } from "./field-value.ts";
 
 /**
@@ -68,6 +69,8 @@ export interface FieldConfig {
   freezeOnComplete?: boolean | null;
   /** 字段组的列。 */
   columns?: FieldGroupColumn[] | null;
+  /** 投票字段的方式、备注、盲投和放榜角色。 */
+  vote?: VoteConfig | null;
 }
 
 /** 规则求值需要的字段定义。 */
@@ -230,6 +233,7 @@ export function checkFieldConfig(
     if (columnError) return `「${field.name}」${columnError}`;
   }
   if (config.number && field.dataType !== "number") return "只有数字字段能设数字格式。";
+  if (config.vote && field.dataType !== "vote") return "只有投票字段能设投票方式。";
   if (config.number?.precision !== undefined && (config.number.precision < 0 || config.number.precision > 10))
     return "小数位数要在 0 到 10 之间。";
   if (config.alias !== undefined && config.alias !== null && !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(config.alias))

@@ -24,6 +24,7 @@ export default drizzleZeroConfig(schema, {
     savedView: true,
     attachment: true,
     comment: true,
+    voteBallot: true,
     notification: true,
     workItem: true,
     fieldValue: true,

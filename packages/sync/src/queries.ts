@@ -273,6 +273,13 @@ export const queries = defineQueries({
         .related("roleMembers", (r) => r.related("user"))
         .related("nodes", (n) => n.related("confirmations"))
         .related("comments", (c) => c.related("author").related("replyTo").orderBy("createdAt", "asc"))
+        // 投票：自己的票，和已经公开（非盲投或已放榜）的票
+        .related("ballots", (b) =>
+          b
+            .where(({ or, cmp }) => or(cmp("userId", ctx.userID), cmp("revealed", true)))
+            .related("user")
+            .orderBy("votedAt", "asc"),
+        )
         .related("attachments", (a) => a.related("uploader").orderBy("createdAt", "asc"))
         // 节点子任务；确认节点时乐观执行也要数没完成的子任务
         .related("tasks", (t) => t.orderBy("createdAt", "asc").orderBy("id", "asc"))

@@ -2685,3 +2685,117 @@ describe("user groups and type permissions", () => {
     expect(type?.viewBase).toBe("none");
   });
 });
+
+describe("vote fields", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/task`;
+  const templateId = `${typeId}/default`;
+  let admin: { cookie: string; userId: string };
+  let member: { cookie: string; userId: string };
+  let itemId: string;
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const summary = async (fieldKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.fieldValue)
+        .where(and(eq(schema.fieldValue.workItemId, itemId), eq(schema.fieldValue.fieldKey, fieldKey)))
+    )[0]?.value;
+  const ballots = (fieldKey: string) =>
+    services.database.db
+      .select()
+      .from(schema.voteBallot)
+      .where(and(eq(schema.voteBallot.workItemId, itemId), eq(schema.voteBallot.fieldKey, fieldKey)));
+
+  beforeAll(async () => {
+    admin = await signUp(`vote-admin-${spaceId}@example.com`);
+    member = await signUp(`vote-member-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "投票" });
+    await services.database.db.insert(schema.spaceMember).values({ spaceId, userId: member.userId });
+    await run("workItemType.create", { id: typeId, spaceId, key: "task", name: "任务", flowMode: "state" });
+    // 不给选项：默认表态（赞成 / 反对 / 弃权）
+    await run("fieldDef.create", { id: `${typeId}/field/立项`, typeId, key: "立项", name: "立项", dataType: "vote" });
+    await run("fieldDef.create", {
+      id: `${typeId}/field/方案`,
+      typeId,
+      key: "方案",
+      name: "方案",
+      dataType: "vote",
+      options: [
+        { value: "A", label: "A", score: 3 },
+        { value: "B", label: "B", score: 1 },
+      ],
+    });
+    await run("flowTemplate.create", { id: templateId, typeId, key: "default", name: "流程" });
+    await run("flowTemplate.publish", { versionId: `${templateId}/v1` });
+    itemId = randomUUID();
+    await run("workItem.create", { id: itemId, typeId, name: "新功能" });
+  });
+
+  it("defaults to stance options and records ballots and a voter summary", async () => {
+    const [def] = await services.database.db
+      .select()
+      .from(schema.fieldDef)
+      .where(eq(schema.fieldDef.id, `${typeId}/field/立项`));
+    expect(def?.options?.map((o) => o.value)).toEqual(["赞成", "反对", "弃权"]);
+    expect(def?.config).toMatchObject({ vote: { mode: "stance" } });
+
+    await expect(run("fieldValue.set", { workItemId: itemId, fieldKey: "立项", value: "赞成" })).rejects.toThrow(
+      "要在字段上投票",
+    );
+    await expect(run("vote.cast", { workItemId: itemId, fieldKey: "立项", choices: ["赞成", "反对"] })).rejects.toThrow(
+      "只能选一项",
+    );
+    await run("vote.cast", { workItemId: itemId, fieldKey: "立项", choices: ["赞成"], remark: "值得做" });
+    await run("vote.cast", { workItemId: itemId, fieldKey: "立项", choices: ["反对"] }, member.userId);
+    // 改票：还是一张票
+    await run("vote.cast", { workItemId: itemId, fieldKey: "立项", choices: ["弃权"] }, member.userId);
+    expect(await summary("立项")).toEqual({ voters: [admin.userId, member.userId], revealed: false });
+    const rows = await ballots("立项");
+    expect(rows.map((r) => [r.userId, r.choices, r.remark, r.revealed]).sort()).toEqual(
+      [
+        [admin.userId, ["赞成"], "值得做", true],
+        [member.userId, ["弃权"], null, true],
+      ].sort(),
+    );
+    // 非盲投不能放榜
+    await expect(run("vote.reveal", { workItemId: itemId, fieldKey: "立项", revealed: true })).rejects.toThrow(
+      "不是盲投",
+    );
+  });
+
+  it("keeps blind ballots hidden until an admin or reveal role publishes them", async () => {
+    await run("fieldDef.update", {
+      id: `${typeId}/field/方案`,
+      name: "方案",
+      required: false,
+      config: { vote: { mode: "multi", remark: "required", blind: true } },
+    });
+    await expect(run("vote.cast", { workItemId: itemId, fieldKey: "方案", choices: ["A"] })).rejects.toThrow(
+      "请填写投票备注",
+    );
+    await expect(
+      run("vote.cast", { workItemId: itemId, fieldKey: "方案", choices: ["C"], remark: "x" }),
+    ).rejects.toThrow("没有选项「C」");
+    await run("vote.cast", { workItemId: itemId, fieldKey: "方案", choices: ["A", "B"], remark: "都行" });
+    await run("vote.cast", { workItemId: itemId, fieldKey: "方案", choices: ["A"], remark: "A 好" }, member.userId);
+    expect((await ballots("方案")).every((b) => b.revealed === false)).toBe(true);
+
+    // 成员没有放榜权限；管理员放榜后票都公开，之后再投的也公开
+    await expect(
+      run("vote.reveal", { workItemId: itemId, fieldKey: "方案", revealed: true }, member.userId),
+    ).rejects.toThrow("没有放榜权限");
+    await run("vote.reveal", { workItemId: itemId, fieldKey: "方案", revealed: true });
+    expect((await ballots("方案")).every((b) => b.revealed === true)).toBe(true);
+    expect(await summary("方案")).toMatchObject({ revealed: true });
+    await run("vote.cast", { workItemId: itemId, fieldKey: "方案", choices: ["B"], remark: "改主意" }, member.userId);
+    expect((await ballots("方案")).find((b) => b.userId === member.userId)).toMatchObject({
+      choices: ["B"],
+      revealed: true,
+    });
+    const kinds = (
+      await services.database.db.select().from(schema.eventLog).where(eq(schema.eventLog.workItemId, itemId))
+    ).map((e) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["voteCast", "voteRevealed"]));
+  });
+});
