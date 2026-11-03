@@ -2811,7 +2811,7 @@ describe("multi-person fields", () => {
   const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
   const set = (fieldKey: string, value: unknown, userId: string) =>
     run("fieldValue.set", { workItemId: itemId, fieldKey, value }, userId);
-  const valueOf = async (fieldKey: string) =>
+  const storedValue = async (fieldKey: string) =>
     (
       await services.database.db
         .select()
@@ -2879,7 +2879,7 @@ describe("multi-person fields", () => {
       ],
       admin.userId,
     );
-    expect(await valueOf("自评")).toEqual([
+    expect(await storedValue("自评")).toEqual([
       { _user: dev.userId, 结论: "能做" },
       { _user: qa.userId, 结论: "已测" },
     ]);
@@ -2891,6 +2891,6 @@ describe("multi-person fields", () => {
     await expect(set("评审", [{ _user: qa.userId, 结论: "通过" }], admin.userId)).rejects.toThrow(
       "只能由对应角色的人填写",
     );
-    expect(await valueOf("评审")).toEqual([{ _user: dev.userId, 结论: "通过" }]);
+    expect(await storedValue("评审")).toEqual([{ _user: dev.userId, 结论: "通过" }]);
   });
 });
