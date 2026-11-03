@@ -520,7 +520,8 @@ describe("configuring a type and its flow template", () => {
       typeId,
       name: "登录报错",
       fields: { needQa: "否" },
-      roles: { dev: [member.userId] },
+      // 没给成员的角色默认是创建者；这里让测试角色留空
+      roles: { dev: [member.userId], qa: [] },
     });
     const nodes = await services.database.db
       .select()
@@ -800,7 +801,8 @@ describe("comments and notifications", () => {
     const mentioned = (await inbox(member.userId)).filter((n) => n.kind === "mentioned");
     expect(mentioned).toHaveLength(1);
     expect(mentioned[0]?.text).toContain("评论里提到了你");
-    expect(await inbox(admin.userId)).toEqual([]);
+    // 评论人提到自己不发通知（角色默认是创建者，管理员可能另有节点通知）
+    expect((await inbox(admin.userId)).filter((n) => n.kind === "mentioned")).toEqual([]);
   });
 
   it("marks only your own notifications read", async () => {
@@ -1427,7 +1429,7 @@ describe("permissions", () => {
     });
     await run("flowTemplate.publish", { versionId: `${templateId}/v1` });
     itemId = randomUUID();
-    await run("workItem.create", { id: itemId, typeId, name: "导出", roles: { dev: [dev.userId] } });
+    await run("workItem.create", { id: itemId, typeId, name: "导出", roles: { dev: [dev.userId], qa: [] } });
   });
 
   it("only admins change member roles, and the last admin stays", async () => {
