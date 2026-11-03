@@ -1,4 +1,4 @@
-import { SideSheet } from "@douyinfe/semi-ui";
+import { Checkbox, SideSheet, Toast } from "@douyinfe/semi-ui";
 import {
   applyDefaults,
   availableOptions,
@@ -17,7 +17,7 @@ import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Columns3, GanttChartSquare, List, ListTree, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns3, GanttChartSquare, List, ListTree, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { Board } from "@/components/Board";
@@ -52,6 +52,8 @@ export function WorkItemHomePage() {
   const navigate = useNavigate();
   const zero = useZero();
   const [space, spaceResult] = useQuery(queries.spaces.byId({ id: spaceId }));
+  // 列表当前显示的工作项顺序：抽屉里「上一条 / 下一条」按它走
+  const [rowIds, setRowIds] = useState<readonly string[]>([]);
   useActiveSpace(spaceId);
 
   if (!space)
@@ -104,13 +106,20 @@ export function WorkItemHomePage() {
           getPopupContainer={() => document.querySelector("main") ?? document.body}
           bodyStyle={{ padding: 0 }}
           title={
-            <Link
-              to="/spaces/$spaceId/$typeKey/detail/$itemId"
-              params={{ spaceId, typeKey, itemId: openItem }}
-              className="text-sm font-normal text-brand-500"
-            >
-              全屏打开
-            </Link>
+            <span className="flex items-center gap-3 text-sm font-normal">
+              <DrawerStepper
+                ids={rowIds}
+                current={openItem}
+                onGo={(id) => navigate({ to: ".", search: (prev) => ({ ...prev, item: id }) })}
+              />
+              <Link
+                to="/spaces/$spaceId/$typeKey/detail/$itemId"
+                params={{ spaceId, typeKey, itemId: openItem }}
+                className="text-brand-500"
+              >
+                全屏打开
+              </Link>
+            </span>
           }
           onCancel={() => navigate({ to: ".", search: (prev) => ({ ...prev, item: undefined }) })}
         >
@@ -158,6 +167,7 @@ export function WorkItemHomePage() {
             views={views}
             members={members}
             isAdmin={isAdmin}
+            onRows={setRowIds}
           />
         )}
       </PageBody>
@@ -262,6 +272,7 @@ function WorkItems({
   views,
   members,
   isAdmin,
+  onRows,
 }: {
   space: Space;
   type: ItemType;
@@ -269,6 +280,7 @@ function WorkItems({
   views: readonly SavedView[];
   members: PickerMember[];
   isAdmin: boolean;
+  onRows?: (ids: readonly string[]) => void;
 }) {
   const [filter, setFilter] = useState<WorkItemFilterArgs>({
     ...(initialView?.filter ?? {}),
@@ -395,9 +407,45 @@ function WorkItems({
           />
         </div>
       ) : (
-        <WorkItemList space={space} filter={filter} display={display} onDisplay={setDisplay} toolbar={filterBar} />
+        <WorkItemList
+          space={space}
+          filter={filter}
+          display={display}
+          onDisplay={setDisplay}
+          toolbar={filterBar}
+          onRows={onRows}
+        />
       )}
     </div>
+  );
+}
+
+/** 抽屉标题里的「上一条 / 下一条」：按列表当前的顺序切换抽屉里的工作项。 */
+function DrawerStepper({
+  ids,
+  current,
+  onGo,
+}: {
+  ids: readonly string[];
+  current: string;
+  onGo: (id: string) => void;
+}) {
+  const index = ids.indexOf(current);
+  const prev = index > 0 ? ids[index - 1] : undefined;
+  const next = index >= 0 && index < ids.length - 1 ? ids[index + 1] : undefined;
+  if (index < 0) return null;
+  return (
+    <span className="flex items-center gap-1">
+      <Button size="icon-sm" variant="ghost" aria-label="上一条" disabled={!prev} onClick={() => prev && onGo(prev)}>
+        <ChevronUp />
+      </Button>
+      <Button size="icon-sm" variant="ghost" aria-label="下一条" disabled={!next} onClick={() => next && onGo(next)}>
+        <ChevronDown />
+      </Button>
+      <span className="text-xs tabular-nums text-fg-subtle">
+        {index + 1} / {ids.length}
+      </span>
+    </span>
   );
 }
 
@@ -487,6 +535,7 @@ function CreateWorkItemForm({
   const zero = useZero();
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [keepCreating, setKeepCreating] = useState(false);
   // 一个类型有多套已发布的流程（如 OEM、ODM、包装变更）时，新建时选用哪套
   const flows = type.flowTemplates.filter((t) => t.currentVersionId);
   const [templateId, setTemplateId] = useState(flows[0]?.id ?? "");
@@ -523,8 +572,9 @@ function CreateWorkItemForm({
     return [{ item, field }];
   });
 
-  async function create(event: FormEvent) {
+  async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!name.trim()) return;
     const missing = missingRequired(
       typeFields.filter((f) => f.dataType !== "attachment"),
@@ -551,6 +601,13 @@ function CreateWorkItemForm({
       }),
     ).client;
     if (outcome.type === "error") return setError(outcome.error.message);
+    // 连续新建：留在表单里，只清空名称，接着建下一个
+    if (keepCreating) {
+      Toast.success({ content: `已创建「${name.trim()}」`, duration: 2 });
+      setName("");
+      (form.elements.namedItem("itemName") as HTMLInputElement | null)?.focus();
+      return;
+    }
     await navigate({
       to: "/spaces/$spaceId/$typeKey/detail/$itemId",
       params: { spaceId: type.spaceId, typeKey: type.key, itemId: id },
@@ -572,7 +629,7 @@ function CreateWorkItemForm({
         </Field>
       )}
       <Field label={`${type.name}名称`}>
-        <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        <Input name="itemName" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
       </Field>
       {createItems.length > 0 && (
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
@@ -654,7 +711,10 @@ function CreateWorkItemForm({
           </div>
         </details>
       )}
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex items-center justify-end gap-2 pt-2">
+        <Checkbox className="mr-auto" checked={keepCreating} onChange={(e) => setKeepCreating(!!e.target.checked)}>
+          连续新建
+        </Checkbox>
         <Button variant="outline" onClick={onCancel}>
           取消
         </Button>
