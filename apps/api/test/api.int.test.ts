@@ -1060,6 +1060,72 @@ describe("comments and notifications", () => {
     expect((await inbox(admin.userId)).filter((n) => n.kind === "mentioned")).toEqual([]);
   });
 
+  it("replies in a thread, edits and deletes comments", async () => {
+    const root = randomUUID();
+    await services.zero.run(
+      "comment.create",
+      { id: root, workItemId: itemId, body: "先定配方", mentions: [] },
+      admin.userId,
+    );
+    // 成员回复管理员：回复挂在一级评论下，管理员收到「回复了你的评论」
+    const reply = randomUUID();
+    await services.zero.run(
+      "comment.create",
+      { id: reply, workItemId: itemId, body: "好的", mentions: [], replyTo: root },
+      member.userId,
+    );
+    // 管理员回复楼里的回复：仍挂在一级评论下，回复对象是成员
+    const answer = randomUUID();
+    await services.zero.run(
+      "comment.create",
+      { id: answer, workItemId: itemId, body: "周五前", mentions: [], replyTo: reply },
+      admin.userId,
+    );
+    const rows = await services.database.db.select().from(schema.comment).where(eq(schema.comment.workItemId, itemId));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(reply)).toMatchObject({ parentId: root, replyToId: admin.userId });
+    expect(byId.get(answer)).toMatchObject({ parentId: root, replyToId: member.userId });
+    const replied = (await eventsOf()).filter((e) => e.kind === "commentAdded" && e.payload.parentId === root);
+    for (const e of replied) await notify(services.database, e.id);
+    expect((await inbox(admin.userId)).filter((n) => n.kind === "replied").map((n) => n.text)).toEqual([
+      expect.stringContaining("在「新品 N」回复了你的评论"),
+    ]);
+    expect((await inbox(member.userId)).filter((n) => n.kind === "replied")).toHaveLength(1);
+
+    // 只能编辑自己的评论；编辑后新提及的人收到通知
+    await expect(
+      services.zero.run("comment.update", { id: root, body: "改", mentions: [] }, member.userId),
+    ).rejects.toThrow("只能编辑自己的评论");
+    await services.zero.run(
+      "comment.update",
+      { id: root, body: "先定配方 A", mentions: [member.userId] },
+      admin.userId,
+    );
+    const [edited] = await services.database.db.select().from(schema.comment).where(eq(schema.comment.id, root));
+    expect(edited).toMatchObject({ body: "先定配方 A", mentions: [member.userId] });
+    expect(edited?.editedAt).not.toBeNull();
+    const editEvent = (await eventsOf()).at(-1);
+    expect(editEvent).toMatchObject({ kind: "commentEdited", payload: { commentId: root, mentions: [member.userId] } });
+
+    // 成员不能删别人的评论；管理员能删任何评论；删除后内容清空、回复保留
+    await expect(services.zero.run("comment.delete", { id: root }, member.userId)).rejects.toThrow(
+      "只能删除自己的评论",
+    );
+    await services.zero.run("comment.delete", { id: reply }, admin.userId);
+    await services.zero.run("comment.delete", { id: root }, admin.userId);
+    const [gone] = await services.database.db.select().from(schema.comment).where(eq(schema.comment.id, root));
+    expect(gone).toMatchObject({ body: "", mentions: [] });
+    expect(gone?.deletedAt).not.toBeNull();
+    await expect(
+      services.zero.run(
+        "comment.create",
+        { id: randomUUID(), workItemId: itemId, body: "x", mentions: [], replyTo: root },
+        member.userId,
+      ),
+    ).rejects.toThrow("评论已删除");
+    expect((await eventsOf()).at(-1)).toMatchObject({ kind: "commentDeleted", payload: { commentId: root } });
+  });
+
   it("nudges a node's owners once per ten minutes", async () => {
     await expect(
       services.zero.run("node.nudge", { workItemId: itemId, nodeKey: "state_51" }, admin.userId),

@@ -44,3 +44,44 @@ test("comment with a mention, and both people get notified", async ({ page, brow
   await expect(linBell).toHaveAccessibleName("通知");
   await linContext.close();
 });
+
+test("reply in a thread, edit and delete your own comment", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await oemSpace(page, "Pascal", `threads-${suffix}@example.com`, `楼中楼 ${suffix}`);
+  await openItems(page);
+  await createItem(page, "新品 R");
+  const tabs = page.getByRole("tablist", { name: "详情页签" });
+  await tabs.getByRole("tab", { name: /评论/ }).click();
+  await page.getByLabel("评论内容").fill("配方先按 A 方案走");
+  await page.getByRole("button", { name: "发表评论" }).click();
+  const list = page.getByRole("list", { name: "评论列表" });
+  const root = list.getByLabel("Pascal的评论");
+  await expect(root).toContainText("配方先按 A 方案走");
+  await expect(tabs.getByRole("tab", { name: "评论 1" })).toBeVisible();
+
+  // 回复：出现在这条评论下面的楼里
+  await root.hover();
+  await root.getByRole("button", { name: "回复" }).click();
+  await page.getByLabel("回复内容").fill("包材也一起定");
+  await page.getByRole("button", { name: "回复", exact: true }).last().click();
+  const reply = list.getByLabel("回复").getByLabel("Pascal的回复");
+  await expect(reply).toContainText("回复 Pascal");
+  await expect(reply).toContainText("包材也一起定");
+  await expect(page.getByLabel("回复内容")).toHaveCount(0);
+
+  // 编辑一级评论
+  await root.hover();
+  await root.getByRole("button", { name: "编辑" }).first().click();
+  await page.getByLabel("编辑评论").fill("配方按 B 方案走");
+  await page.getByRole("button", { name: "保存" }).click();
+  await expect(root).toContainText("配方按 B 方案走");
+  await expect(root).toContainText("已编辑");
+
+  // 删除一级评论：留下占位，回复还在
+  await root.hover();
+  await root.getByRole("button", { name: "删除" }).first().click();
+  await page.locator(".semi-popconfirm").getByRole("button", { name: "删除" }).click();
+  await expect(list).toContainText("该评论已删除");
+  await expect(reply).toContainText("包材也一起定");
+  await expect(tabs.getByRole("tab", { name: "评论 1" })).toBeVisible();
+});

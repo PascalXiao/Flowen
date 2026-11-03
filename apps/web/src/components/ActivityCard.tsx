@@ -98,7 +98,11 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
         .join("，");
     }
     case "commentAdded":
-      return "发表了评论";
+      return p.parentId ? "回复了评论" : "发表了评论";
+    case "commentEdited":
+      return "编辑了评论";
+    case "commentDeleted":
+      return "删除了评论";
     case "attachmentAdded":
       return `上传了附件「${str(p.name)}」`;
     case "attachmentRemoved":

@@ -19,6 +19,8 @@ import {
   createTaskArgs,
   createWorkItem,
   createWorkItemArgs,
+  deleteComment,
+  deleteCommentArgs,
   deleteTask,
   deleteTaskArgs,
   mutators,
@@ -49,6 +51,8 @@ import {
   terminateWorkItem,
   transitionArgs,
   transitionStatus,
+  updateComment,
+  updateCommentArgs,
   updateTask,
   updateTaskArgs,
   upgradeArgs,
@@ -97,15 +101,33 @@ function flowEvents(spaceId: string, workItemId: string, events: (FlowEvent | St
 export const serverMutators = defineMutators(mutators, {
   comment: {
     create: defineMutator(createCommentArgs, async ({ tx, args, ctx }) => {
-      const { spaceId, mentions } = await createComment(tx, args, ctx.userID);
+      const { spaceId, mentions, parentId, replyToId } = await createComment(tx, args, ctx.userID);
       await append(tx, ctx, [
         {
           spaceId,
           workItemId: args.workItemId,
           kind: "commentAdded",
-          payload: { commentId: args.id, mentions },
+          payload: { commentId: args.id, mentions, ...(parentId ? { parentId, replyTo: replyToId } : {}) },
           actor: ctx.userID,
         },
+      ]);
+    }),
+    update: defineMutator(updateCommentArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, workItemId, added } = await updateComment(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId,
+          kind: "commentEdited",
+          payload: { commentId: args.id, mentions: added },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+    delete: defineMutator(deleteCommentArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, workItemId } = await deleteComment(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        { spaceId, workItemId, kind: "commentDeleted", payload: { commentId: args.id }, actor: ctx.userID },
       ]);
     }),
   },

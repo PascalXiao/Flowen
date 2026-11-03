@@ -732,6 +732,13 @@ export const comment = pgTable(
       .references(() => user.id),
     body: text("body").notNull(),
     mentions: jsonb("mentions").$type<string[]>().notNull(),
+    /** 楼中楼：回复所在的那条一级评论；一级评论为空。 */
+    parentId: text("parent_id"),
+    /** 回复的是谁（回复楼里的某条回复时显示「回复 xx」）。 */
+    replyToId: text("reply_to_id").references(() => user.id),
+    editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
+    /** 删除只清空内容、留下占位，楼里的回复还在。 */
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: createdAt(),
   },
   (t) => [index("comment_work_item").on(t.workItemId, t.createdAt)],
@@ -771,7 +778,9 @@ export const notification = pgTable(
       .notNull()
       .references(() => space.id, { onDelete: "cascade" }),
     workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation" | "nudge">().notNull(),
+    kind: text("kind")
+      .$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation" | "nudge" | "replied">()
+      .notNull(),
     /** 列表里显示的一句话，生成时写好，避免前端再拼。 */
     text: text("text").notNull(),
     eventId: bigint("event_id", { mode: "number" }).notNull(),
@@ -1035,6 +1044,7 @@ export const attachmentRelations = relations(attachment, ({ one }) => ({
 export const commentRelations = relations(comment, ({ one }) => ({
   workItem: one(workItem, { fields: [comment.workItemId], references: [workItem.id] }),
   author: one(user, { fields: [comment.authorId], references: [user.id] }),
+  replyTo: one(user, { fields: [comment.replyToId], references: [user.id], relationName: "commentReplyTo" }),
 }));
 
 export const notificationRelations = relations(notification, ({ one }) => ({
