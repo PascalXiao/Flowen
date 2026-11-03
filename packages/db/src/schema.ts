@@ -768,17 +768,15 @@ export const notification = pgTable(
       .notNull()
       .references(() => space.id, { onDelete: "cascade" }),
     workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<"mentioned" | "nodeAssigned" | "taskAssigned">().notNull(),
+    kind: text("kind").$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation">().notNull(),
     /** 列表里显示的一句话，生成时写好，避免前端再拼。 */
     text: text("text").notNull(),
     eventId: bigint("event_id", { mode: "number" }).notNull(),
     createdAt: createdAt(),
     readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
   },
-  (t) => [
-    uniqueIndex("notification_event_user").on(t.eventId, t.userId),
-    index("notification_user").on(t.userId, t.createdAt),
-  ],
+  // id 由事件、（自动化规则的步骤、）收件人决定，重试时插入同一行；同一事件可以给同一个人发多条（如提及 + 自动化通知）
+  (t) => [index("notification_user").on(t.userId, t.createdAt)],
 );
 
 /** 所有状态变化的流水。只追加不修改；审计、动态、自动化、Webhook 都从这里取事件。 */

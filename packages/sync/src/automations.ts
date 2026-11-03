@@ -1,3 +1,4 @@
+import { type AutomationRecipient, NODE_TRIGGERS, PLAIN_TRIGGERS } from "@fp/engine";
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { zql } from "./schema.gen.ts";
@@ -6,10 +7,19 @@ import { assertAdmin, condition } from "./templates.ts";
 const typeId = z.string().optional();
 
 export const automationTrigger = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("workItemCreated"), typeId }),
-  z.object({ kind: z.enum(["nodeStarted", "nodeCompleted"]), typeId, node: z.string().optional() }),
+  z.object({ kind: z.enum(PLAIN_TRIGGERS), typeId }),
+  z.object({ kind: z.enum(NODE_TRIGGERS), typeId, node: z.string().optional() }),
   z.object({ kind: z.literal("fieldChanged"), typeId, field: z.string().min(1) }),
+  z.object({ kind: z.literal("statusChanged"), typeId, from: z.string().optional(), to: z.string().optional() }),
+  z.object({ kind: z.literal("roleChanged"), typeId, role: z.string().optional() }),
+  z.object({ kind: z.enum(["relationAdded", "relationRemoved"]), typeId, relation: z.string().optional() }),
 ]);
+
+const recipient = z.custom<AutomationRecipient>(
+  (v) => typeof v === "string" && /^(creator|actor|(role|field|user):.+)$/.test(v),
+  "收件人格式不对。",
+);
+const text = (message: string) => z.string().trim().min(1, message).max(2000);
 
 export const automationAction = z.discriminatedUnion("type", [
   z.object({
@@ -26,6 +36,27 @@ export const automationAction = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("setRole"), role: z.string().min(1), userIds: z.array(z.string()) }),
   z.object({ type: z.literal("confirmNode"), node: z.string().min(1) }),
+  z.object({ type: z.literal("transitionStatus"), to: z.string().min(1, "要选流转到的状态。") }),
+  z.object({ type: z.literal("terminate"), reason: z.string().trim().max(500).optional() }),
+  z.object({ type: z.literal("restore") }),
+  z.object({ type: z.literal("addComment"), body: text("评论内容不能为空。") }),
+  z.object({
+    type: z.literal("createTask"),
+    node: z.string().min(1, "要选子任务所在的节点。"),
+    name: text("子任务要有名称。"),
+    assigneeId: z.string().nullable().optional(),
+  }),
+  z.object({
+    type: z.literal("createWorkItem"),
+    typeId: z.string().min(1, "要选新建的工作项类型。"),
+    name: text("新工作项要有名称。"),
+    relationDefId: z.string().nullable().optional(),
+  }),
+  z.object({
+    type: z.literal("notify"),
+    to: z.array(recipient).min(1, "通知至少要有一个收件人。"),
+    text: text("通知内容不能为空。"),
+  }),
 ]);
 
 const ruleBody = {

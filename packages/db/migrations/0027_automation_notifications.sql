@@ -1,0 +1,1 @@
+DROP INDEX "notification_event_user";
