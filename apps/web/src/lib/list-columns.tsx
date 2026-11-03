@@ -61,6 +61,17 @@ export interface ListColumn {
   value: (item: ListItem) => string | number | null;
   /** 数字列：底部汇总可以求和、平均、最大、最小。 */
   numeric?: boolean;
+  /** 复制单元格时的文本；不设时用 value。 */
+  text?: (item: ListItem) => string;
+  /** 字段列对应的字段：能往这一列粘贴。 */
+  field?: ListField;
+}
+
+/** 单元格复制出去的文本。 */
+export function cellText(col: ListColumn, item: ListItem): string {
+  if (col.text) return col.text(item);
+  const v = col.value(item);
+  return v === null ? "" : String(v);
 }
 
 const TONES: TagTone[] = ["brand", "violet", "teal", "warning", "success", "danger"];
@@ -405,6 +416,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
         return days > 0 ? <Tag tone="danger">延期 {days} 天</Tag> : none;
       },
       value: (i) => delayDays(i, todayOf(ctx)),
+      text: (i) => String(delayDays(i, todayOf(ctx)) || ""),
     },
     {
       key: "stay",
@@ -416,6 +428,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
         return days === null ? none : <span className="tabular-nums">{days} 天</span>;
       },
       value: (i) => stayDays(i, todayOf(ctx)) ?? -1,
+      text: (i) => String(stayDays(i, todayOf(ctx)) ?? ""),
     },
     {
       key: "expectedEnd",
@@ -444,6 +457,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       width: 150,
       render: (i) => <span className="text-fg-muted tabular-nums">{time(i.createdAt)}</span>,
       value: (i) => i.createdAt ?? 0,
+      text: (i) => time(i.createdAt),
     },
     {
       key: "updatedAt",
@@ -451,6 +465,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       width: 150,
       render: (i) => <span className="text-fg-muted tabular-nums">{time(i.updatedAt)}</span>,
       value: (i) => i.updatedAt ?? 0,
+      text: (i) => time(i.updatedAt),
     },
     {
       key: "creator",
@@ -525,7 +540,18 @@ export function fieldColumn(field: ListField, ctx: ListContext): ListColumn {
     title: field.name,
     width: wide ? 180 : 130,
     numeric: field.dataType === "number" || field.dataType === "formula",
+    field,
     render: (i) => renderFieldValue(field, fieldValueOf(i, field.key), ctx.userName),
+    text: (i) => {
+      const v = fieldValueOf(i, field.key);
+      const spec = {
+        name: field.name,
+        dataType: field.dataType as never,
+        options: field.options,
+        config: field.config ?? null,
+      };
+      return v === null ? "" : formatFieldValue(spec, v, ctx.userName);
+    },
     value: (i) => {
       const v = fieldValueOf(i, field.key);
       if (typeof v === "number") return v;

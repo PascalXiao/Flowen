@@ -589,3 +589,115 @@ export function conditionValue(field: FieldSpec, value: unknown): unknown {
       return value;
   }
 }
+
+/** 列表里能粘贴文本的字段类型（附件、信号、字段组、关联、公式不行）。 */
+export const PASTEABLE_FIELD_TYPES: readonly FieldDataType[] = [
+  "text",
+  "textarea",
+  "richText",
+  "number",
+  "bool",
+  "date",
+  "datetime",
+  "dateRange",
+  "select",
+  "radio",
+  "multiSelect",
+  "cascadeSelect",
+  "cascadeMulti",
+  "businessLine",
+  "user",
+  "singleUser",
+  "link",
+  "docLink",
+  "phone",
+  "email",
+];
+
+/**
+ * 把复制来的文本（列表单元格、Excel、飞书表格）转成字段值，对照 formatFieldValue 的反方向：
+ * 选项按显示名（级联按「上级 / 下级」或末级名）找，人员按名字找，多值用顿号、逗号或分号隔开。
+ * 空文本是清空（null）；对不上的返回 { error }。最终的校验和整理仍由 normalizeFieldValue 做。
+ */
+export function parseFieldText(
+  field: FieldSpec,
+  text: string,
+  findUser: (name: string) => string | undefined = () => undefined,
+): { value: unknown } | { error: string } {
+  const raw = text.trim();
+  if (!PASTEABLE_FIELD_TYPES.includes(field.dataType)) return { error: `「${field.name}」不能粘贴。` };
+  if (raw === "") return { value: null };
+  const parts = raw
+    .split(/[、,，;；\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const option = (label: string) => {
+    const options = field.options ?? [];
+    const hit =
+      options.find((o) => optionLabel(field, o.value) === label) ??
+      options.find((o) => (o.label || o.value) === label) ??
+      options.find((o) => o.value === label);
+    return hit?.value;
+  };
+  const many = <T>(names: string[], find: (s: string) => T | undefined, what: string) => {
+    const out: T[] = [];
+    for (const n of names) {
+      const v = find(n);
+      if (v === undefined) return { error: `「${field.name}」没有${what}「${n}」。` };
+      out.push(v);
+    }
+    return { value: out };
+  };
+  switch (field.dataType) {
+    case "number": {
+      // 去掉数字格式加上的符号、单位和千分位，再按缩放还原
+      const format = field.config?.number;
+      const [factor, unit] = SCALE[format?.scale ?? "raw"];
+      let t = raw;
+      if (format?.symbol) t = t.split(format.symbol).join("");
+      // 带单位（如 50%、3万）按缩放还原；不带单位的数字原样存
+      const scaled = unit !== "" && t.trim().endsWith(unit);
+      if (scaled) t = t.trim().slice(0, -unit.length);
+      const n = Number(t.replace(/[,，\s]/g, ""));
+      if (t.trim() === "" || !Number.isFinite(n)) return { error: `「${field.name}」要填数字。` };
+      return { value: scaled ? n / factor : n };
+    }
+    case "bool":
+      if (["是", "true", "TRUE", "1", "开"].includes(raw)) return { value: true };
+      if (["否", "false", "FALSE", "0", "关"].includes(raw)) return { value: false };
+      return { error: `「${field.name}」要填「是」或「否」。` };
+    case "date":
+      return { value: raw.replace(/\//g, "-").slice(0, 10) };
+    case "dateRange": {
+      const [start, end] = raw.split(/\s*[~～至]\s*/).map((s) => s.replace(/\//g, "-"));
+      return start && end ? { value: { start, end } } : { error: `「${field.name}」要填「开始 ~ 结束」。` };
+    }
+    case "select":
+    case "radio":
+    case "cascadeSelect":
+    case "businessLine": {
+      const v = option(raw);
+      return v === undefined ? { error: `「${field.name}」没有选项「${raw}」。` } : { value: v };
+    }
+    case "multiSelect":
+    case "cascadeMulti":
+      return many(parts, option, "选项");
+    case "user":
+      return many(parts, findUser, "成员");
+    case "singleUser": {
+      const id = findUser(raw);
+      return id === undefined ? { error: `「${field.name}」没有成员「${raw}」。` } : { value: id };
+    }
+    case "richText":
+      return {
+        value: raw
+          .split("\n")
+          .map((line) => `<p>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+          .join(""),
+      };
+    case "textarea":
+      return { value: text.replace(/^\s*\n|\s+$/g, "") };
+    default:
+      return { value: raw };
+  }
+}

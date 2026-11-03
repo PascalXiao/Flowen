@@ -1,10 +1,10 @@
-import { Checkbox, Dropdown, Popover, Input as SemiInput, Table } from "@douyinfe/semi-ui";
-import { type Condition, evaluate } from "@fp/engine";
+import { Checkbox, Dropdown, Popover, Input as SemiInput, Table, Toast } from "@douyinfe/semi-ui";
+import { type Condition, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/page";
 import { withLineOptions } from "@/lib/fields";
 import {
   allColumns,
+  cellText,
   columnSources,
   defaultColumnKeys,
   type ListColumn,
@@ -48,6 +49,7 @@ const SUMMARY_TEXT: Record<SummaryKind, string> = {
 const ROW_HEIGHTS = { low: ["低", 36], medium: ["中", 52], high: ["高", 72], xhigh: ["超高", 96] } as const;
 type RowHeight = keyof typeof ROW_HEIGHTS;
 const SELECTION_WIDTH = 48;
+type Cell = { r: number; c: number };
 
 type Tab = "all" | "recent" | "created" | "involved" | "followed" | "starred";
 const TABS: readonly (readonly [Tab, string])[] = [
@@ -181,6 +183,134 @@ export function WorkItemList({
   const frozen = Math.min(display.frozen ?? 0, shown.length);
   const rowHeight: RowHeight = display.rowHeight ?? "low";
 
+  // 单元格选区（行是 rows 里的下标，列是 shown 里的下标）：点选、Shift 点选扩成矩形，Ctrl+C 复制、Ctrl+V 粘贴
+  const [sel, setSel] = useState<{ anchor: Cell; focus: Cell } | null>(null);
+  const copied = useRef<{ text: string; keys: string[][]; values: unknown[][] } | null>(null);
+  const rowIndex = new Map(rows.map((r, i) => [r.id, i]));
+  const range = sel && {
+    top: Math.min(sel.anchor.r, sel.focus.r),
+    bottom: Math.max(sel.anchor.r, sel.focus.r),
+    left: Math.min(sel.anchor.c, sel.focus.c),
+    right: Math.max(sel.anchor.c, sel.focus.c),
+  };
+  const inRange = (r: number, c: number) =>
+    !!range && r >= range.top && r <= range.bottom && c >= range.left && c <= range.right;
+  const colAt = (c: number) => {
+    const key = shown[c]?.key;
+    return key ? byKey.get(key) : undefined;
+  };
+  const fieldValue = (item: ListItem, key: string) => item.fieldValues.find((v) => v.fieldKey === key)?.value ?? null;
+
+  function onCopy(e: ClipboardEvent) {
+    if (!range) return;
+    e.preventDefault();
+    const keys: string[][] = [];
+    const values: unknown[][] = [];
+    const lines: string[] = [];
+    for (let r = range.top; r <= range.bottom; r++) {
+      const item = rows[r];
+      if (!item) continue;
+      const k: string[] = [];
+      const v: unknown[] = [];
+      const t: string[] = [];
+      for (let c = range.left; c <= range.right; c++) {
+        const col = colAt(c);
+        if (!col) continue;
+        k.push(col.key);
+        v.push(col.field ? fieldValue(item, col.field.key) : undefined);
+        // 单元格里的换行和制表符会打乱表格，换成空格
+        t.push(cellText(col, item).replace(/[\t\r\n]+/g, " "));
+      }
+      keys.push(k);
+      values.push(v);
+      lines.push(t.join("\t"));
+    }
+    const text = lines.join("\n");
+    e.clipboardData.setData("text/plain", text);
+    copied.current = { text, keys, values };
+    Toast.info({ content: `已复制 ${lines.length * (range.right - range.left + 1)} 个单元格`, duration: 1.5 });
+  }
+
+  async function onPaste(e: ClipboardEvent) {
+    if (!range) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    e.preventDefault();
+    const grid = text
+      .replace(/\r?\n$/, "")
+      .split(/\r?\n/)
+      .map((line) => line.split("\t"));
+    // 复制的是列表里同一列的单元格时直接用原值（选项、人员不用再按名字找）
+    const own = copied.current?.text === text ? copied.current : null;
+    // 只复制了一个单元格时填满整个选区，否则从选区左上角开始铺开
+    const single = grid.length === 1 && grid[0]?.length === 1;
+    const height = single ? range.bottom - range.top + 1 : grid.length;
+    const width = single ? range.right - range.left + 1 : Math.max(...grid.map((l) => l.length));
+    const jobs: Promise<string | null>[] = [];
+    let skipped = 0;
+    for (let dr = 0; dr < height; dr++) {
+      const item = rows[range.top + dr];
+      if (!item) break;
+      const type = space.workItemTypes.find((t) => t.id === item.typeId);
+      for (let dc = 0; dc < width; dc++) {
+        const col = colAt(range.left + dc);
+        if (!col) break;
+        const sr = single ? 0 : dr;
+        const sc = single ? 0 : dc;
+        const source = grid[sr]?.[sc];
+        if (source === undefined) continue;
+        const field = col.field;
+        if (
+          !field ||
+          !PASTEABLE_FIELD_TYPES.includes(field.dataType as never) ||
+          !type?.fields.some((f) => f.key === field.key)
+        ) {
+          skipped++;
+          continue;
+        }
+        let value: unknown;
+        if (own && own.keys[sr]?.[sc] === col.key) value = own.values[sr]?.[sc];
+        else {
+          const parsed = parseFieldText(
+            {
+              name: field.name,
+              dataType: field.dataType as never,
+              options: field.options,
+              config: field.config ?? null,
+            },
+            source,
+            (name) => space.members.find((m) => (m.user?.name ?? m.userId) === name)?.userId,
+          );
+          if ("error" in parsed) {
+            jobs.push(Promise.resolve(parsed.error));
+            continue;
+          }
+          value = parsed.value;
+        }
+        if (JSON.stringify(value ?? null) === JSON.stringify(fieldValue(item, field.key))) continue;
+        jobs.push(
+          zero
+            .mutate(
+              mutators.fieldValue.set({ workItemId: item.id, fieldKey: field.key, value: (value ?? null) as never }),
+            )
+            .client.then((o) => (o.type === "error" ? `${item.name}：${o.error.message}` : null)),
+        );
+      }
+    }
+    const errors = (await Promise.all(jobs)).filter((x): x is string => x !== null);
+    const done = jobs.length - errors.length;
+    if (errors.length)
+      Toast.warning({
+        content: `粘贴了 ${done} 个单元格，${errors.length} 个没成功：${errors[0]}${errors.length > 1 ? " 等" : ""}`,
+        duration: 4,
+      });
+    else if (done || skipped)
+      Toast.success({
+        content: `已粘贴 ${done} 个单元格${skipped ? `，${skipped} 个不能粘贴的单元格跳过了` : ""}`,
+        duration: 2,
+      });
+  }
+
   const columns = [
     {
       title: "名称",
@@ -211,11 +341,29 @@ export function WorkItemList({
         key: col.key,
         width: c.width ?? col.width,
         ...(index < frozen && { fixed: "left" as const }),
-        render: (_: unknown, item: ListItem) => (
-          <div className={rowHeight === "low" ? "min-w-0 truncate" : "line-clamp-3 min-w-0 break-all"}>
-            {col.render(item)}
-          </div>
-        ),
+        render: (_: unknown, item: ListItem) => {
+          const r = rowIndex.get(item.id) ?? -1;
+          const selected = inRange(r, index);
+          return (
+            // biome-ignore lint/a11y/noStaticElementInteractions: 选中单元格用鼠标，复制粘贴走外层的键盘事件
+            <div
+              data-cell={col.title}
+              data-selected={selected || undefined}
+              onMouseDown={(e) => {
+                if (e.button !== 0) return;
+                const at = { r, c: index };
+                setSel(e.shiftKey && sel ? { anchor: sel.anchor, focus: at } : { anchor: at, focus: at });
+                if (e.shiftKey) e.preventDefault();
+              }}
+              className={cn(
+                rowHeight === "low" ? "min-w-0 truncate" : "line-clamp-3 min-w-0 break-all",
+                selected && "bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-500",
+              )}
+            >
+              {col.render(item)}
+            </div>
+          );
+        },
       };
     }),
     {
@@ -319,76 +467,90 @@ export function WorkItemList({
           )}
         </div>
 
-        <Table
-          size="small"
-          bordered
-          rowKey="id"
-          columns={columns}
-          dataSource={rows}
-          pagination={rows.length > 50 ? { pageSize: 50 } : false}
-          resizable={{
-            // 拖完列宽记进显示设置（名称列和加列按钮不记）
-            onResizeStop: ((column: { key?: string; width?: number | string }) => {
-              if (column.key && column.key !== "name" && column.key !== "__add")
-                setColumns(
-                  shown.map((c) =>
-                    c.key === column.key ? { ...c, width: Math.round(Number(column.width) || 120) } : c,
-                  ),
-                );
-              return column;
-            }) as never,
+        {/* 单元格选区的复制粘贴：点过单元格后焦点在这一层，Ctrl+C / Ctrl+V 走原生剪贴板事件 */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: 只接住键盘和剪贴板事件，表格本身是 grid */}
+        <div
+          tabIndex={-1}
+          className="outline-none"
+          onCopy={onCopy}
+          onPaste={onPaste}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSel(null);
           }}
-          scroll={{ x: "max-content" }}
-          rowSelection={{
-            width: SELECTION_WIDTH,
-            fixed: true,
-            selectedRowKeys: selected,
-            onChange: (keys?: (string | number)[]) => setSelected((keys ?? []).map(String)),
-          }}
-          onRow={(item?: ListItem) => {
-            const color = item && colorOf(item);
-            return { style: { height: ROW_HEIGHTS[rowHeight][1], ...(color && { background: color }) } };
-          }}
-          footer={
-            rows.length > 0 ? (
-              <SummaryRow
-                cells={[
-                  { key: "__select", width: SELECTION_WIDTH },
-                  { key: "name", width: 240 },
-                  ...shown.map((c) => {
-                    const col = byKey.get(c.key) as ListColumn;
-                    return { key: c.key, width: c.width ?? col.width, col };
-                  }),
-                  { key: "__add", width: 56 },
-                ]}
-                rows={rows}
-                value={display.summary ?? {}}
-                onChange={(summary) =>
-                  onDisplay({ ...display, summary: Object.keys(summary).length ? summary : undefined })
-                }
-              />
-            ) : undefined
-          }
-          {...(groupCol && {
-            groupBy: (item?: ListItem) => (item ? String(groupCol.value(item) ?? "") : "") || "（空）",
-            renderGroupSection: (key?: string | number) => (
-              <strong>
-                {groupCol.title}：{String(key)}
-              </strong>
-            ),
-            expandAllGroupRows: true,
-          })}
-          empty={
-            result.type === "complete" ? (
-              <EmptyState
-                title={search || Object.values(filter).some((v) => v?.length) ? "没有符合条件的工作项" : "还没有工作项"}
-                description={tab === "all" ? "点右上角的「新建」创建第一个工作项。" : "这个页签下还没有工作项。"}
-              />
-            ) : (
-              "加载中…"
-            )
-          }
-        />
+        >
+          <Table
+            size="small"
+            bordered
+            rowKey="id"
+            columns={columns}
+            dataSource={rows}
+            pagination={rows.length > 50 ? { pageSize: 50 } : false}
+            resizable={{
+              // 拖完列宽记进显示设置（名称列和加列按钮不记）
+              onResizeStop: ((column: { key?: string; width?: number | string }) => {
+                if (column.key && column.key !== "name" && column.key !== "__add")
+                  setColumns(
+                    shown.map((c) =>
+                      c.key === column.key ? { ...c, width: Math.round(Number(column.width) || 120) } : c,
+                    ),
+                  );
+                return column;
+              }) as never,
+            }}
+            scroll={{ x: "max-content" }}
+            rowSelection={{
+              width: SELECTION_WIDTH,
+              fixed: true,
+              selectedRowKeys: selected,
+              onChange: (keys?: (string | number)[]) => setSelected((keys ?? []).map(String)),
+            }}
+            onRow={(item?: ListItem) => {
+              const color = item && colorOf(item);
+              return { style: { height: ROW_HEIGHTS[rowHeight][1], ...(color && { background: color }) } };
+            }}
+            footer={
+              rows.length > 0 ? (
+                <SummaryRow
+                  cells={[
+                    { key: "__select", width: SELECTION_WIDTH },
+                    { key: "name", width: 240 },
+                    ...shown.map((c) => {
+                      const col = byKey.get(c.key) as ListColumn;
+                      return { key: c.key, width: c.width ?? col.width, col };
+                    }),
+                    { key: "__add", width: 56 },
+                  ]}
+                  rows={rows}
+                  value={display.summary ?? {}}
+                  onChange={(summary) =>
+                    onDisplay({ ...display, summary: Object.keys(summary).length ? summary : undefined })
+                  }
+                />
+              ) : undefined
+            }
+            {...(groupCol && {
+              groupBy: (item?: ListItem) => (item ? String(groupCol.value(item) ?? "") : "") || "（空）",
+              renderGroupSection: (key?: string | number) => (
+                <strong>
+                  {groupCol.title}：{String(key)}
+                </strong>
+              ),
+              expandAllGroupRows: true,
+            })}
+            empty={
+              result.type === "complete" ? (
+                <EmptyState
+                  title={
+                    search || Object.values(filter).some((v) => v?.length) ? "没有符合条件的工作项" : "还没有工作项"
+                  }
+                  description={tab === "all" ? "点右上角的「新建」创建第一个工作项。" : "这个页签下还没有工作项。"}
+                />
+              ) : (
+                "加载中…"
+              )
+            }
+          />
+        </div>
       </div>
     </div>
   );
