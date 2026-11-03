@@ -455,6 +455,8 @@ export interface ViewDisplay {
   rowHeight?: "low" | "medium" | "high" | "xhigh";
   /** 底部汇总行：列键 → 统计方式。 */
   summary?: Record<string, SummaryKind>;
+  /** 看板：泳道（creator、role:角色键、field:字段键）和卡片上显示的字段。 */
+  board?: { lanes?: string | null; cardFields?: string[] };
 }
 /** 汇总行的统计方式：计数、已填写、未填写、已填写百分比、求和、平均、最大、最小。 */
 export type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";

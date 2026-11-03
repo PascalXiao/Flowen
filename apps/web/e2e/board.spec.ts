@@ -1,11 +1,15 @@
 import { expect, test } from "@playwright/test";
 import {
+  addMember,
   choose,
   closeTypeConfig,
   createItem,
   createSpace,
+  oemSpace,
+  openItems,
   openSettings,
   openTypeConfig,
+  registerColleague,
   signUp,
   typeTab,
 } from "./helpers";
@@ -49,4 +53,39 @@ test("the board groups a status-flow type by status, and dragging a card follows
   await card("写周报").dragTo(column("待处理"));
   await expect(page.getByRole("alert")).toContainText("不能从「已完成」流转到「待处理」");
   await expect(column("已完成").getByRole("listitem", { name: "写周报" })).toBeVisible();
+});
+
+test("board swimlanes by role and extra fields on cards", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  await registerColleague(`lin-lanes-${suffix}@example.com`, "Lin");
+  await oemSpace(page, "Pascal", `lanes-${suffix}@example.com`, `泳道 ${suffix}`);
+  await addMember(page, `lin-lanes-${suffix}@example.com`, "Lin");
+  await openItems(page);
+  await createItem(page, "新品 L1", { roles: ["开发：Lin"] });
+  await openItems(page);
+  await createItem(page, "新品 L2");
+  await openItems(page);
+  await page.getByRole("tab", { name: "看板" }).click();
+
+  await choose(page.getByLabel("泳道"), { label: "角色：开发" });
+  const lane = (name: string) => page.getByRole("region", { name: `泳道 ${name}` });
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toBeVisible();
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L2" })).toHaveCount(0);
+  await expect(lane("Pascal").getByRole("listitem", { name: "新品 L2" })).toBeVisible();
+
+  // 折叠泳道
+  await lane("Pascal")
+    .getByRole("button", { name: /Pascal/ })
+    .click();
+  await expect(lane("Pascal").getByRole("listitem")).toHaveCount(0);
+
+  // 卡片上加字段
+  await page.getByRole("button", { name: "卡片字段" }).click();
+  await page.getByRole("group", { name: "卡片字段" }).getByRole("checkbox", { name: "是否需要备案" }).check();
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要备案");
+
+  // 设置记在本机：刷新后还在
+  await page.reload();
+  await page.getByRole("tab", { name: "看板" }).click();
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要备案");
 });

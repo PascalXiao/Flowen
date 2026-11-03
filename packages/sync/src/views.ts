@@ -48,6 +48,12 @@ export const viewDisplay = z.object({
   summary: z
     .record(z.string(), z.enum(["count", "filled", "empty", "filledPct", "sum", "avg", "max", "min"]))
     .optional(),
+  board: z
+    .object({
+      lanes: z.string().max(120).nullable().optional(),
+      cardFields: z.array(z.string().max(100)).max(8).optional(),
+    })
+    .optional(),
 });
 
 export const createViewArgs = z.object({
