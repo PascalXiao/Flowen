@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 interface NewNotification {
   userId: string;
-  kind: "mentioned" | "nodeAssigned" | "taskAssigned" | "nudge";
+  kind: "mentioned" | "nodeAssigned" | "taskAssigned" | "nudge" | "replied";
   text: string;
 }
 
@@ -21,7 +21,7 @@ export async function notify(database: Database, eventId: number): Promise<numbe
   const payload = event.payload as Record<string, unknown>;
 
   const notifications: NewNotification[] = [];
-  if (event.kind === "commentAdded") {
+  if (event.kind === "commentAdded" || event.kind === "commentEdited") {
     const mentions = (payload.mentions as string[] | undefined) ?? [];
     const author = event.actor ? await db.query.user.findFirst({ where: eq(schema.user.id, event.actor) }) : null;
     for (const userId of mentions)
@@ -29,6 +29,14 @@ export async function notify(database: Database, eventId: number): Promise<numbe
         userId,
         kind: "mentioned",
         text: `${author?.name ?? "有人"} 在「${item.name}」的评论里提到了你`,
+      });
+    // 回复：通知被回复的人（已经被提及的不重复通知）
+    const replyTo = typeof payload.replyTo === "string" ? payload.replyTo : null;
+    if (replyTo && !mentions.includes(replyTo))
+      notifications.push({
+        userId: replyTo,
+        kind: "replied",
+        text: `${author?.name ?? "有人"} 在「${item.name}」回复了你的评论`,
       });
   } else if (event.kind === "nodeStarted" && typeof payload.node === "string") {
     const node = await db.query.nodeInstance.findFirst({

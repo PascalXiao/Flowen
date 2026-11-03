@@ -36,7 +36,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityCard } from "@/components/ActivityCard";
 import { useActiveSpace } from "@/components/AppShell";
 import { AttachmentsCard } from "@/components/AttachmentsCard";
-import { CommentsCard } from "@/components/CommentsCard";
+import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
 import { GanttChart } from "@/components/GanttChart";
@@ -259,7 +259,9 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   );
   const currentTab = tabs.find((t) => t.key === tab) ?? tabs[0];
   const tabLabel = (t: (typeof tabs)[number]) =>
-    t.system === "comments" && item.comments.length ? `${t.name} ${item.comments.length}` : t.name;
+    t.system === "comments" && liveCommentCount(item.comments)
+      ? `${t.name} ${liveCommentCount(item.comments)}`
+      : t.name;
 
   const rolesBlock = space ? (
     <div className="flex flex-col gap-2">
@@ -1239,7 +1241,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
         )}
         {currentTab?.system === "comments" && (
           <div className="px-5 py-4">
-            <CommentsCard workItemId={item.id} comments={item.comments} members={members} />
+            <CommentsCard workItemId={item.id} comments={item.comments} members={members} isAdmin={isAdmin} />
           </div>
         )}
         {currentTab?.system === "activity" && (

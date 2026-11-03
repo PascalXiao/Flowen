@@ -19,7 +19,16 @@ import {
   updateAutomation,
   updateAutomationArgs,
 } from "./automations.ts";
-import { createComment, createCommentArgs, markNotificationsRead, markReadArgs } from "./comments.ts";
+import {
+  createComment,
+  createCommentArgs,
+  deleteComment,
+  deleteCommentArgs,
+  markNotificationsRead,
+  markReadArgs,
+  updateComment,
+  updateCommentArgs,
+} from "./comments.ts";
 import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import {
   completeBySubItems,
@@ -224,6 +233,12 @@ export const mutators = defineMutators({
   comment: {
     create: defineMutator(createCommentArgs, async ({ tx, args, ctx }) => {
       await createComment(tx, args, ctx.userID);
+    }),
+    update: defineMutator(updateCommentArgs, async ({ tx, args, ctx }) => {
+      await updateComment(tx, args, ctx.userID);
+    }),
+    delete: defineMutator(deleteCommentArgs, async ({ tx, args, ctx }) => {
+      await deleteComment(tx, args, ctx.userID);
     }),
   },
   notification: {

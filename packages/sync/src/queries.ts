@@ -272,7 +272,7 @@ export const queries = defineQueries({
         .related("fieldValues", visibleFieldValues(ctx.userID))
         .related("roleMembers", (r) => r.related("user"))
         .related("nodes", (n) => n.related("confirmations"))
-        .related("comments", (c) => c.related("author").orderBy("createdAt", "asc"))
+        .related("comments", (c) => c.related("author").related("replyTo").orderBy("createdAt", "asc"))
         .related("attachments", (a) => a.related("uploader").orderBy("createdAt", "asc"))
         // 节点子任务；确认节点时乐观执行也要数没完成的子任务
         .related("tasks", (t) => t.orderBy("createdAt", "asc").orderBy("id", "asc"))
