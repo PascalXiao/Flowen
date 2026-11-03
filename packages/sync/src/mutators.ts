@@ -1,4 +1,4 @@
-import { fieldStates } from "@fp/engine";
+import { fieldStates, PERSON_KEY } from "@fp/engine";
 import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import {
@@ -173,6 +173,7 @@ export async function setFieldValue(tx: Transaction, args: z.output<typeof setFi
   if (!isAdmin && field.editRoles?.length && !hasAnyRole(field.editRoles, await myRoles(tx, item.id, userID)))
     throw new Error(`你没有权限修改「${field.name}」。`);
   const { from, to, created } = await writeFieldValue(tx, item, args.fieldKey, args.value);
+  if (field.dataType === "multiPerson" && !isAdmin) assertOwnRowOnly(field.name, from, to, userID);
   if (to === null) await assertNotRequired(tx, item, field);
   if (created) await syncFieldAccess(tx, args.workItemId);
   // 先重算公式（流转条件可能用到），再重算流程，最后是汇总了这个工作项的上级
@@ -180,6 +181,24 @@ export async function setFieldValue(tx: Transaction, args: z.output<typeof setFi
   const events = await recomputeFlow(tx, args.workItemId, userID);
   await recomputeParentFormulas(tx, args.workItemId);
   return { spaceId: item.spaceId, from, to, events };
+}
+
+/**
+ * 多人复合字段每人填自己的一组：不是管理员时，只能加上、改或去掉自己那一行，别人的行要原样保留。
+ */
+function assertOwnRowOnly(name: string, from: unknown, to: unknown, userID: string) {
+  const byUser = (rows: unknown) =>
+    new Map(
+      (Array.isArray(rows) ? rows : []).map((r) => [
+        String((r as Record<string, unknown>)[PERSON_KEY]),
+        // 数据库里的 jsonb 会重排键，按键排好再比
+        JSON.stringify(Object.entries(r as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))),
+      ]),
+    );
+  const before = byUser(from);
+  const after = byUser(to);
+  for (const user of new Set([...before.keys(), ...after.keys()]))
+    if (user !== userID && before.get(user) !== after.get(user)) throw new Error(`「${name}」只能填写自己的一组。`);
 }
 
 /** 清空字段时检查：按当前的字段值，它要是必填的（有效、显示且必填）就不能清空。 */

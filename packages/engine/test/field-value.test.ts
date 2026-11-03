@@ -83,6 +83,31 @@ describe("conditions on typed values", () => {
   });
 });
 
+describe("multi-person fields", () => {
+  const review = {
+    name: "评审意见",
+    dataType: "multiPerson" as const,
+    config: { columns: [{ key: "结论", name: "结论", dataType: "select" as const, options }] },
+  };
+
+  it("keeps one row per person, even when it is not filled yet", () => {
+    expect(
+      normalizeFieldValue(review, [
+        { _user: "u1", 结论: "red" },
+        { _user: "u2", 结论: "" },
+      ]),
+    ).toEqual([{ _user: "u1", 结论: "red" }, { _user: "u2" }]);
+    expect(() => normalizeFieldValue(review, [{ 结论: "red" }])).toThrow("没有填写人");
+    expect(() => normalizeFieldValue(review, [{ _user: "u1" }, { _user: "u1" }])).toThrow("每人只能有一组");
+  });
+
+  it("shows the number of people and indexes them for filtering", () => {
+    const rows = [{ _user: "u1", 结论: "red" }, { _user: "u2" }];
+    expect(formatFieldValue(review, rows)).toBe("2 人");
+    expect(fieldIndex(review, rows)).toMatchObject({ num: 2, str: "红", items: ["u1", "u2"] });
+  });
+});
+
 describe("field groups", () => {
   const group = {
     name: "成本率维护",

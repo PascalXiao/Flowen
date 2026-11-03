@@ -129,6 +129,7 @@ export function FieldConfigSheet({
   const [unique, setUnique] = useState(initial.unique ?? false);
   const [freeze, setFreeze] = useState(initial.freezeOnComplete ?? false);
   const [vote, setVote] = useState<VoteConfig>({ mode: "single", ...(initial.vote ?? {}) });
+  const [peopleRole, setPeopleRole] = useState(initial.people?.role ?? "");
   const [columns, setColumns] = useState<FieldGroupColumn[]>([...(initial.columns ?? [])]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -137,7 +138,9 @@ export function FieldConfigSheet({
   const conditionFields: ConditionField[] = fields
     .filter(
       (f) =>
-        f.key !== field.key && f.dataType !== "richText" && f.dataType !== "attachment" && f.dataType !== "fieldGroup",
+        f.key !== field.key &&
+        f.dataType !== "richText" &&
+        !["attachment", "fieldGroup", "multiPerson", "vote"].includes(f.dataType),
     )
     .map((f) => ({
       key: f.key,
@@ -154,7 +157,7 @@ export function FieldConfigSheet({
     });
   // 默认值控件用的字段：选项用编辑中的选项
   const inputField = { key: field.key, name: field.name, dataType: field.dataType, options, config: null };
-  const canDefault = !systemWritten && !["attachment", "fieldGroup", "vote"].includes(dataType);
+  const canDefault = !systemWritten && !["attachment", "fieldGroup", "multiPerson", "vote"].includes(dataType);
 
   function buildDefault(): DefaultValue | null {
     if (defaultMode === "fixed")
@@ -186,8 +189,9 @@ export function FieldConfigSheet({
         : null,
       exclusiveOptions: dataType === "multiSelect" ? exclusive.filter((v) => values.has(v)) : null,
       vote: dataType === "vote" ? vote : null,
+      people: dataType === "multiPerson" && peopleRole ? { role: peopleRole } : null,
       columns:
-        dataType === "fieldGroup"
+        dataType === "fieldGroup" || dataType === "multiPerson"
           ? columns.map((c) => ({
               ...c,
               name: c.name.trim(),
@@ -261,8 +265,23 @@ export function FieldConfigSheet({
           </Group>
         )}
 
-        {dataType === "fieldGroup" && (
-          <Group title="列">
+        {dataType === "multiPerson" && (
+          <Group title="填写人">
+            <Field label="谁来填" hint="选了角色就是这个角色上的人各填一组；自行添加是每人把自己加进来填。">
+              <Select aria-label="填写人" value={peopleRole} onChange={(e) => setPeopleRole(e.target.value)}>
+                <option value="">自行添加</option>
+                {roles.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    角色：{r.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </Group>
+        )}
+
+        {(dataType === "fieldGroup" || dataType === "multiPerson") && (
+          <Group title={dataType === "multiPerson" ? "每人填写的字段" : "列"}>
             <ColumnsEditor columns={columns} onChange={setColumns} />
           </Group>
         )}
@@ -303,7 +322,7 @@ export function FieldConfigSheet({
               <ConditionEditor label="显示条件" value={showWhen} fields={conditionFields} onChange={setShowWhen} />
             )}
           </RuleBlock>
-          {!systemWritten && dataType !== "vote" && (
+          {!systemWritten && dataType !== "vote" && dataType !== "multiPerson" && (
             <RuleBlock
               label="必填"
               mode={requiredMode}

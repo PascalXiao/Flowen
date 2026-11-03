@@ -21,6 +21,7 @@ import {
   type FieldOption,
   type FieldSpec,
   MULTI_VALUE_FIELD_TYPES,
+  type MultiPersonConfig,
   type NumberFormat,
   OPTION_FIELD_TYPES,
   type VoteConfig,
@@ -69,6 +70,8 @@ export interface FieldConfig {
   freezeOnComplete?: boolean | null;
   /** 字段组的列。 */
   columns?: FieldGroupColumn[] | null;
+  /** 多人复合字段的填写人：固定角色或自行添加。 */
+  people?: MultiPersonConfig | null;
   /** 投票字段的方式、备注、盲投和放榜角色。 */
   vote?: VoteConfig | null;
 }
@@ -228,11 +231,12 @@ export function checkFieldConfig(
   if (config.exclusiveOptions?.length && field.dataType !== "multiSelect") return "只有多选字段能设排他选项。";
   if (config.unique && field.dataType !== "text") return "只有单行文本能校验重复值。";
   if (config.columns) {
-    if (field.dataType !== "fieldGroup") return "只有字段组能设列。";
+    if (field.dataType !== "fieldGroup" && field.dataType !== "multiPerson") return "只有字段组能设列。";
     const columnError = checkColumns(config.columns);
     if (columnError) return `「${field.name}」${columnError}`;
   }
   if (config.number && field.dataType !== "number") return "只有数字字段能设数字格式。";
+  if (config.people && field.dataType !== "multiPerson") return "只有多人复合字段能设填写人。";
   if (config.vote && field.dataType !== "vote") return "只有投票字段能设投票方式。";
   if (config.number?.precision !== undefined && (config.number.precision < 0 || config.number.precision > 10))
     return "小数位数要在 0 到 10 之间。";

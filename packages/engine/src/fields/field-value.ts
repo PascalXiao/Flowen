@@ -12,6 +12,7 @@
  * - attachment：附件 id 数组
  * - signal：{ state, text?, url? }；multiSignal：它的数组（只由开放接口写入）
  * - fieldGroup：多行表格，每行是「列键 → 该列的规范值」，空行去掉（列定义在 config.columns）
+ * - multiPerson：每人一行，行里 _user 是填写人，其余同字段组；一人只有一行，没填的行也保留（人在名单上）
  *
  * 空值（空字符串、空数组）统一成 null。
  */
@@ -41,6 +42,7 @@ export type FieldDataType =
   | "signal"
   | "multiSignal"
   | "fieldGroup"
+  | "multiPerson"
   | "vote"
   | "relation"
   | "formula";
@@ -71,6 +73,7 @@ export const EDITABLE_FIELD_TYPES = [
   "signal",
   "multiSignal",
   "fieldGroup",
+  "multiPerson",
   "vote",
 ] as const;
 
@@ -99,6 +102,7 @@ export const FIELD_TYPE_LABEL: Record<FieldDataType, string> = {
   signal: "系统外信号",
   multiSignal: "多值系统外信号",
   fieldGroup: "字段组",
+  multiPerson: "多人复合字段",
   vote: "投票",
   relation: "关联工作项",
   formula: "公式",
@@ -186,6 +190,7 @@ export interface FieldSpec {
     number?: NumberFormat | null;
     leafOnly?: boolean | null;
     columns?: readonly FieldGroupColumn[] | null;
+    people?: MultiPersonConfig | null;
     vote?: VoteConfig | null;
   } | null;
 }
@@ -212,6 +217,17 @@ export const FIELD_GROUP_COLUMN_TYPES = [
   "link",
 ] as const;
 export type FieldGroupColumnType = (typeof FIELD_GROUP_COLUMN_TYPES)[number];
+
+/**
+ * 多人复合字段的填写人（对照飞书项目的多人复合字段）：role 设了就是这个角色上的人各填一组，
+ * 没设就是自行添加（每人把自己加进来填）。
+ */
+export interface MultiPersonConfig {
+  role?: string | null;
+}
+
+/** 多人复合字段每行里填写人的键。 */
+export const PERSON_KEY = "_user";
 
 /** 字段组的一行。 */
 export type FieldGroupRow = Record<string, unknown>;
@@ -420,6 +436,30 @@ export function normalizeFieldValue(field: FieldSpec, value: unknown): unknown {
       }
       return rows.length > 0 ? rows : null;
     }
+    case "multiPerson": {
+      const columns = field.config?.columns ?? [];
+      const rows: FieldGroupRow[] = [];
+      const seen = new Set<string>();
+      for (const [i, raw] of asList(value).entries()) {
+        if (!isObject(raw)) fail(`第 ${i + 1} 行不是一行数据。`);
+        const record = raw as Record<string, unknown>;
+        const user = typeof record[PERSON_KEY] === "string" ? (record[PERSON_KEY] as string) : "";
+        if (!user) fail(`第 ${i + 1} 行没有填写人。`);
+        if (seen.has(user)) fail("每人只能有一组。");
+        seen.add(user);
+        const row: FieldGroupRow = { [PERSON_KEY]: user };
+        for (const column of columns) {
+          try {
+            const v = normalizeFieldValue(columnSpec(column), record[column.key]);
+            if (v !== null) row[column.key] = v;
+          } catch (e) {
+            fail(`第 ${i + 1} 行${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        rows.push(row);
+      }
+      return rows.length > 0 ? rows : null;
+    }
     case "vote":
       return fail("是投票字段，要在字段上投票。");
     case "relation":
@@ -514,6 +554,8 @@ export function formatFieldValue(
       return asList(value).map(signal).join("、");
     case "fieldGroup":
       return `${asList(value).length} 行`;
+    case "multiPerson":
+      return `${asList(value).length} 人`;
     case "vote":
       return isObject(value) ? `${asList(value.voters).length} 人已投` : "";
     case "formula":
@@ -591,6 +633,20 @@ export function fieldIndex(
         isObject(row) ? columns.map((c) => formatFieldValue(columnSpec(c), row[c.key] ?? null)).filter(Boolean) : [],
       );
       return { ...empty, str: cells.join(" ") || null };
+    }
+    case "multiPerson": {
+      // 按填写人筛「属于」，单元格文字能搜到
+      const columns = field.config?.columns ?? [];
+      const rows = asList(value).filter(isObject);
+      const cells = rows.flatMap((row) =>
+        columns.map((c) => formatFieldValue(columnSpec(c), row[c.key] ?? null)).filter(Boolean),
+      );
+      return {
+        ...empty,
+        num: rows.length,
+        str: cells.join(" ") || null,
+        items: rows.map((r) => String(r[PERSON_KEY])),
+      };
     }
     case "vote":
       // 按投票人数筛范围，投过票的人能按「属于」筛

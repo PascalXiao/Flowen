@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 
 /** 不能批量改的字段：关联、公式、附件、字段组由各自的地方维护。 */
-const NOT_BATCH: readonly FieldDataType[] = ["relation", "formula", "attachment", "fieldGroup", "vote"];
+const NOT_BATCH: readonly FieldDataType[] = ["relation", "formula", "attachment", "fieldGroup", "multiPerson", "vote"];
 
 interface BatchItem {
   id: string;

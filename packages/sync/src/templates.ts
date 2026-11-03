@@ -155,6 +155,7 @@ export const fieldConfigSchema = z.object({
   optionWhen: z.record(z.string(), condition).nullish(),
   exclusiveOptions: z.array(z.string()).nullish(),
   freezeOnComplete: z.boolean().nullish(),
+  people: z.object({ role: z.string().min(1).nullish() }).nullish(),
   vote: z
     .object({
       mode: z.enum(["stance", "single", "multi"]),
@@ -595,7 +596,7 @@ export async function createField(tx: Transaction, args: z.output<typeof createF
     required: false,
     // 字段组先带一列，列在字段配置里改
     config:
-      args.dataType === "fieldGroup"
+      args.dataType === "fieldGroup" || args.dataType === "multiPerson"
         ? { columns: [{ key: "列1", name: "列1", dataType: "text" }] }
         : args.dataType === "vote"
           ? { vote: { mode: args.options === STANCE_OPTIONS ? "stance" : "single", remark: "optional" } }
@@ -681,6 +682,8 @@ export async function updateField(tx: Transaction, args: z.output<typeof updateF
     );
     if (error) throw new Error(error);
     if (config.leafOnly && !CASCADE_FIELD_TYPES.includes(dataType)) throw new Error("只有级联字段能要求选到最后一级。");
+    if (config.people?.role && !type.roles.some((r) => r.key === config.people?.role))
+      throw new Error(`角色「${config.people.role}」不存在。`);
     if (config.alias && others.some((f) => f.config?.alias === config.alias || f.key === config.alias))
       throw new Error(`对接标识「${config.alias}」已经被别的字段用了。`);
   }

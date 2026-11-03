@@ -89,7 +89,10 @@ export function NodeAdvancedEditor({
 }) {
   const dateFields = fields.filter((f) => f.dataType === "date" || f.dataType === "dateRange");
   const writable = fields.filter(
-    (f) => !["formula", "relation", "signal", "multiSignal", "attachment", "fieldGroup", "vote"].includes(f.dataType),
+    (f) =>
+      !["formula", "relation", "signal", "multiSignal", "attachment", "fieldGroup", "multiPerson", "vote"].includes(
+        f.dataType,
+      ),
   );
   const conclusion = data.conclusion;
   return (

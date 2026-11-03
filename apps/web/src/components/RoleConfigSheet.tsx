@@ -69,7 +69,7 @@ export function RoleConfigSheet({
   const [saving, setSaving] = useState(false);
 
   const conditionFields: ConditionField[] = fields
-    .filter((f) => !["richText", "attachment", "formula", "fieldGroup"].includes(f.dataType))
+    .filter((f) => !["richText", "attachment", "formula", "fieldGroup", "multiPerson", "vote"].includes(f.dataType))
     .map((f) => ({
       key: f.key,
       name: f.name,
