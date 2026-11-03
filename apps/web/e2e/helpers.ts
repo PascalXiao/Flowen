@@ -127,7 +127,8 @@ export async function createRelation(
   await choose(dialog.getByRole("combobox", { name: "对端工作项", exact: true }), { label: relation.to });
   await dialog.getByRole("textbox", { name: /^本端字段名称/ }).fill(relation.name);
   if (relation.reverseName) await dialog.getByRole("textbox", { name: /^对端字段名称/ }).fill(relation.reverseName);
-  if (relation.cardinality === "one") await choose(dialog.getByRole("combobox", { name: "本端字段数量", exact: true }), "one");
+  if (relation.cardinality === "one")
+    await choose(dialog.getByRole("combobox", { name: "本端字段数量", exact: true }), "one");
   await dialog.getByRole("button", { name: "确定" }).click();
   await expect(page.getByRole("table", { name: "关系列表" })).toContainText(relation.name);
   await page.getByRole("link", { name: "关闭" }).click();

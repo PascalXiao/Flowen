@@ -36,8 +36,9 @@ export async function createRelationDef(tx: Transaction, args: z.output<typeof c
     // 另一端的字段名不能和那一端已有的关联重名
     const taken = [
       ...(await tx.run(zql.relationDef.where("fromTypeId", args.toTypeId))).map((d) => d.name),
-      ...(await tx.run(zql.relationDef.where("toTypeId", args.toTypeId)))
-        .flatMap((d) => (d.reverseName ? [d.reverseName] : [])),
+      ...(await tx.run(zql.relationDef.where("toTypeId", args.toTypeId))).flatMap((d) =>
+        d.reverseName ? [d.reverseName] : [],
+      ),
     ];
     if (taken.includes(args.reverseName) || (args.toTypeId === args.fromTypeId && args.reverseName === args.name))
       throw new Error(`关联「${args.reverseName}」已经存在。`);

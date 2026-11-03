@@ -8,12 +8,12 @@ import {
   conditionFields,
   type DetailLayout,
   EDITABLE_FIELD_TYPES,
+  FIELD_GROUP_COLUMN_TYPES,
   type FieldDataType,
   type FlowDefinition,
   FormulaError,
   isStatusFlow,
   OPTION_FIELD_TYPES,
-  FIELD_GROUP_COLUMN_TYPES,
   type RoleConfig,
   roleConditions,
   type StatusFlowDefinition,
@@ -86,8 +86,14 @@ export const setDefaultDisplayArgs = z.object({
   id: z.string(),
   display: z
     .object({
-      columns: z.array(z.object({ key: z.string(), width: z.number().optional() })).max(60).optional(),
-      sort: z.array(z.object({ key: z.string(), desc: z.boolean().optional() })).max(5).optional(),
+      columns: z
+        .array(z.object({ key: z.string(), width: z.number().optional() }))
+        .max(60)
+        .optional(),
+      sort: z
+        .array(z.object({ key: z.string(), desc: z.boolean().optional() }))
+        .max(5)
+        .optional(),
       groupBy: z.string().nullable().optional(),
       frozen: z.number().int().min(0).max(10).optional(),
       rowHeight: z.enum(["low", "medium", "high", "xhigh"]).optional(),
@@ -303,7 +309,9 @@ export const flowDefinitionSchema = z.object({
         })
         .optional(),
       nodeInfo: z
-        .array(z.object({ node: z.string().min(1), info: z.array(z.enum(["owner", "schedule", "conclusion"])).optional() }))
+        .array(
+          z.object({ node: z.string().min(1), info: z.array(z.enum(["owner", "schedule", "conclusion"])).optional() }),
+        )
         .max(50)
         .optional(),
       duration: z.number().int().min(0).max(999).optional(),
@@ -436,11 +444,7 @@ export async function setLayout(tx: Transaction, args: z.output<typeof setLayout
   await tx.mutate.workItemType.update({ id: args.id, detailLayout: layout });
 }
 
-export async function setDefaultDisplay(
-  tx: Transaction,
-  args: z.output<typeof setDefaultDisplayArgs>,
-  userID: string,
-) {
+export async function setDefaultDisplay(tx: Transaction, args: z.output<typeof setDefaultDisplayArgs>, userID: string) {
   await adminType(tx, args.id, userID);
   await tx.mutate.workItemType.update({ id: args.id, defaultDisplay: args.display });
 }

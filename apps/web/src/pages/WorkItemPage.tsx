@@ -345,6 +345,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
       ? { start: Math.min(...spans.map((x) => x.start)), end: Math.max(...spans.map((x) => x.end)) }
       : null;
     return (
+      // biome-ignore lint/a11y/useSemanticElements: 只是给一块信息起名，fieldset 会带上表单的默认样式
       <div aria-label={`${node.name}的子工作项`} role="group" className="flex flex-col gap-1.5 text-sm">
         <span className="text-fg-muted">子工作项（{config.type}）</span>
         <ul className="flex flex-col gap-1">
@@ -465,6 +466,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
     const editable = canPlan(def.key);
     const name = label || def.name;
     return (
+      // biome-ignore lint/a11y/useSemanticElements: 只是给一块信息起名，fieldset 会带上表单的默认样式
       <div
         key={key}
         role="group"
@@ -604,6 +606,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             <span className="w-28 shrink-0 truncate pt-1.5 text-fg-muted" title={label}>
               {label}
             </span>
+            {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: 按字段名找到这个值（测试和读屏都用） */}
             <span aria-label={label} className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-1.5">
               {values.join("、") || <span className="text-fg-subtle">—</span>}
             </span>
@@ -1055,6 +1058,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                                   <dt className="w-28 shrink-0 truncate text-fg-muted" title={info.field}>
                                     {info.field}
                                   </dt>
+                                  {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: 按字段名找到这个值（测试和读屏都用） */}
                                   <dd
                                     aria-label={info.field}
                                     className="min-w-0 flex-1 whitespace-pre-wrap break-words"
