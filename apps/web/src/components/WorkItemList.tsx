@@ -5,6 +5,7 @@ import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { BatchBar } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -34,6 +35,12 @@ export interface ListDisplay {
   rowHeight?: "low" | "medium" | "high" | "xhigh";
   /** 底部汇总行：列键 → 统计方式。 */
   summary?: Record<string, SummaryKind>;
+  /** 看板：泳道（creator、role:角色键、field:字段键）和卡片上显示的字段。 */
+  board?: BoardDisplay;
+}
+export interface BoardDisplay {
+  lanes?: string | null;
+  cardFields?: string[];
 }
 type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";
 const SUMMARY_TEXT: Record<SummaryKind, string> = {
@@ -92,7 +99,7 @@ type SpaceLike = {
 
 /**
  * 工作项列表（表格），对照飞书项目的工作项列表：页签（全部、最近浏览、我创建的…）、筛选之外的
- * 排序 / 分组 / 设置颜色 / 搜索，表头最右边的「+」随时加列，列宽可以拖，勾选后可以批量关注。
+ * 排序 / 分组 / 设置颜色 / 搜索，表头最右边的「+」随时加列，列宽可以拖，勾选后可以批量改字段、关注、收藏、终止和恢复。
  */
 export function WorkItemList({
   space,
@@ -176,9 +183,6 @@ export function WorkItemList({
   const groupCol = display.groupBy ? byKey.get(display.groupBy) : undefined;
 
   const marks = (i: ListItem) => new Set(i.marks.map((m) => m.kind));
-  const toggleMark = (ids: string[], kind: "follow" | "star", on: boolean) => {
-    for (const workItemId of ids) zero.mutate(mutators.mark.set({ workItemId, kind, on }));
-  };
 
   const frozen = Math.min(display.frozen ?? 0, shown.length);
   const rowHeight: RowHeight = display.rowHeight ?? "low";
@@ -452,18 +456,12 @@ export function WorkItemList({
             className="!w-56"
           />
           {selected.length > 0 && (
-            <span className="ml-auto flex items-center gap-2 rounded-md bg-brand-50 px-3 py-1 text-sm">
-              已选 {selected.length} 项
-              <Button size="sm" variant="ghost" onClick={() => toggleMark(selected, "follow", true)}>
-                关注
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => toggleMark(selected, "star", true)}>
-                收藏
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-                取消选择
-              </Button>
-            </span>
+            <BatchBar
+              items={items.filter((i) => selected.includes(i.id))}
+              fields={[...fields.values()]}
+              members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
+              onClear={() => setSelected([])}
+            />
           )}
         </div>
 
