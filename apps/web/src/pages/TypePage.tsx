@@ -47,6 +47,7 @@ const TYPE_GROUPS = [
       "signal",
       "multiSignal",
       "fieldGroup",
+      "multiPerson",
       "formula",
       "vote",
     ],

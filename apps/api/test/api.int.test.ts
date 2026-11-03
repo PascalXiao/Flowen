@@ -2799,3 +2799,98 @@ describe("vote fields", () => {
     expect(kinds).toEqual(expect.arrayContaining(["voteCast", "voteRevealed"]));
   });
 });
+
+describe("multi-person fields", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/task`;
+  const templateId = `${typeId}/default`;
+  let admin: { cookie: string; userId: string };
+  let dev: { cookie: string; userId: string };
+  let qa: { cookie: string; userId: string };
+  let itemId: string;
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const set = (fieldKey: string, value: unknown, userId: string) =>
+    run("fieldValue.set", { workItemId: itemId, fieldKey, value }, userId);
+  const valueOf = async (fieldKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.fieldValue)
+        .where(and(eq(schema.fieldValue.workItemId, itemId), eq(schema.fieldValue.fieldKey, fieldKey)))
+    )[0]?.value;
+  const columns = [{ key: "结论", name: "结论", dataType: "text" }];
+
+  beforeAll(async () => {
+    admin = await signUp(`mp-admin-${spaceId}@example.com`);
+    dev = await signUp(`mp-dev-${spaceId}@example.com`);
+    qa = await signUp(`mp-qa-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "多人复合" });
+    await services.database.db.insert(schema.spaceMember).values([
+      { spaceId, userId: dev.userId },
+      { spaceId, userId: qa.userId },
+    ]);
+    await run("workItemType.create", { id: typeId, spaceId, key: "task", name: "任务", flowMode: "state" });
+    await run("roleDef.create", { id: `${typeId}/role/dev`, typeId, key: "dev", name: "开发" });
+    for (const key of ["评审", "自评"])
+      await run("fieldDef.create", { id: `${typeId}/field/${key}`, typeId, key, name: key, dataType: "multiPerson" });
+    await run("fieldDef.update", {
+      id: `${typeId}/field/评审`,
+      name: "评审",
+      config: { columns, people: { role: "dev" } },
+    });
+    await run("fieldDef.update", { id: `${typeId}/field/自评`, name: "自评", config: { columns } });
+    await expect(
+      run("fieldDef.update", { id: `${typeId}/field/自评`, name: "自评", config: { columns, people: { role: "pm" } } }),
+    ).rejects.toThrow("角色「pm」不存在");
+    await run("flowTemplate.create", { id: templateId, typeId, key: "default", name: "流程" });
+    await run("flowTemplate.publish", { versionId: `${templateId}/v1` });
+    itemId = randomUUID();
+    await run("workItem.create", { id: itemId, typeId, name: "登录改版", roles: { dev: [dev.userId] } });
+  });
+
+  it("lets each person fill only their own group", async () => {
+    await set("自评", [{ _user: dev.userId, 结论: "能做" }], dev.userId);
+    // 不能替别人填，也不能改别人的行
+    await expect(
+      set(
+        "自评",
+        [
+          { _user: dev.userId, 结论: "能做" },
+          { _user: admin.userId, 结论: "x" },
+        ],
+        qa.userId,
+      ),
+    ).rejects.toThrow("只能填写自己的一组");
+    await expect(set("自评", [{ _user: dev.userId, 结论: "改了" }], qa.userId)).rejects.toThrow("只能填写自己的一组");
+    await set(
+      "自评",
+      [
+        { _user: dev.userId, 结论: "能做" },
+        { _user: qa.userId, 结论: "要测" },
+      ],
+      qa.userId,
+    );
+    // 管理员可以改任何一行
+    await set(
+      "自评",
+      [
+        { _user: dev.userId, 结论: "能做" },
+        { _user: qa.userId, 结论: "已测" },
+      ],
+      admin.userId,
+    );
+    expect(await valueOf("自评")).toEqual([
+      { _user: dev.userId, 结论: "能做" },
+      { _user: qa.userId, 结论: "已测" },
+    ]);
+    await expect(set("自评", [{ _user: "nobody", 结论: "x" }], admin.userId)).rejects.toThrow("空间成员");
+  });
+
+  it("limits a role-based field to the role's people", async () => {
+    await set("评审", [{ _user: dev.userId, 结论: "通过" }], dev.userId);
+    await expect(set("评审", [{ _user: qa.userId, 结论: "通过" }], admin.userId)).rejects.toThrow(
+      "只能由对应角色的人填写",
+    );
+    expect(await valueOf("评审")).toEqual([{ _user: dev.userId, 结论: "通过" }]);
+  });
+});

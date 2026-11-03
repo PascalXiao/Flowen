@@ -4,6 +4,7 @@ import {
   type FieldDataType,
   fieldIndex,
   normalizeFieldValue,
+  PERSON_KEY,
   type RuleField,
 } from "@fp/engine";
 import type { Transaction } from "@rocicorp/zero";
@@ -37,6 +38,17 @@ export async function checkFieldValue(
       (Array.isArray(value) ? value : [value]).map(String),
       `「${field.name}」只能选空间成员。`,
     );
+  if (field.dataType === "multiPerson" && Array.isArray(value)) {
+    const people = value.map((row) => String((row as Record<string, unknown>)[PERSON_KEY]));
+    await assertSpaceMembers(tx, item.spaceId, people, `「${field.name}」只能由空间成员填写。`);
+    const role = field.config?.people?.role;
+    if (role) {
+      const members = new Set(
+        (await tx.run(zql.roleMember.where("workItemId", item.id).where("roleKey", role))).map((r) => r.userId),
+      );
+      if (people.some((u) => !members.has(u))) throw new Error(`「${field.name}」只能由对应角色的人填写。`);
+    }
+  }
   if (field.dataType === "attachment" && Array.isArray(value)) {
     const files = await tx.run(
       zql.attachment.where("workItemId", item.id).where("fieldKey", field.key).where("id", "IN", value.map(String)),

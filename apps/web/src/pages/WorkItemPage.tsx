@@ -41,6 +41,7 @@ import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
 import { GanttChart } from "@/components/GanttChart";
+import { MultiPersonField } from "@/components/MultiPersonField";
 import { NodeTasks } from "@/components/NodeTasks";
 import { RelationsCard } from "@/components/RelationsCard";
 import { RolePicker, toggled } from "@/components/RolePicker";
@@ -548,6 +549,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             members={members}
             isAdmin={isAdmin}
             myRoles={myRoles}
+            me={me}
             labelPosition={layout.labelPosition}
             onSet={(fieldKey, value) => run(mutators.fieldValue.set({ workItemId: item.id, fieldKey, value }))}
           />
@@ -1490,6 +1492,7 @@ function LayoutField({
   members,
   isAdmin,
   myRoles,
+  me,
   labelPosition,
   onSet,
 }: {
@@ -1500,6 +1503,7 @@ function LayoutField({
   members: readonly FieldMember[];
   isAdmin: boolean;
   myRoles: string[];
+  me: string;
   labelPosition: "side" | "top";
   onSet: (fieldKey: string, value: FieldInputValue) => void;
 }) {
@@ -1512,7 +1516,7 @@ function LayoutField({
   if (state?.visible === false) return null;
   if (item.showWhen && !evaluate(item.showWhen, conditionView(fields, record))) return null;
   const value = record[field.key] ?? null;
-  const wide = item.wide || ["richText", "textarea", "fieldGroup", "vote"].includes(field.dataType);
+  const wide = item.wide || ["richText", "textarea", "fieldGroup", "multiPerson", "vote"].includes(field.dataType);
   const top = labelPosition === "top" || wide;
   const name = item.label || field.name;
   return (
@@ -1527,7 +1531,23 @@ function LayoutField({
         <FieldLabel name={name} required={state?.required} description={field.config?.description} />
       </span>
       <div className="flex min-w-0 flex-col gap-1">
-        {field.dataType === "vote" ? (
+        {field.dataType === "multiPerson" ? (
+          <MultiPersonField
+            field={field}
+            value={value}
+            label={name}
+            roleMembers={
+              field.config?.people?.role
+                ? workItem.roleMembers.filter((m) => m.roleKey === field.config?.people?.role).map((m) => m.userId)
+                : null
+            }
+            members={members}
+            me={me}
+            isAdmin={isAdmin}
+            readOnly={!allowed(field.editRoles ?? []) || workItem.status === "terminated"}
+            onChange={(v) => onSet(field.key, v)}
+          />
+        ) : field.dataType === "vote" ? (
           <VoteField
             workItemId={workItem.id}
             field={field}
