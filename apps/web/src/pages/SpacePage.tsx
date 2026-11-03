@@ -375,7 +375,16 @@ function WorkItems({
           )}
         />
       ) : view === "board" ? (
-        <Board spaceId={space.id} filter={filter} types={types} />
+        <Board
+          spaceId={space.id}
+          filter={filter}
+          types={types}
+          fields={withLineOptions(type.fields, space.businessLines)}
+          roles={type.roles}
+          userName={(id) => members.find((m) => m.userId === id)?.name ?? id}
+          display={display.board}
+          onDisplay={(board) => setDisplay({ ...display, board })}
+        />
       ) : view === "gantt" ? (
         <div className="p-4">
           <SpaceGantt
