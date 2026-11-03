@@ -16,6 +16,7 @@ import {
   OPTION_FIELD_TYPES,
   type RoleConfig,
   roleConditions,
+  STANCE_OPTIONS,
   type StatusFlowDefinition,
   validateFlow,
   validateStatusFlow,
@@ -56,6 +57,8 @@ const fieldOptions = z
       /** 级联字段的上级选项值。 */
       parent: z.string().optional(),
       disabled: z.boolean().optional(),
+      /** 投票选项的分值。 */
+      score: z.number().min(-1000).max(1000).optional(),
     }),
   )
   .max(2000);
@@ -152,6 +155,14 @@ export const fieldConfigSchema = z.object({
   optionWhen: z.record(z.string(), condition).nullish(),
   exclusiveOptions: z.array(z.string()).nullish(),
   freezeOnComplete: z.boolean().nullish(),
+  vote: z
+    .object({
+      mode: z.enum(["stance", "single", "multi"]),
+      remark: z.enum(["off", "optional", "required"]).optional(),
+      blind: z.boolean().optional(),
+      revealRoles: z.array(z.string().min(1)).max(50).optional(),
+    })
+    .nullish(),
   columns: z
     .array(
       z.object({
@@ -566,6 +577,8 @@ export async function setFieldAccess(tx: Transaction, args: z.output<typeof setF
 export async function createField(tx: Transaction, args: z.output<typeof createFieldArgs>, userID: string) {
   const type = await adminType(tx, args.typeId, userID);
   const isOptions = OPTION_FIELD_TYPES.includes(args.dataType);
+  // 投票字段不填选项时是表态投票：赞成、反对、弃权
+  if (args.dataType === "vote" && !args.options?.length) args = { ...args, options: STANCE_OPTIONS };
   if (isOptions && !args.options?.length) throw new Error("选项字段至少要有一个选项。");
   const optionError = isOptions ? checkOptions(args.dataType, args.options ?? []) : null;
   if (optionError) throw new Error(optionError);
@@ -581,7 +594,12 @@ export async function createField(tx: Transaction, args: z.output<typeof createF
     formula,
     required: false,
     // 字段组先带一列，列在字段配置里改
-    config: args.dataType === "fieldGroup" ? { columns: [{ key: "列1", name: "列1", dataType: "text" }] } : null,
+    config:
+      args.dataType === "fieldGroup"
+        ? { columns: [{ key: "列1", name: "列1", dataType: "text" }] }
+        : args.dataType === "vote"
+          ? { vote: { mode: args.options === STANCE_OPTIONS ? "stance" : "single", remark: "optional" } }
+          : null,
     viewRoles: null,
     editRoles: null,
     sort: type.fields.length,

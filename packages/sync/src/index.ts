@@ -21,5 +21,6 @@ export * from "./subitems.ts";
 export * from "./tasks.ts";
 export * from "./templates.ts";
 export * from "./views.ts";
+export * from "./vote.ts";
 export * from "./webhooks.ts";
 export * from "./work-items.ts";

@@ -16,6 +16,7 @@ import {
   SYSTEM_WRITTEN_FIELD_TYPES,
   TEMPLATE_CONDITION_KEY,
   TEMPLATE_CONDITION_NAME,
+  type VoteConfig,
 } from "@fp/engine";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -79,6 +80,7 @@ export function FieldConfigSheet({
   fields,
   members,
   templates = [],
+  roles = [],
   canManage,
   onClose,
   onSave,
@@ -87,6 +89,8 @@ export function FieldConfigSheet({
   fields: readonly ConfigurableField[];
   /** 这个工作项的流程模板名：条件里可以按流程类型判断。 */
   templates?: readonly string[];
+  /** 这个工作项的角色：投票字段的放榜角色从里面选。 */
+  roles?: readonly { key: string; name: string }[];
   members: readonly FieldMember[];
   canManage: boolean;
   onClose: () => void;
@@ -124,6 +128,7 @@ export function FieldConfigSheet({
   const [leafOnly, setLeafOnly] = useState(initial.leafOnly ?? false);
   const [unique, setUnique] = useState(initial.unique ?? false);
   const [freeze, setFreeze] = useState(initial.freezeOnComplete ?? false);
+  const [vote, setVote] = useState<VoteConfig>({ mode: "single", ...(initial.vote ?? {}) });
   const [columns, setColumns] = useState<FieldGroupColumn[]>([...(initial.columns ?? [])]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,7 +154,7 @@ export function FieldConfigSheet({
     });
   // 默认值控件用的字段：选项用编辑中的选项
   const inputField = { key: field.key, name: field.name, dataType: field.dataType, options, config: null };
-  const canDefault = !systemWritten && dataType !== "attachment" && dataType !== "fieldGroup";
+  const canDefault = !systemWritten && !["attachment", "fieldGroup", "vote"].includes(dataType);
 
   function buildDefault(): DefaultValue | null {
     if (defaultMode === "fixed")
@@ -180,6 +185,7 @@ export function FieldConfigSheet({
         ? compact(Object.fromEntries(Object.entries(optionWhen).filter(([v]) => values.has(v))) as FieldRules)
         : null,
       exclusiveOptions: dataType === "multiSelect" ? exclusive.filter((v) => values.has(v)) : null,
+      vote: dataType === "vote" ? vote : null,
       columns:
         dataType === "fieldGroup"
           ? columns.map((c) => ({
@@ -249,6 +255,12 @@ export function FieldConfigSheet({
           </Group>
         )}
 
+        {dataType === "vote" && (
+          <Group title="投票设置">
+            <VoteSettings vote={vote} roles={roles} options={options} onChange={setVote} onOptions={setOptions} />
+          </Group>
+        )}
+
         {dataType === "fieldGroup" && (
           <Group title="列">
             <ColumnsEditor columns={columns} onChange={setColumns} />
@@ -291,7 +303,7 @@ export function FieldConfigSheet({
               <ConditionEditor label="显示条件" value={showWhen} fields={conditionFields} onChange={setShowWhen} />
             )}
           </RuleBlock>
-          {!systemWritten && (
+          {!systemWritten && dataType !== "vote" && (
             <RuleBlock
               label="必填"
               mode={requiredMode}
@@ -435,6 +447,102 @@ function ReadOnly({ label, value }: { label: string; value: string }) {
     <div className="flex flex-col gap-1.5">
       <span className="text-fg-muted">{label}</span>
       <span className="truncate font-mono text-xs leading-8 text-fg">{value}</span>
+    </div>
+  );
+}
+
+/** 投票字段的设置：投票方式、备注、盲投和放榜角色、选项分值。 */
+function VoteSettings({
+  vote,
+  roles,
+  options,
+  onChange,
+  onOptions,
+}: {
+  vote: VoteConfig;
+  roles: readonly { key: string; name: string }[];
+  options: FieldOption[];
+  onChange: (vote: VoteConfig) => void;
+  onOptions: (options: FieldOption[]) => void;
+}) {
+  const revealRoles = vote.revealRoles ?? [];
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-fg-muted">投票方式</span>
+        <Segmented
+          label="投票方式"
+          value={vote.mode}
+          onChange={(mode) => onChange({ ...vote, mode: mode as VoteConfig["mode"] })}
+          items={[
+            ["stance", "表态"],
+            ["single", "单选"],
+            ["multi", "多选"],
+          ]}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-fg-muted">投票备注</span>
+        <Segmented
+          label="投票备注"
+          value={vote.remark ?? "optional"}
+          onChange={(remark) => onChange({ ...vote, remark: remark as VoteConfig["remark"] })}
+          items={[
+            ["off", "不允许"],
+            ["optional", "选填"],
+            ["required", "必填"],
+          ]}
+        />
+      </div>
+      <CheckRow
+        label="盲投（放榜前只看得到自己的票）"
+        checked={!!vote.blind}
+        onChange={(blind) => onChange({ ...vote, blind })}
+      />
+      {vote.blind && roles.length > 0 && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-fg-muted">可以放榜的角色（空间管理员总是可以）</legend>
+          <div className="flex flex-wrap gap-3">
+            {roles.map((r) => (
+              <CheckRow
+                key={r.key}
+                label={r.name}
+                checked={revealRoles.includes(r.key)}
+                onChange={(on) =>
+                  onChange({
+                    ...vote,
+                    revealRoles: on ? [...revealRoles, r.key] : revealRoles.filter((k) => k !== r.key),
+                  })
+                }
+              />
+            ))}
+          </div>
+        </fieldset>
+      )}
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-fg-muted">选项分值（用来算平均分，不填不计分）</legend>
+        {options.map((o, i) => (
+          <label key={o.value} className="flex items-center gap-2">
+            <span className="w-28 truncate">{o.label || o.value}</span>
+            <Input
+              type="number"
+              aria-label={`${o.label || o.value}的分值`}
+              className="w-24"
+              value={o.score ?? ""}
+              onChange={(e) => {
+                const score = e.target.value === "" ? undefined : Number(e.target.value);
+                onOptions(
+                  options.map((x, j) => {
+                    if (j !== i) return x;
+                    const { score: _, ...rest } = x;
+                    return score === undefined || Number.isNaN(score) ? rest : { ...rest, score };
+                  }),
+                );
+              }}
+            />
+          </label>
+        ))}
+      </fieldset>
     </div>
   );
 }

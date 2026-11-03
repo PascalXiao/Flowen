@@ -567,7 +567,7 @@ function CreateWorkItemForm({
     if (item.kind === "text") return [{ item, field: undefined }];
     if (item.kind !== "field") return [];
     const field = typeFields.find((f) => f.key === item.field);
-    if (!field || ["formula", "relation", "signal", "multiSignal"].includes(field.dataType)) return [];
+    if (!field || ["formula", "relation", "signal", "multiSignal", "vote"].includes(field.dataType)) return [];
     if (states[field.key]?.visible === false || (item.showWhen && !evaluate(item.showWhen, view))) return [];
     return [{ item, field }];
   });

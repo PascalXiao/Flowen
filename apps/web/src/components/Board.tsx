@@ -35,7 +35,7 @@ const NO_LANE = "\u0000nolane";
 /** 能当泳道的字段类型：单选、多选、人员、布尔。多值的工作项会出现在多条泳道里。 */
 const LANE_FIELD_TYPES = ["select", "radio", "multiSelect", "businessLine", "user", "singleUser", "bool"];
 /** 卡片上不显示的字段类型。 */
-const NO_CARD_TYPES = ["relation", "fieldGroup", "richText", "attachment"];
+const NO_CARD_TYPES = ["relation", "fieldGroup", "richText", "attachment", "vote"];
 
 /**
  * 空间看板。只筛了一个状态流类型时按它的状态分列，卡片可以拖到别的列来流转（按状态流的流转规则校验）；

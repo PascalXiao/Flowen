@@ -130,6 +130,7 @@ import {
   updateRoleArgs,
 } from "./templates.ts";
 import { createView, createViewArgs, deleteView, deleteViewArgs, updateView, updateViewArgs } from "./views.ts";
+import { castVote, castVoteArgs, revealVote, revealVoteArgs } from "./vote.ts";
 import {
   createWebhook,
   createWebhookArgs,
@@ -229,6 +230,14 @@ export const mutators = defineMutators({
     create: defineMutator(createWebhookArgs, ({ tx, args, ctx }) => createWebhook(tx, args, ctx.userID)),
     update: defineMutator(updateWebhookArgs, ({ tx, args, ctx }) => updateWebhook(tx, args, ctx.userID)),
     delete: defineMutator(deleteWebhookArgs, ({ tx, args, ctx }) => deleteWebhook(tx, args, ctx.userID)),
+  },
+  vote: {
+    cast: defineMutator(castVoteArgs, async ({ tx, args, ctx }) => {
+      await castVote(tx, args, ctx.userID);
+    }),
+    reveal: defineMutator(revealVoteArgs, async ({ tx, args, ctx }) => {
+      await revealVote(tx, args, ctx.userID);
+    }),
   },
   comment: {
     create: defineMutator(createCommentArgs, async ({ tx, args, ctx }) => {

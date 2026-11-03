@@ -24,6 +24,7 @@ import {
   StatusFlow,
   type StatusFlowDefinition,
   statusFlowOf,
+  type VoteSummary,
   WorkCalendar,
 } from "@fp/engine";
 import { fieldViewRoles, hasAnyRole, mutators, queries } from "@fp/sync";
@@ -52,6 +53,7 @@ import { Input } from "@/components/ui/input";
 import { ErrorBanner, Panel } from "@/components/ui/page";
 import { Tabs } from "@/components/ui/tabs";
 import { StageTag, StatusTag, Tag } from "@/components/ui/tag";
+import { VoteField } from "@/components/VoteField";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { withLineOptions } from "@/lib/fields";
 import { nodeGanttRows } from "@/lib/gantt";
@@ -1510,8 +1512,7 @@ function LayoutField({
   if (state?.visible === false) return null;
   if (item.showWhen && !evaluate(item.showWhen, conditionView(fields, record))) return null;
   const value = record[field.key] ?? null;
-  const wide =
-    item.wide || field.dataType === "richText" || field.dataType === "textarea" || field.dataType === "fieldGroup";
+  const wide = item.wide || ["richText", "textarea", "fieldGroup", "vote"].includes(field.dataType);
   const top = labelPosition === "top" || wide;
   const name = item.label || field.name;
   return (
@@ -1526,17 +1527,29 @@ function LayoutField({
         <FieldLabel name={name} required={state?.required} description={field.config?.description} />
       </span>
       <div className="flex min-w-0 flex-col gap-1">
-        <FieldInput
-          field={field}
-          label={name}
-          value={value}
-          members={members}
-          options={availableOptions(field, record, value)}
-          workItemId={workItem.id}
-          attachments={workItem.attachments.map((a) => ({ id: a.id, name: a.name, size: a.size }))}
-          readOnly={!allowed(field.editRoles ?? [])}
-          onChange={(v) => onSet(field.key, v)}
-        />
+        {field.dataType === "vote" ? (
+          <VoteField
+            workItemId={workItem.id}
+            field={field}
+            label={name}
+            summary={value as VoteSummary | null}
+            ballots={workItem.ballots.filter((b) => b.fieldKey === field.key)}
+            readOnly={!allowed(field.editRoles ?? []) || workItem.status === "terminated"}
+            canReveal={isAdmin || hasAnyRole(field.config?.vote?.revealRoles ?? [], myRoles)}
+          />
+        ) : (
+          <FieldInput
+            field={field}
+            label={name}
+            value={value}
+            members={members}
+            options={availableOptions(field, record, value)}
+            workItemId={workItem.id}
+            attachments={workItem.attachments.map((a) => ({ id: a.id, name: a.name, size: a.size }))}
+            readOnly={!allowed(field.editRoles ?? [])}
+            onChange={(v) => onSet(field.key, v)}
+          />
+        )}
         {item.hint && <span className="text-xs text-fg-subtle">{item.hint}</span>}
       </div>
     </div>

@@ -1008,6 +1008,33 @@ export const automationRuleRelations = relations(automationRule, ({ one, many })
   runs: many(automationRun),
 }));
 
+/**
+ * 投票字段的一张票：谁在哪个工作项的哪个投票字段上选了什么、备注。
+ * revealed 为假时只有投票人自己看得到（盲投，放榜后改成真），由 Zero 查询按它过滤。
+ */
+export const voteBallot = pgTable(
+  "vote_ballot",
+  {
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    fieldKey: text("field_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    choices: jsonb("choices").$type<string[]>().notNull(),
+    remark: text("remark"),
+    revealed: boolean("revealed").notNull().default(true),
+    votedAt: timestamp("voted_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workItemId, t.fieldKey, t.userId] })],
+);
+
+export const voteBallotRelations = relations(voteBallot, ({ one }) => ({
+  workItem: one(workItem, { fields: [voteBallot.workItemId], references: [workItem.id] }),
+  user: one(user, { fields: [voteBallot.userId], references: [user.id] }),
+}));
+
 export const workItemMarkRelations = relations(workItemMark, ({ one }) => ({
   workItem: one(workItem, { fields: [workItemMark.workItemId], references: [workItem.id] }),
 }));
@@ -1018,6 +1045,7 @@ export const workItemVisitRelations = relations(workItemVisit, ({ one }) => ({
 
 export const workItemRelations = relations(workItem, ({ one, many }) => ({
   marks: many(workItemMark),
+  ballots: many(voteBallot),
   visits: many(workItemVisit),
   space: one(space, { fields: [workItem.spaceId], references: [space.id] }),
   type: one(workItemType, { fields: [workItem.typeId], references: [workItemType.id] }),

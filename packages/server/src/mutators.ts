@@ -4,6 +4,8 @@ import type { ZeroContext } from "@fp/sync";
 import {
   addRelation,
   addRelationArgs,
+  castVote,
+  castVoteArgs,
   completeBySubItems,
   confirmNode,
   confirmNodeArgs,
@@ -32,6 +34,8 @@ import {
   removeRelation,
   removeRelationArgs,
   restoreWorkItem,
+  revealVote,
+  revealVoteArgs,
   rollbackNode,
   setCalendarArgs,
   setEffortArgs,
@@ -99,6 +103,32 @@ function flowEvents(spaceId: string, workItemId: string, events: (FlowEvent | St
  * 事件经 Outbox 中继交给 Temporal，流程推进和自动化都从那里开始。
  */
 export const serverMutators = defineMutators(mutators, {
+  vote: {
+    cast: defineMutator(castVoteArgs, async ({ tx, args, ctx }) => {
+      const { spaceId } = await castVote(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "voteCast",
+          payload: { fieldKey: args.fieldKey },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+    reveal: defineMutator(revealVoteArgs, async ({ tx, args, ctx }) => {
+      const { spaceId } = await revealVote(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "voteRevealed",
+          payload: { fieldKey: args.fieldKey, revealed: args.revealed },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+  },
   comment: {
     create: defineMutator(createCommentArgs, async ({ tx, args, ctx }) => {
       const { spaceId, mentions, parentId, replyToId } = await createComment(tx, args, ctx.userID);

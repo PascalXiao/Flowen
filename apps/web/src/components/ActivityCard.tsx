@@ -26,6 +26,7 @@ const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
 /** 一条事件的文字描述；不认识或不值得展示的事件返回 null。 */
 export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): string | null {
   const node = () => `节点「${ctx.nodeName(str(p.node))}」`;
+  const fieldLabel = (key: string) => ctx.fields.find((f) => f.key === key)?.name ?? key;
   switch (kind) {
     case "workItemCreated":
       return "创建了工作项";
@@ -99,6 +100,10 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
     }
     case "commentAdded":
       return p.parentId ? "回复了评论" : "发表了评论";
+    case "voteCast":
+      return `在「${fieldLabel(str(p.fieldKey))}」投了票`;
+    case "voteRevealed":
+      return `${p.revealed ? "公布" : "收起"}了「${fieldLabel(str(p.fieldKey))}」的投票结果`;
     case "commentEdited":
       return "编辑了评论";
     case "commentDeleted":

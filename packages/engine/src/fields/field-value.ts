@@ -41,6 +41,7 @@ export type FieldDataType =
   | "signal"
   | "multiSignal"
   | "fieldGroup"
+  | "vote"
   | "relation"
   | "formula";
 
@@ -70,6 +71,7 @@ export const EDITABLE_FIELD_TYPES = [
   "signal",
   "multiSignal",
   "fieldGroup",
+  "vote",
 ] as const;
 
 export const FIELD_TYPE_LABEL: Record<FieldDataType, string> = {
@@ -97,6 +99,7 @@ export const FIELD_TYPE_LABEL: Record<FieldDataType, string> = {
   signal: "系统外信号",
   multiSignal: "多值系统外信号",
   fieldGroup: "字段组",
+  vote: "投票",
   relation: "关联工作项",
   formula: "公式",
 };
@@ -108,6 +111,7 @@ export const OPTION_FIELD_TYPES: readonly FieldDataType[] = [
   "multiSelect",
   "cascadeSelect",
   "cascadeMulti",
+  "vote",
 ];
 /** 级联字段：选项用 parent 组成树（业务线的选项是空间的业务线树）。 */
 export const CASCADE_FIELD_TYPES: readonly FieldDataType[] = ["cascadeSelect", "cascadeMulti", "businessLine"];
@@ -121,6 +125,8 @@ export const MULTI_VALUE_FIELD_TYPES: readonly FieldDataType[] = [
 ];
 /** 只能由开放接口和自动化写入、页面上只读的字段类型。 */
 export const SYSTEM_WRITTEN_FIELD_TYPES: readonly FieldDataType[] = ["signal", "multiSignal", "formula", "relation"];
+/** 不能直接写值的字段类型：投票只能投票、放榜（见 sync 的 vote）。 */
+export const NOT_DIRECTLY_WRITTEN_FIELD_TYPES: readonly FieldDataType[] = [...SYSTEM_WRITTEN_FIELD_TYPES, "vote"];
 
 export interface FieldOption {
   value: string;
@@ -130,7 +136,33 @@ export interface FieldOption {
   parent?: string;
   /** 禁用的选项不能再选，已经选了的保留。 */
   disabled?: boolean;
+  /** 投票选项的分值（算平均分）。 */
+  score?: number;
 }
+
+/**
+ * 投票字段的设置（对照飞书项目的投票字段）：表态（赞成 / 反对 / 弃权）、单选、多选；
+ * 备注不需要 / 可填 / 必填；盲投时放榜前只看得到自己的票，放榜的是空间管理员和 revealRoles 里的角色。
+ */
+export interface VoteConfig {
+  mode: "stance" | "single" | "multi";
+  remark?: "off" | "optional" | "required";
+  blind?: boolean;
+  revealRoles?: string[];
+}
+
+/** 投票字段存在字段值里的汇总：投过票的人、是否已放榜。每张票在 vote_ballot 表里。 */
+export interface VoteSummary {
+  voters: string[];
+  revealed: boolean;
+}
+
+/** 表态投票的默认选项。 */
+export const STANCE_OPTIONS: (FieldOption & { label: string })[] = [
+  { value: "赞成", label: "赞成", color: "green", score: 1 },
+  { value: "反对", label: "反对", color: "red", score: 0 },
+  { value: "弃权", label: "弃权", color: "grey" },
+];
 
 /** 数字的显示格式。只影响显示，存的总是原值。 */
 export interface NumberFormat {
@@ -154,6 +186,7 @@ export interface FieldSpec {
     number?: NumberFormat | null;
     leafOnly?: boolean | null;
     columns?: readonly FieldGroupColumn[] | null;
+    vote?: VoteConfig | null;
   } | null;
 }
 
@@ -387,6 +420,8 @@ export function normalizeFieldValue(field: FieldSpec, value: unknown): unknown {
       }
       return rows.length > 0 ? rows : null;
     }
+    case "vote":
+      return fail("是投票字段，要在字段上投票。");
     case "relation":
       return fail("是关联字段，要在关联里设置。");
     case "formula":
@@ -479,6 +514,8 @@ export function formatFieldValue(
       return asList(value).map(signal).join("、");
     case "fieldGroup":
       return `${asList(value).length} 行`;
+    case "vote":
+      return isObject(value) ? `${asList(value.voters).length} 人已投` : "";
     case "formula":
       if (typeof value === "number") return String(Math.round(value * 10_000) / 10_000);
       if (typeof value === "boolean") return value ? "是" : "否";
@@ -555,6 +592,11 @@ export function fieldIndex(
       );
       return { ...empty, str: cells.join(" ") || null };
     }
+    case "vote":
+      // 按投票人数筛范围，投过票的人能按「属于」筛
+      return isObject(value)
+        ? { ...empty, num: asList(value.voters).length, items: asList(value.voters).map(String) }
+        : empty;
     case "formula":
       // 公式的结果类型看值：数字、日期可以按范围筛，文本按包含筛，是否按属于筛
       if (typeof value === "number") return fieldIndex({ ...field, dataType: "number" }, value);

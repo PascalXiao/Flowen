@@ -48,6 +48,7 @@ const TYPE_GROUPS = [
       "multiSignal",
       "fieldGroup",
       "formula",
+      "vote",
     ],
   ],
 ] as const satisfies readonly (readonly [string, readonly FieldDataType[]])[];
@@ -412,10 +413,18 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
                 <Label className="flex flex-col gap-1.5">
                   {CASCADE_FIELD_TYPES.includes(newType)
                     ? "选项（逗号分隔，用 / 写层级）"
-                    : "选项（单选、多选用，逗号分隔）"}
+                    : newType === "vote"
+                      ? "投票选项（逗号分隔，不填为赞成、反对、弃权）"
+                      : "选项（单选、多选用，逗号分隔）"}
                   <Input
                     name="options"
-                    placeholder={CASCADE_FIELD_TYPES.includes(newType) ? "华东/上海，华东/杭州，华北" : "是，否"}
+                    placeholder={
+                      CASCADE_FIELD_TYPES.includes(newType)
+                        ? "华东/上海，华东/杭州，华北"
+                        : newType === "vote"
+                          ? "方案 A，方案 B"
+                          : "是，否"
+                    }
                   />
                 </Label>
               )}
@@ -433,6 +442,7 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
         return field ? (
           <FieldConfigSheet
             templates={type.flowTemplates.map((t) => t.name)}
+            roles={type.roles}
             key={field.id}
             field={field}
             fields={fields}
