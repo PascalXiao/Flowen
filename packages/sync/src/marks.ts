@@ -1,5 +1,6 @@
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 
 /*
@@ -15,12 +16,7 @@ export const markArgs = z.object({
 export const visitArgs = z.object({ workItemId: z.string() });
 
 async function visible(tx: Transaction, workItemId: string, userID: string) {
-  const item = await tx.run(
-    zql.workItem
-      .where("id", workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .one(),
-  );
+  const item = await tx.run(zql.workItem.where("id", workItemId).where(itemVisible(userID)).one());
   if (!item) throw new Error("工作项不存在或没有权限。");
   return item;
 }

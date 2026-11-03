@@ -3,6 +3,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { requireWriter } from "./access.ts";
 import { recomputeParentFormulas } from "./formulas.ts";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 
 export const transitionArgs = z.object({ workItemId: z.string(), to: z.string() });
@@ -19,7 +20,7 @@ export async function transitionStatus(
   const item = await tx.run(
     zql.workItem
       .where("id", args.workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
+      .where(itemVisible(userID))
       .related("flowVersion")
       .related("fieldValues")
       .related("roleMembers", (r) => r.where("userId", userID))

@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth";
+import { visibleTypes } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 /** 当前所在的空间。工作项、类型这些页面没有空间参数，加载后把自己的空间报上来，左侧导航跟着切换。 */
@@ -136,7 +137,7 @@ function Sidebar({
             </Link>
             {/* 每个工作项一个入口，点进去是它的主页（工作项列表 / 视图列表） */}
             <section aria-label="工作项" className="flex flex-col gap-0.5">
-              {space.workItemTypes.map((t) => (
+              {visibleTypes(space, user.id).map((t) => (
                 <Link
                   key={t.id}
                   to="/spaces/$spaceId/$typeKey"

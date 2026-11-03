@@ -6,6 +6,7 @@ import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { BusinessLinesCard } from "@/components/BusinessLinesCard";
 import { CalendarCard } from "@/components/CalendarCard";
+import { UserGroupsCard } from "@/components/UserGroupsCard";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,7 @@ const SETTING_TABS = [
 type SettingTab = (typeof SETTING_TABS)[number][0];
 
 /**
- * 空间配置：空间信息（业务线、工作日历）、工作项（类型卡片，点进去是全屏配置页）、权限（成员）、
+ * 空间配置：空间信息（业务线、工作日历）、工作项（类型卡片，点进去是全屏配置页）、权限（成员、用户组）、
  * 关联（工作项之间的关系）、自动化（规则和 Webhook）。只有管理员能改，成员只读。
  */
 export function SpaceSettingsPage() {
@@ -77,7 +78,17 @@ export function SpaceSettingsPage() {
           </>
         )}
         {tab === "workObjectSetting" && <TypesCard space={space} canManage={isAdmin} />}
-        {tab === "permission" && <MembersCard space={space} canManage={isAdmin} />}
+        {tab === "permission" && (
+          <>
+            <MembersCard space={space} canManage={isAdmin} />
+            <UserGroupsCard
+              spaceId={spaceId}
+              groups={space.userGroups}
+              members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
+              canManage={isAdmin}
+            />
+          </>
+        )}
         {tab === "automation" && (
           <>
             <AutomationsPanel spaceId={spaceId} />

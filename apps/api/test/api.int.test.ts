@@ -2190,3 +2190,156 @@ describe("space dashboard", () => {
     expect(bugs.totals).toMatchObject({ inProgress: 1, completed: 1, overdue: 0 });
   });
 });
+
+describe("user groups and type permissions", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/bug`;
+  const templateId = `${typeId}/default`;
+  const groupId = `${spaceId}/group/qa`;
+  let admin: { cookie: string; userId: string };
+  let tester: { cookie: string; userId: string };
+  let outsider: { cookie: string; userId: string };
+  let owner: { cookie: string; userId: string };
+  let itemId: string;
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const comment = (userId: string) =>
+    run("comment.create", { id: randomUUID(), workItemId: itemId, body: "看看", mentions: [] }, userId);
+  const access = async () =>
+    (await services.database.db.select().from(schema.typeAccess).where(eq(schema.typeAccess.typeId, typeId)))
+      .map((a) => `${a.userId === tester.userId ? "tester" : a.userId}:${a.level}`)
+      .sort();
+
+  beforeAll(async () => {
+    admin = await signUp(`ug-admin-${spaceId}@example.com`);
+    tester = await signUp(`ug-tester-${spaceId}@example.com`);
+    outsider = await signUp(`ug-outsider-${spaceId}@example.com`);
+    owner = await signUp(`ug-owner-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "用户组" });
+    await services.database.db.insert(schema.spaceMember).values([
+      { spaceId, userId: tester.userId },
+      { spaceId, userId: outsider.userId },
+      { spaceId, userId: owner.userId },
+    ]);
+    await run("workItemType.create", { id: typeId, spaceId, key: "bug", name: "缺陷" });
+    await run("roleDef.create", { id: `${typeId}/role/owner`, typeId, key: "owner", name: "经办人" });
+    await run("roleDef.update", { id: `${typeId}/role/owner`, config: { isOwner: true } });
+    await run("flowTemplate.create", { id: templateId, typeId, key: "default", name: "流程" });
+    await run("flowTemplate.saveDraft", {
+      templateId,
+      definition: {
+        key: "default",
+        version: 0,
+        nodes: [
+          { key: "start", name: "开始", completion: "auto", ownerRoles: [] },
+          { key: "fix", name: "修复", completion: "singleConfirm", ownerRoles: ["owner"] },
+        ],
+        edges: [{ from: "start", to: "fix" }],
+      },
+    });
+    await run("flowTemplate.publish", { versionId: `${templateId}/v1` });
+    itemId = randomUUID();
+    await run("workItem.create", { id: itemId, typeId, name: "登录闪退", roles: { owner: [owner.userId] } });
+  });
+
+  it("manages groups: only admins, only space members, unique names", async () => {
+    await expect(run("userGroup.create", { id: groupId, spaceId, name: "测试组" }, tester.userId)).rejects.toThrow(
+      "只有空间管理员可以管理用户组",
+    );
+    await run("userGroup.create", { id: groupId, spaceId, name: "测试组" });
+    await expect(run("userGroup.create", { id: randomUUID(), spaceId, name: "测试组" })).rejects.toThrow(
+      "已经有叫「测试组」的用户组了",
+    );
+    const stranger = await signUp(`ug-stranger-${spaceId}@example.com`);
+    await expect(run("userGroup.setMembers", { id: groupId, userIds: [stranger.userId] })).rejects.toThrow(
+      "用户组成员必须是空间成员",
+    );
+    await run("userGroup.setMembers", { id: groupId, userIds: [tester.userId] });
+  });
+
+  it("limits who sees work items: members see only their own, a group sees all", async () => {
+    await run("workItemType.setPermissions", {
+      typeId,
+      permissions: { view: { members: "involved", [`group:${groupId}`]: "all" } },
+    });
+    expect(await access()).toEqual(["tester:all"]);
+    // 不在组里、也没参与的成员看不到；参与的（经办人）、组里的人、管理员看得到
+    await expect(comment(outsider.userId)).rejects.toThrow("工作项不存在或没有权限");
+    await comment(owner.userId);
+    await comment(tester.userId);
+    await comment(admin.userId);
+
+    // 移出用户组后就看不到了
+    await run("userGroup.setMembers", { id: groupId, userIds: [] });
+    expect(await access()).toEqual([]);
+    await expect(comment(tester.userId)).rejects.toThrow("工作项不存在或没有权限");
+    await run("userGroup.setMembers", { id: groupId, userIds: [tester.userId] });
+  });
+
+  it("refuses roles in the view settings and unknown groups", async () => {
+    await expect(
+      run("workItemType.setPermissions", { typeId, permissions: { view: { "role:owner": "all" } } }),
+    ).rejects.toThrow("查看范围只能按空间成员和用户组设置");
+    await expect(
+      run("workItemType.setPermissions", { typeId, permissions: { view: { "group:nope": "all" } } }),
+    ).rejects.toThrow("用户组不存在");
+    await expect(run("workItemType.setPermissions", { typeId, permissions: null }, tester.userId)).rejects.toThrow(
+      "只有空间管理员可以修改权限",
+    );
+  });
+
+  it("grants and denies operations: deny wins, roles count on the item, defaults stay when unset", async () => {
+    // 没配：只有经办人（负责人角色）能冻结
+    await expect(run("workItem.setFrozen", { workItemId: itemId, frozen: true }, tester.userId)).rejects.toThrow(
+      "你没有权限冻结工作项",
+    );
+    // 用户组允许冻结，空间成员禁止新建，经办人角色禁止终止
+    await run("workItemType.setPermissions", {
+      typeId,
+      permissions: {
+        view: { members: "all" },
+        ops: {
+          freeze: { [`group:${groupId}`]: "allow" },
+          create: { members: "deny", [`group:${groupId}`]: "allow" },
+          terminate: { "role:owner": "deny", members: "allow" },
+        },
+      },
+    });
+    await run("workItem.setFrozen", { workItemId: itemId, frozen: true }, tester.userId);
+    await run("workItem.setFrozen", { workItemId: itemId, frozen: false }, tester.userId);
+    // 配了冻结规则后，没被授权的负责人也不能冻结了
+    await expect(run("workItem.setFrozen", { workItemId: itemId, frozen: true }, owner.userId)).rejects.toThrow(
+      "你没有权限冻结工作项",
+    );
+    // 禁止优先：组里的人也是空间成员，空间成员被禁止新建
+    await expect(
+      run("workItem.create", { id: randomUUID(), typeId, name: "新缺陷", roles: {} }, tester.userId),
+    ).rejects.toThrow("你没有权限新建缺陷");
+    // 经办人被禁止终止，其他成员允许
+    await expect(run("workItem.terminate", { workItemId: itemId }, owner.userId)).rejects.toThrow(
+      "你没有权限终止工作项",
+    );
+    await run("workItem.terminate", { workItemId: itemId }, outsider.userId);
+    await run("workItem.restore", { workItemId: itemId }, outsider.userId);
+    // 管理员不受限制
+    await run("workItem.create", { id: randomUUID(), typeId, name: "管理员建的", roles: {} });
+  });
+
+  it("hides a type from members when nobody may see it, and drops a deleted group's grants", async () => {
+    await run("workItemType.setPermissions", {
+      typeId,
+      permissions: { view: { members: "none", [`group:${groupId}`]: "involved" } },
+    });
+    await expect(
+      run("workItem.create", { id: randomUUID(), typeId, name: "看不到的", roles: {} }, outsider.userId),
+    ).rejects.toThrow("你没有权限新建缺陷");
+    expect(await access()).toEqual(["tester:involved"]);
+    await run("userGroup.delete", { id: groupId });
+    expect(await access()).toEqual([]);
+    const [type] = await services.database.db
+      .select()
+      .from(schema.workItemType)
+      .where(eq(schema.workItemType.id, typeId));
+    expect(type?.permissions?.view).toEqual({ members: "none" });
+    expect(type?.viewBase).toBe("none");
+  });
+});

@@ -24,6 +24,7 @@ import { assertSpaceMembers, requireWriter, syncFieldAccess } from "./access.ts"
 import { withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import { recomputeFlow } from "./flow.ts";
 import { recomputeFormulas } from "./formulas.ts";
+import { itemVisible, requireCreate } from "./permissions.ts";
 import { planNodes } from "./planning.ts";
 import { zql } from "./schema.gen.ts";
 
@@ -86,6 +87,7 @@ export async function createWorkItem(
   );
   if (!type) throw new Error("工作项类型不存在或没有权限。");
   await requireWriter(tx, type.spaceId, userID);
+  await requireCreate(tx, type.spaceId, type.id, userID);
   // 字段值先按类型整理成规范形式，流程引擎按整理后的值判断出现条件
   const defs = await withRuntimeOptions(
     tx,
@@ -263,7 +265,7 @@ export async function copyWorkItem(
   const source = await tx.run(
     zql.workItem
       .where("id", args.sourceId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
+      .where(itemVisible(userID))
       .related("type", (t) => t.related("fields"))
       .related("flowVersion")
       .related("fieldValues")

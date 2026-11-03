@@ -16,6 +16,7 @@ import { useActiveSpace } from "@/components/AppShell";
 import { ColumnsEditor } from "@/components/ColumnsEditor";
 import { FieldConfigSheet, type FieldPatch } from "@/components/FieldConfigSheet";
 import { LayoutEditor } from "@/components/LayoutEditor";
+import { PermissionsEditor } from "@/components/PermissionsEditor";
 import { RoleConfigSheet } from "@/components/RoleConfigSheet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,7 +87,7 @@ export function displayFormula(source: string, fields: readonly { key: string; n
 }
 
 /** 工作项配置的页签，和飞书项目一致：基本信息、字段、页面布局、流程、角色。 */
-export const TYPE_MENU_TABS = ["baseInfo", "field", "layout", "workflow", "role", "columns"] as const;
+export const TYPE_MENU_TABS = ["baseInfo", "field", "layout", "workflow", "role", "columns", "permission"] as const;
 export type TypeMenuTab = (typeof TYPE_MENU_TABS)[number];
 const TYPE_MENU_LABEL: Record<TypeMenuTab, string> = {
   baseInfo: "基本信息",
@@ -95,6 +96,7 @@ const TYPE_MENU_LABEL: Record<TypeMenuTab, string> = {
   workflow: "流程",
   role: "角色",
   columns: "列",
+  permission: "权限",
 };
 
 /** 空间配置 → 工作项 → 某个工作项：全屏的配置页。 */
@@ -495,6 +497,26 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
               setError(null);
               const outcome = await zero.mutate(
                 mutators.workItemType.setDefaultDisplay({ id: typeId, display: display as never }),
+              ).client;
+              if (outcome.type === "error") setError(outcome.error.message);
+              return outcome.type !== "error";
+            }}
+          />
+        </Section>
+      )}
+
+      {tab === "permission" && (
+        <Section title="权限">
+          <PermissionsEditor
+            key={JSON.stringify(space?.userGroups.map((g) => g.id))}
+            roles={type.roles}
+            groups={space?.userGroups ?? []}
+            value={type.permissions ?? null}
+            canManage={isAdmin}
+            onSave={async (permissions) => {
+              setError(null);
+              const outcome = await zero.mutate(
+                mutators.workItemType.setPermissions({ typeId, permissions: permissions as never }),
               ).client;
               if (outcome.type === "error") setError(outcome.error.message);
               return outcome.type !== "error";

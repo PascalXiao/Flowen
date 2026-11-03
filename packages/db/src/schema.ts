@@ -166,6 +166,50 @@ export const spaceMember = pgTable(
   (t) => [primaryKey({ columns: [t.spaceId, t.userId] })],
 );
 
+/**
+ * 空间的自定义用户组（对照飞书项目「权限管理 → 用户组」）：一组人，本身没有权限，
+ * 在工作项类型的「权限」里授权给它。
+ */
+export const userGroup = pgTable("user_group", {
+  id: text("id").primaryKey(),
+  spaceId: text("space_id")
+    .notNull()
+    .references(() => space.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: createdAt(),
+});
+
+export const userGroupMember = pgTable(
+  "user_group_member",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => userGroup.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.userId] })],
+);
+
+/** 查看工作项的范围：全部、仅自己参与的（创建、担任角色、关注）、不可见。 */
+export type ViewLevel = "all" | "involved" | "none";
+/** 按类型授权的操作。 */
+export type PermissionOp = "create" | "terminate" | "freeze" | "upgrade";
+/** 授权对象：空间成员（兜底）、用户组、工作项上的角色。 */
+export type Grantee = "members" | `group:${string}` | `role:${string}`;
+
+/**
+ * 工作项类型的权限（对照飞书项目「工作项角色与用户组权限配置」）。
+ * view：每个授权对象能看到的范围，取最大；空间管理员和工作项上担任角色的人总能看到。
+ * ops：每种操作对每个授权对象「允许」或「禁止」；禁止优先，其次允许，都没有就不能做；
+ * 某种操作一条都没配时按默认（新建：所有成员；终止、冻结、升级模板：工作项负责人）。
+ */
+export interface TypePermissions {
+  view?: Partial<Record<Grantee, ViewLevel>>;
+  ops?: Partial<Record<PermissionOp, Partial<Record<Grantee, "allow" | "deny">>>>;
+}
+
 /** 工作项类型的设置（对照飞书项目工作项类型的「基础设置」）。 */
 export interface TypeSettings {
   /** 复制工作项时不带过去的字段（字段键或关联名）。 */
@@ -190,6 +234,10 @@ export const workItemType = pgTable(
     defaultDisplay: jsonb("default_display").$type<ViewDisplay>(),
     /** 类型的其他设置：复制工作项时不带过去的字段和角色等。 */
     settings: jsonb("settings").$type<TypeSettings>(),
+    /** 权限：查看范围和操作授权。 */
+    permissions: jsonb("permissions").$type<TypePermissions>(),
+    /** 空间成员（不算用户组）能看到的范围，由 permissions.view.members 得出；查询按它过滤。 */
+    viewBase: text("view_base").$type<ViewLevel>().notNull().default("all"),
     sort: integer("sort").notNull().default(0),
     createdAt: createdAt(),
   },
@@ -512,6 +560,24 @@ export const fieldViewer = pgTable(
   (t) => [primaryKey({ columns: [t.workItemId, t.fieldKey, t.userId] })],
 );
 
+/**
+ * 用户组给的、比空间成员更大的查看范围：每个类型每人一条。
+ * 由 mutator 在类型权限或用户组成员变化时维护；查询靠它和 work_item_type.view_base 过滤工作项。
+ */
+export const typeAccess = pgTable(
+  "type_access",
+  {
+    typeId: text("type_id")
+      .notNull()
+      .references(() => workItemType.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    level: text("level").$type<ViewLevel>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.typeId, t.userId] })],
+);
+
 /** 关注、收藏：每人对每个工作项各一条。 */
 export const workItemMark = pgTable(
   "work_item_mark",
@@ -827,6 +893,21 @@ export const spaceRelations = relations(space, ({ many }) => ({
   views: many(savedView),
   webhooks: many(webhook),
   businessLines: many(businessLine),
+  userGroups: many(userGroup),
+}));
+
+export const userGroupRelations = relations(userGroup, ({ one, many }) => ({
+  space: one(space, { fields: [userGroup.spaceId], references: [space.id] }),
+  members: many(userGroupMember),
+}));
+
+export const userGroupMemberRelations = relations(userGroupMember, ({ one }) => ({
+  group: one(userGroup, { fields: [userGroupMember.groupId], references: [userGroup.id] }),
+  user: one(user, { fields: [userGroupMember.userId], references: [user.id] }),
+}));
+
+export const typeAccessRelations = relations(typeAccess, ({ one }) => ({
+  type: one(workItemType, { fields: [typeAccess.typeId], references: [workItemType.id] }),
 }));
 
 export const businessLineRelations = relations(businessLine, ({ one }) => ({
@@ -846,6 +927,8 @@ export const workItemTypeRelations = relations(workItemType, ({ one, many }) => 
   workItems: many(workItem),
   /** 从这个类型出发的自定义关联。 */
   relationDefs: many(relationDef, { relationName: "fromType" }),
+  /** 用户组给的查看范围。 */
+  access: many(typeAccess),
 }));
 
 export const fieldDefRelations = relations(fieldDef, ({ one }) => ({

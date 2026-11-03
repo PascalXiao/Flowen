@@ -2,6 +2,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { requireWriter } from "./access.ts";
 import { recomputeFormulas } from "./formulas.ts";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 import { assertAdmin } from "./templates.ts";
 
@@ -69,10 +70,7 @@ export async function deleteRelationDef(tx: Transaction, args: z.output<typeof d
 
 /** 当前用户所在空间里的工作项。 */
 function visibleItem(id: string, userID: string) {
-  return zql.workItem
-    .where("id", id)
-    .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-    .one();
+  return zql.workItem.where("id", id).where(itemVisible(userID)).one();
 }
 
 /**
