@@ -9,6 +9,7 @@ export * from "./formulas.ts";
 export * from "./lifecycle.ts";
 export * from "./marks.ts";
 export * from "./mutators.ts";
+export * from "./nudge.ts";
 export * from "./permissions.ts";
 export * from "./planning.ts";
 export * from "./queries.ts";

@@ -45,6 +45,8 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       return `${node()}恢复`;
     case "nodeRolledBack":
       return `回滚到${node()}`;
+    case "nodeNudged":
+      return `催了${node()}的负责人`;
     case "stageChanged":
       return `阶段变为「${str(p.to)}」`;
     case "templateUpgraded":

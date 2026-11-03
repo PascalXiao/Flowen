@@ -1,8 +1,10 @@
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import {
   availableOptions,
   canEditRoleMembers,
   conditionView,
   type Day,
+  dayFromDate,
   dayFromIso,
   dayInTimeZone,
   dayToIso,
@@ -163,6 +165,14 @@ export function WorkItemView({ itemId }: { itemId: string }) {
     const { client, server } = zero.mutate(request);
     for (const outcome of [await client, await server])
       if (outcome.type === "error") return setError(outcome.error.message);
+  }
+  /** 催一催：提醒节点的其他负责人。同一个人 10 分钟内只能催一次，由服务端判断。 */
+  async function nudge(nodeKey: string) {
+    setError(null);
+    const { client, server } = zero.mutate(mutators.node.nudge({ workItemId: itemId, nodeKey }));
+    for (const outcome of [await client, await server])
+      if (outcome.type === "error") return setError(outcome.error.message);
+    Toast.success("已提醒负责人");
   }
   /** 节点负责人、担任节点可操作角色的人和空间管理员可以回滚、改排期；服务端会再校验一遍。 */
   const canOperate = (nodeKey: string) =>
@@ -979,7 +989,15 @@ export function WorkItemView({ itemId }: { itemId: string }) {
         )}
         {graph && view === "flow" && (
           <div className="h-56">
-            <Diagram graph={graph} states={states} selected={selected} onSelect={setSelected} />
+            <Diagram
+              graph={graph}
+              states={states}
+              selected={selected}
+              onSelect={setSelected}
+              today={today}
+              timeZone={item.space?.timezone ?? "Asia/Shanghai"}
+              nameOf={nameOf}
+            />
           </div>
         )}
         {graph && view === "gantt" && (
@@ -1088,8 +1106,13 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                           />
                         )}
                         {nodeTasks(node.key, node.name, false)}
-                        {(canConfirm || (node.buttons?.length && canWrite)) && (
+                        {(canConfirm || (node.buttons?.length && canWrite) || owners.some((u) => u !== me)) && (
                           <div className="flex flex-wrap gap-2">
+                            {owners.some((u) => u !== me) && (
+                              <Button size="sm" variant="outline" onClick={() => nudge(node.key)}>
+                                催一催
+                              </Button>
+                            )}
                             {canConfirm && (
                               <Button size="sm" onClick={() => confirm(node.key)}>
                                 {bySubItems ? "手动完成" : "确认完成"}
@@ -1615,18 +1638,50 @@ function NodesTable({
 }
 
 /** 节点流程图：从左到右，进行中的节点放在视野左侧。点节点在下面的节点卡片里看详情、回滚。 */
+type DiagramNodeState = {
+  state: NodeState | null;
+  conclusion?: string | null;
+  owners?: readonly string[] | null;
+  plannedStart?: number | null;
+  plannedEnd?: number | null;
+  actualStart?: number | null;
+  actualEnd?: number | null;
+};
+
+/**
+ * 节点的延期情况：进行中且过了计划完成日是「延期 N 天」，完成晚于计划完成日是「超期完成」。
+ * 计划日期按天存（UTC 零点），实际时间按空间时区折成天。
+ */
+export function nodeDelay(n: DiagramNodeState | undefined, today: Day, timeZone: string) {
+  if (!n?.plannedEnd) return null;
+  const planned = dayFromDate(n.plannedEnd);
+  if (n.state === "inProgress" && today > planned) return { kind: "overdue" as const, days: today - planned };
+  if (n.state === "completed" && n.actualEnd != null) {
+    const actual = dayInTimeZone(n.actualEnd, timeZone);
+    if (actual > planned) return { kind: "late" as const, days: actual - planned };
+  }
+  return null;
+}
+
 function Diagram({
   graph,
   states,
   selected,
   onSelect,
+  today,
+  timeZone,
+  nameOf,
 }: {
   graph: FlowGraph;
-  states: Map<string, { state: NodeState | null; conclusion?: string | null }>;
+  states: Map<string, DiagramNodeState>;
   selected: string | null;
   onSelect: (nodeKey: string) => void;
+  today: Day;
+  timeZone: string;
+  nameOf: (userId: string) => string;
 }) {
   const positions = useMemo(() => layoutByDepth(graph), [graph]);
+  const delayOf = (key: string) => nodeDelay(states.get(key), today, timeZone);
   // 流程图很宽，缩到一屏放不下。打开时以第一个进行中的节点为准，放在左侧偏上
   const [viewport] = useState(() => {
     const zoom = 0.9;
@@ -1646,28 +1701,56 @@ function Diagram({
       targetPosition: Position.Left,
       data: {
         label: (
-          <div className="flex items-center gap-2 text-left" title={`${n.name}（${STATE_LABEL[state]}）`}>
-            {n.milestone ? <Diamond className="size-4 shrink-0 text-violet-600" /> : STATE_ICON[state]}
-            <span className={cn("min-w-0 flex-1 truncate", state === "skipped" && "line-through")}>{n.name}</span>
-            {(() => {
-              // 有完成结论的已完成节点，显示结论（已通过 / 未通过）
-              const value = states.get(n.key)?.conclusion;
-              const option = value ? n.conclusion?.options.find((o) => o.value === value) : undefined;
-              return option ? (
-                <span
-                  className={cn("shrink-0 text-xs", option.passed === false ? "text-danger-600" : "text-success-600")}
-                >
-                  {option.label}
-                </span>
-              ) : null;
-            })()}
-            <span className="sr-only">{STATE_LABEL[state]}</span>
-          </div>
+          <Tooltip
+            position="bottom"
+            content={
+              <NodeHoverCard
+                name={n.name}
+                node={states.get(n.key)}
+                delay={delayOf(n.key)}
+                timeZone={timeZone}
+                nameOf={nameOf}
+              />
+            }
+          >
+            <div className="flex items-center gap-2 text-left">
+              {n.milestone ? <Diamond className="size-4 shrink-0 text-violet-600" /> : STATE_ICON[state]}
+              <span className={cn("min-w-0 flex-1 truncate", state === "skipped" && "line-through")}>{n.name}</span>
+              {(() => {
+                const delay = delayOf(n.key);
+                return delay ? (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1 text-[11px] leading-4",
+                      delay.kind === "overdue" ? "bg-danger-50 text-danger-600" : "bg-warning-50 text-warning-600",
+                    )}
+                  >
+                    {delay.kind === "overdue" ? `延期 ${delay.days} 天` : "超期完成"}
+                  </span>
+                ) : null;
+              })()}
+              {(() => {
+                // 有完成结论的已完成节点，显示结论（已通过 / 未通过）
+                const value = states.get(n.key)?.conclusion;
+                const option = value ? n.conclusion?.options.find((o) => o.value === value) : undefined;
+                return option ? (
+                  <span
+                    className={cn("shrink-0 text-xs", option.passed === false ? "text-danger-600" : "text-success-600")}
+                  >
+                    {option.label}
+                  </span>
+                ) : null;
+              })()}
+              <span className="sr-only">{STATE_LABEL[state]}</span>
+            </div>
+          </Tooltip>
         ),
       },
       className: cn(
         "!w-[184px] !rounded-lg !border !bg-surface !px-3 !py-2 !text-[13px] !text-fg !shadow-card",
         STATE_STYLE[state],
+        delayOf(n.key)?.kind === "overdue" && "!border-danger-500 !ring-danger-50",
+        delayOf(n.key)?.kind === "late" && "!border-warning-500/60",
         selected === n.key && "!border-brand-500",
       ),
     };
@@ -1701,5 +1784,43 @@ function Diagram({
       <Background color="var(--color-line)" gap={20} />
       <Controls showInteractive={false} />
     </ReactFlow>
+  );
+}
+
+/** 流程图上悬停节点时的卡片：状态、负责人、计划和实际起止、延期情况（对照飞书项目流程图的悬停信息）。 */
+function NodeHoverCard({
+  name,
+  node,
+  delay,
+  timeZone,
+  nameOf,
+}: {
+  name: string;
+  node: DiagramNodeState | undefined;
+  delay: ReturnType<typeof nodeDelay>;
+  timeZone: string;
+  nameOf: (userId: string) => string;
+}) {
+  const state = node?.state ?? "notStarted";
+  const planned = (ms: number | null | undefined) => (ms == null ? null : dayToIso(dayFromDate(ms)));
+  const actual = (ms: number | null | undefined) => (ms == null ? null : dayToIso(dayInTimeZone(ms, timeZone)));
+  const span = (a: string | null, b: string | null) => (a || b ? `${a ?? "—"} → ${b ?? "—"}` : "未排期");
+  const rows: [string, string][] = [
+    ["状态", STATE_LABEL[state]],
+    ["负责人", (node?.owners ?? []).map(nameOf).join("、") || "—"],
+    ["计划", span(planned(node?.plannedStart), planned(node?.plannedEnd))],
+    ["实际", node?.actualStart ? span(actual(node.actualStart), actual(node.actualEnd)) : "未开始"],
+  ];
+  if (delay) rows.push(["延期", delay.kind === "overdue" ? `已延期 ${delay.days} 天` : `晚 ${delay.days} 天完成`]);
+  return (
+    <div className="flex min-w-52 flex-col gap-1 text-xs">
+      <div className="mb-0.5 font-medium text-[13px]">{name}</div>
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex gap-3">
+          <span className="w-12 shrink-0 opacity-70">{label}</span>
+          <span className="tabular-nums">{value}</span>
+        </div>
+      ))}
+    </div>
   );
 }

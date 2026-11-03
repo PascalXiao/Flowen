@@ -52,6 +52,7 @@ import {
   workItemIdArgs,
 } from "./lifecycle.ts";
 import { markArgs, recordVisit, setMark, visitArgs } from "./marks.ts";
+import { nudgeArgs, nudgeNode } from "./nudge.ts";
 import {
   createGroup,
   createGroupArgs,
@@ -325,6 +326,9 @@ export const mutators = defineMutators({
     }),
     upgrade: defineMutator(upgradeArgs, async ({ tx, args, ctx }) => {
       await upgradeWorkItem(tx, args, ctx.userID);
+    }),
+    nudge: defineMutator(nudgeArgs, async ({ tx, args, ctx }) => {
+      await nudgeNode(tx, args, ctx.userID);
     }),
   },
   task: {

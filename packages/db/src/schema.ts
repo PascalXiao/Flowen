@@ -771,7 +771,7 @@ export const notification = pgTable(
       .notNull()
       .references(() => space.id, { onDelete: "cascade" }),
     workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation">().notNull(),
+    kind: text("kind").$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation" | "nudge">().notNull(),
     /** 列表里显示的一句话，生成时写好，避免前端再拼。 */
     text: text("text").notNull(),
     eventId: bigint("event_id", { mode: "number" }).notNull(),

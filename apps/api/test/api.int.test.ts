@@ -1060,6 +1060,27 @@ describe("comments and notifications", () => {
     expect((await inbox(admin.userId)).filter((n) => n.kind === "mentioned")).toEqual([]);
   });
 
+  it("nudges a node's owners once per ten minutes", async () => {
+    await expect(
+      services.zero.run("node.nudge", { workItemId: itemId, nodeKey: "state_51" }, admin.userId),
+    ).rejects.toThrow("只能催进行中的节点");
+
+    await services.zero.run("node.nudge", { workItemId: itemId, nodeKey: "doing" }, admin.userId);
+    const event = (await eventsOf()).at(-1);
+    expect(event).toMatchObject({ kind: "nodeNudged", actor: admin.userId, payload: { node: "doing" } });
+    // 只提醒其他负责人，不提醒催的人自己
+    const to = (event?.payload as { to: string[] }).to;
+    expect(to).toContain(member.userId);
+    expect(to).not.toContain(admin.userId);
+    await notify(services.database, event?.id as number);
+    expect((await inbox(member.userId)).filter((n) => n.kind === "nudge").map((n) => n.text)).toEqual([
+      expect.stringContaining("催你处理「新品 N」的节点「需求立项提案」"),
+    ]);
+    await expect(
+      services.zero.run("node.nudge", { workItemId: itemId, nodeKey: "doing" }, admin.userId),
+    ).rejects.toThrow("10 分钟内已经催过了");
+  });
+
   it("marks only your own notifications read", async () => {
     const ids = (await inbox(member.userId)).map((n) => n.id);
     await services.zero.run("notification.markRead", { ids }, admin.userId);
