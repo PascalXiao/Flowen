@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   type AutomationRuleDefinition,
   cond,
+  dateTriggerTarget,
+  dayFromIso,
+  dayOfDateValue,
+  localSlot,
+  pickActions,
   renderTemplate,
   resolveRecipients,
   ruleApplies,
+  scheduleDue,
   triggerMatches,
 } from "../src/index.ts";
 
@@ -77,5 +83,62 @@ describe("notify recipients", () => {
   });
   it("renders the work item name into text", () => {
     expect(renderTemplate("「{{name}}」要验收了", { name: "新品 A" })).toBe("「新品 A」要验收了");
+  });
+});
+
+describe("time triggers", () => {
+  // 2026-11-03 是星期二；上海 09:00 是 UTC 01:00
+  const at = Date.parse("2026-11-03T01:00:00Z");
+  const slot = localSlot(at, "Asia/Shanghai");
+
+  it("reads the local day, weekday and hour", () => {
+    expect(slot).toEqual({ day: dayFromIso("2026-11-03"), weekday: 2, monthDay: 3, hour: 9 });
+    expect(localSlot(Date.parse("2026-11-02T23:00:00Z"), "Asia/Shanghai").hour).toBe(7);
+  });
+
+  it("fires schedules on the chosen hour and days", () => {
+    expect(scheduleDue({ kind: "schedule", frequency: "day", hour: 9 }, slot)).toBe(true);
+    expect(scheduleDue({ kind: "schedule", frequency: "day", hour: 10 }, slot)).toBe(false);
+    expect(scheduleDue({ kind: "schedule", frequency: "week", weekdays: [1, 2], hour: 9 }, slot)).toBe(true);
+    expect(scheduleDue({ kind: "schedule", frequency: "week", weekdays: [5], hour: 9 }, slot)).toBe(false);
+    expect(scheduleDue({ kind: "schedule", frequency: "month", monthDays: [3], hour: 9 }, slot)).toBe(true);
+  });
+
+  it("targets due-soon, due and overdue dates", () => {
+    const base = { kind: "dateReached", date: "due", hour: 9 } as const;
+    expect(dateTriggerTarget({ ...base, when: "before", days: 2 }, slot)).toBe(dayFromIso("2026-11-05"));
+    expect(dateTriggerTarget({ ...base, when: "on", days: 0 }, slot)).toBe(dayFromIso("2026-11-03"));
+    expect(dateTriggerTarget({ ...base, when: "after", days: 1 }, slot)).toBe(dayFromIso("2026-11-02"));
+    expect(dateTriggerTarget({ ...base, when: "on", days: 0, hour: 8 }, slot)).toBeNull();
+    expect(dayOfDateValue("2026-11-05")).toBe(dayFromIso("2026-11-05"));
+    expect(dayOfDateValue("2026-11-05 18:30")).toBe(dayFromIso("2026-11-05"));
+    expect(dayOfDateValue({ start: "2026-11-01", end: "2026-11-05" })).toBe(dayFromIso("2026-11-05"));
+    expect(dayOfDateValue(null)).toBeNull();
+  });
+
+  it("only claims clock events addressed to the rule", () => {
+    const event = { kind: "schedule", payload: { ruleId: "r1", slot: at } };
+    const trigger = { kind: "schedule", frequency: "day", hour: 9 } as const;
+    expect(triggerMatches(trigger, event, "t1", "r1")).toBe(true);
+    expect(triggerMatches(trigger, event, "t1", "r2")).toBe(false);
+    expect(triggerMatches(trigger, event, "t1")).toBe(false);
+  });
+});
+
+describe("branches", () => {
+  const rule: AutomationRuleDefinition = {
+    trigger: { kind: "workItemCreated" },
+    condition: cond.equal("priority", "P0"),
+    actions: [{ type: "restore" }],
+    branches: [
+      { condition: cond.equal("priority", "P1"), actions: [{ type: "addComment", body: "P1" }] },
+      { condition: null, actions: [{ type: "addComment", body: "其他" }] },
+    ],
+  };
+  it("runs the main actions, else the first matching branch", () => {
+    expect(pickActions(rule, { priority: "P0" })).toEqual([{ type: "restore" }]);
+    expect(pickActions(rule, { priority: "P1" })).toEqual([{ type: "addComment", body: "P1" }]);
+    expect(pickActions(rule, { priority: "P2" })).toEqual([{ type: "addComment", body: "其他" }]);
+    expect(pickActions({ ...rule, branches: [] }, { priority: "P2" })).toBeNull();
   });
 });

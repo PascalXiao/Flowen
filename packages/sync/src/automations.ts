@@ -13,6 +13,28 @@ export const automationTrigger = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("statusChanged"), typeId, from: z.string().optional(), to: z.string().optional() }),
   z.object({ kind: z.literal("roleChanged"), typeId, role: z.string().optional() }),
   z.object({ kind: z.enum(["relationAdded", "relationRemoved"]), typeId, relation: z.string().optional() }),
+  z
+    .object({
+      kind: z.literal("schedule"),
+      typeId,
+      frequency: z.enum(["day", "week", "month"]),
+      weekdays: z.array(z.number().int().min(0).max(6)).optional(),
+      monthDays: z.array(z.number().int().min(1).max(31)).optional(),
+      hour: z.number().int().min(0).max(23),
+    })
+    .refine((t) => !!t.typeId, "定时触发要选工作项类型。")
+    .refine((t) => t.frequency !== "week" || (t.weekdays?.length ?? 0) > 0, "每周触发至少要选一天。")
+    .refine((t) => t.frequency !== "month" || (t.monthDays?.length ?? 0) > 0, "每月触发至少要选一天。"),
+  z
+    .object({
+      kind: z.literal("dateReached"),
+      typeId,
+      date: z.string().min(1, "要选按哪个日期触发。"),
+      when: z.enum(["before", "on", "after"]),
+      days: z.number().int().min(0).max(365),
+      hour: z.number().int().min(0).max(23),
+    })
+    .refine((t) => !!t.typeId, "时间触发要选工作项类型。"),
 ]);
 
 const recipient = z.custom<AutomationRecipient>(
@@ -59,11 +81,19 @@ export const automationAction = z.discriminatedUnion("type", [
   }),
 ]);
 
+const actionList = z.array(automationAction).min(1, "至少要有一个动作。").max(20);
+
 const ruleBody = {
   name: z.string().trim().min(1, "规则要有名称。").max(100),
   trigger: automationTrigger,
   condition: condition.nullable().optional(),
-  actions: z.array(automationAction).min(1, "至少要有一个动作。").max(20),
+  actions: actionList,
+  /** 主条件不满足时按顺序找第一个满足的分支；条件为空的分支是「否则」。 */
+  branches: z
+    .array(z.object({ condition: condition.nullable().optional(), actions: actionList }))
+    .max(10)
+    .nullable()
+    .optional(),
 };
 
 export const createAutomationArgs = z.object({ id: z.string(), spaceId: z.string(), ...ruleBody });
@@ -82,6 +112,7 @@ export async function createAutomation(tx: Transaction, args: z.output<typeof cr
     trigger: args.trigger,
     conditions: args.condition ?? null,
     actions: args.actions,
+    branches: args.branches?.length ? args.branches : null,
     createdBy: userID,
     createdAt: now,
     updatedAt: now,
@@ -105,6 +136,7 @@ export async function updateAutomation(tx: Transaction, args: z.output<typeof up
     trigger: args.trigger,
     conditions: args.condition ?? null,
     actions: args.actions,
+    branches: args.branches?.length ? args.branches : null,
     updatedAt: Date.now(),
   });
 }
