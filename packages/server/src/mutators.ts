@@ -1,4 +1,4 @@
-import { appendEvents, type NewEvent, type Tx } from "@fp/db";
+import { appendEvents, type NewEvent, schema, type Tx } from "@fp/db";
 import type { FlowEvent, StatusEvent } from "@fp/engine";
 import type { ZeroContext } from "@fp/sync";
 import {
@@ -23,6 +23,8 @@ import {
   deleteTaskArgs,
   mutators,
   nodeActionArgs,
+  nudgeArgs,
+  nudgeNode,
   pressButton,
   pressButtonArgs,
   removeRelation,
@@ -55,6 +57,10 @@ import {
 } from "@fp/sync";
 import { defineMutator, defineMutators } from "@rocicorp/zero";
 import type { DrizzleTransaction } from "@rocicorp/zero/server/adapters/drizzle";
+import { and, eq, gt, sql } from "drizzle-orm";
+
+/** 同一个人催同一个节点的最短间隔。 */
+const NUDGE_INTERVAL_MS = 10 * 60_000;
 
 /** 服务端事务里拿到的 Drizzle 事务，用它写事件，和 Zero 的写入在同一个数据库事务里。 */
 export function drizzleTx(tx: { location: string; dbTransaction?: { wrappedTransaction: unknown } }): Tx {
@@ -268,6 +274,30 @@ export const serverMutators = defineMutators(mutators, {
       await append(tx, ctx, [
         { spaceId, workItemId: args.workItemId, kind: "templateUpgraded", payload: { from, to }, actor: ctx.userID },
         ...flowEvents(spaceId, args.workItemId, events),
+      ]);
+    }),
+    nudge: defineMutator(nudgeArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, to } = await nudgeNode(tx, args, ctx.userID);
+      // 同一个人 10 分钟内只能催同一个节点一次，避免刷屏
+      const since = new Date(Date.now() - NUDGE_INTERVAL_MS);
+      const recent = await drizzleTx(tx).query.eventLog.findFirst({
+        where: and(
+          eq(schema.eventLog.workItemId, args.workItemId),
+          eq(schema.eventLog.kind, "nodeNudged"),
+          eq(schema.eventLog.actor, ctx.userID),
+          gt(schema.eventLog.at, since),
+          sql`${schema.eventLog.payload}->>'node' = ${args.nodeKey}`,
+        ),
+      });
+      if (recent) throw new Error("10 分钟内已经催过了，稍后再催。");
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "nodeNudged",
+          payload: { node: args.nodeKey, to },
+          actor: ctx.userID,
+        },
       ]);
     }),
     completeBySubItems: defineMutator(nodeActionArgs, async ({ tx, args, ctx }) => {
