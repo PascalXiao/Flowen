@@ -1,6 +1,7 @@
 import { fieldIndex } from "@fp/engine";
 import { defineQueries, defineQuery, type ExpressionBuilder } from "@rocicorp/zero";
 import { z } from "zod";
+import { itemVisible } from "./permissions.ts";
 import { type Schema, zql } from "./schema.gen.ts";
 import { workItemFilter } from "./views.ts";
 
@@ -30,9 +31,7 @@ function containsPattern(text: string) {
 
 /** 空间里当前用户能看到、并且符合筛选条件的工作项。 */
 function spaceItems({ spaceId, filter = {} }: z.output<typeof spaceItemsArgs>, userID: string) {
-  let q = zql.workItem
-    .where("spaceId", spaceId)
-    .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)));
+  let q = zql.workItem.where("spaceId", spaceId).where(itemVisible(userID));
   if (filter.typeIds?.length) q = q.where("typeId", "IN", filter.typeIds);
   if (filter.statuses?.length) q = q.where("status", "IN", filter.statuses);
   if (filter.stages?.length) q = q.where("stage", "IN", filter.stages);
@@ -112,6 +111,8 @@ export const queries = defineQueries({
         .related("members", (m) => m.related("user"))
         .related("businessLines", (b) => b.orderBy("sort", "asc"))
         .related("views", (v) => v.orderBy("createdAt", "asc"))
+        // 用户组和成员：权限配置要用，前端也按它算自己能看到哪些工作项类型
+        .related("userGroups", (g) => g.related("members").orderBy("createdAt", "asc"))
         .related("workItemTypes", (t) =>
           t
             .orderBy("sort", "asc")
@@ -239,12 +240,12 @@ export const queries = defineQueries({
           .related("outgoing", (r) =>
             r
               .where("relationDefId", "IS NOT", null)
-              .related("to", (w) => w.related("fieldValues", visibleFieldValues(me))),
+              .related("to", (w) => w.where(itemVisible(me)).related("fieldValues", visibleFieldValues(me))),
           )
           .related("incoming", (r) =>
             r
               .where("relationDefId", "IS NOT", null)
-              .related("from", (w) => w.related("fieldValues", visibleFieldValues(me))),
+              .related("from", (w) => w.where(itemVisible(me)).related("fieldValues", visibleFieldValues(me))),
           )
           .related("marks", (m) => m.where("userId", me))
           .related("visits", (v) => v.where("userId", me))
@@ -254,7 +255,7 @@ export const queries = defineQueries({
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
       zql.workItem
         .where("id", args.id)
-        .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .where(itemVisible(ctx.userID))
         .related("flowVersion")
         .related("type", (t) =>
           t
@@ -282,6 +283,7 @@ export const queries = defineQueries({
           r
             .related("to", (w) =>
               w
+                .where(itemVisible(ctx.userID))
                 .related("fieldValues", visibleFieldValues(ctx.userID))
                 .related("type", (t) => t.related("fields"))
                 .related("nodes"),
@@ -292,6 +294,7 @@ export const queries = defineQueries({
           r
             .related("from", (w) =>
               w
+                .where(itemVisible(ctx.userID))
                 .related("fieldValues", visibleFieldValues(ctx.userID))
                 .related("type", (t) => t.related("fields"))
                 .related("nodes"),
@@ -316,9 +319,7 @@ export const queries = defineQueries({
       zql.relation
         .where("fromId", args.id)
         .where(hierarchyEdges(args.hierarchy))
-        .whereExists("to", (w) =>
-          w.whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID))),
-        )
+        .whereExists("to", (w) => w.where(itemVisible(ctx.userID)))
         .related("to", (w) => w.related("type").related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy))))
         .orderBy("createdAt", "asc"),
     ),
@@ -328,9 +329,7 @@ export const queries = defineQueries({
       ({ args, ctx }) =>
         zql.eventLog
           .where("workItemId", args.workItemId)
-          .whereExists("workItem", (w) =>
-            w.whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID))),
-          )
+          .whereExists("workItem", (w) => w.where(itemVisible(ctx.userID)))
           .where(visibleEvent(ctx.userID))
           .related("actorUser")
           .orderBy("id", "desc")
@@ -373,7 +372,7 @@ export const queries = defineQueries({
       const pattern = containsPattern(args.q);
       const visible = visibleFieldValues(ctx.userID);
       return zql.workItem
-        .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .where(itemVisible(ctx.userID))
         .where(({ or, cmp, exists }) =>
           or(
             cmp("name", "ILIKE", pattern),

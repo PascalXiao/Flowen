@@ -3,6 +3,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { assertSpaceMembers, requireWriter } from "./access.ts";
 import { isoDate } from "./flow.ts";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 import { nodeInstanceId } from "./work-items.ts";
 
@@ -32,11 +33,7 @@ export const deleteTaskArgs = z.object({ id: z.string() });
  */
 async function editableNode(tx: Transaction, workItemId: string, nodeKey: string, userID: string) {
   const item = await tx.run(
-    zql.workItem
-      .where("id", workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("flowVersion")
-      .one(),
+    zql.workItem.where("id", workItemId).where(itemVisible(userID)).related("flowVersion").one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   await requireWriter(tx, item.spaceId, userID);

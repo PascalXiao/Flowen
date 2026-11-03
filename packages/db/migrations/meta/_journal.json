@@ -183,6 +183,13 @@
       "when": 1793585642767,
       "tag": "0025_node_effort",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793672401322,
+      "tag": "0026_user_groups_permissions",
+      "breakpoints": true
     }
   ]
 }

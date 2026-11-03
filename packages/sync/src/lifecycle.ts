@@ -3,6 +3,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { myRoles, requireWriter } from "./access.ts";
 import { recomputeFlow } from "./flow.ts";
+import { itemVisible, requireOp } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 
 /*
@@ -16,23 +17,33 @@ export const terminateArgs = z.object({ workItemId: z.string(), reason: z.string
 export const workItemIdArgs = z.object({ workItemId: z.string() });
 export const setFrozenArgs = z.object({ workItemId: z.string(), frozen: z.boolean() });
 
-async function ownedItem(tx: Transaction, workItemId: string, userID: string, action: string) {
+async function ownedItem(
+  tx: Transaction,
+  workItemId: string,
+  userID: string,
+  action: string,
+  op: "terminate" | "freeze",
+) {
   const item = await tx.run(
-    zql.workItem
-      .where("id", workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("flowVersion")
-      .one(),
+    zql.workItem.where("id", workItemId).where(itemVisible(userID)).related("flowVersion").one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
-  const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
-  if (!isAdmin) {
-    const ownerRoles = (await tx.run(zql.roleDef.where("typeId", item.typeId)))
-      .filter((r) => r.config?.isOwner)
-      .map((r) => r.key);
-    const mine = await myRoles(tx, workItemId, userID);
-    if (!ownerRoles.some((r) => mine.includes(r))) throw new Error(`只有工作项负责人和空间管理员可以${action}。`);
-  }
+  await requireWriter(tx, item.spaceId, userID);
+  const mine = await myRoles(tx, workItemId, userID);
+  // 没配这项权限时：工作项负责人和空间管理员可以
+  await requireOp(
+    tx,
+    { spaceId: item.spaceId, typeId: item.typeId, itemRoles: mine },
+    userID,
+    op,
+    async () => {
+      const ownerRoles = (await tx.run(zql.roleDef.where("typeId", item.typeId)))
+        .filter((r) => r.config?.isOwner)
+        .map((r) => r.key);
+      return ownerRoles.some((r) => mine.includes(r));
+    },
+    `你没有权限${action}（默认只有工作项负责人和空间管理员可以）。`,
+  );
   return item;
 }
 
@@ -42,7 +53,7 @@ export function assertNotFrozen(item: { frozen?: boolean | null }) {
 }
 
 export async function terminateWorkItem(tx: Transaction, args: z.output<typeof terminateArgs>, userID: string) {
-  const item = await ownedItem(tx, args.workItemId, userID, "终止工作项");
+  const item = await ownedItem(tx, args.workItemId, userID, "终止工作项", "terminate");
   if (item.status === "terminated") throw new Error("工作项已经终止了。");
   if (item.status === "completed") throw new Error("已完成的工作项不能终止。");
   await tx.mutate.workItem.update({
@@ -60,7 +71,7 @@ export async function restoreWorkItem(
   args: z.output<typeof workItemIdArgs>,
   userID: string,
 ): Promise<{ spaceId: string; events: FlowEvent[] }> {
-  const item = await ownedItem(tx, args.workItemId, userID, "恢复工作项");
+  const item = await ownedItem(tx, args.workItemId, userID, "恢复工作项", "terminate");
   if (item.status !== "terminated") throw new Error("工作项没有终止。");
   const statusFlow = statusFlowOf(item.flowVersion?.definition);
   const done = statusFlow?.statuses.find((s) => s.key === item.flowStatus);
@@ -75,7 +86,7 @@ export async function restoreWorkItem(
 }
 
 export async function setWorkItemFrozen(tx: Transaction, args: z.output<typeof setFrozenArgs>, userID: string) {
-  const item = await ownedItem(tx, args.workItemId, userID, args.frozen ? "冻结工作项" : "解冻工作项");
+  const item = await ownedItem(tx, args.workItemId, userID, args.frozen ? "冻结工作项" : "解冻工作项", "freeze");
   if (!!item.frozen === args.frozen) throw new Error(args.frozen ? "工作项已经冻结了。" : "工作项没有冻结。");
   await tx.mutate.workItem.update({ id: item.id, frozen: args.frozen, updatedAt: Date.now() });
   return { spaceId: item.spaceId };

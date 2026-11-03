@@ -1,6 +1,7 @@
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { assertSpaceMembers } from "./access.ts";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 
 export const createCommentArgs = z.object({
@@ -13,12 +14,7 @@ export const markReadArgs = z.object({ ids: z.array(z.string()).min(1).max(500) 
 
 /** 发表评论。只有空间成员能评论，也只能提及空间成员；返回空间 id，服务端写事件用。 */
 export async function createComment(tx: Transaction, args: z.output<typeof createCommentArgs>, userID: string) {
-  const item = await tx.run(
-    zql.workItem
-      .where("id", args.workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .one(),
-  );
+  const item = await tx.run(zql.workItem.where("id", args.workItemId).where(itemVisible(userID)).one());
   if (!item) throw new Error("工作项不存在或没有权限。");
   const mentions = [...new Set(args.mentions)].filter((u) => u !== userID);
   await assertSpaceMembers(tx, item.spaceId, mentions, "只能提及空间成员。");

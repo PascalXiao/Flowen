@@ -53,6 +53,19 @@ import {
 } from "./lifecycle.ts";
 import { markArgs, recordVisit, setMark, visitArgs } from "./marks.ts";
 import {
+  createGroup,
+  createGroupArgs,
+  deleteGroup,
+  groupIdArgs,
+  itemVisible,
+  renameGroup,
+  renameGroupArgs,
+  setGroupMembers,
+  setGroupMembersArgs,
+  setPermissionsArgs,
+  setTypePermissions,
+} from "./permissions.ts";
+import {
   addRelation,
   addRelationArgs,
   createRelationDef,
@@ -129,14 +142,9 @@ export const setFieldArgs = z.object({
   value: z.json(),
 });
 
-/** 当前用户能看到的工作项；不是空间成员就返回 undefined。 */
+/** 当前用户能看到的工作项（空间成员，并且类型权限让他看到）；看不到就返回 undefined。 */
 export function visibleWorkItem(tx: Transaction, workItemId: string, userID: string) {
-  return tx.run(
-    zql.workItem
-      .where("id", workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .one(),
-  );
+  return tx.run(zql.workItem.where("id", workItemId).where(itemVisible(userID)).one());
 }
 
 /**
@@ -244,6 +252,13 @@ export const mutators = defineMutators({
       setDefaultDisplay(tx, args, ctx.userID),
     ),
     setSettings: defineMutator(setTypeSettingsArgs, ({ tx, args, ctx }) => setTypeSettings(tx, args, ctx.userID)),
+    setPermissions: defineMutator(setPermissionsArgs, ({ tx, args, ctx }) => setTypePermissions(tx, args, ctx.userID)),
+  },
+  userGroup: {
+    create: defineMutator(createGroupArgs, ({ tx, args, ctx }) => createGroup(tx, args, ctx.userID)),
+    rename: defineMutator(renameGroupArgs, ({ tx, args, ctx }) => renameGroup(tx, args, ctx.userID)),
+    delete: defineMutator(groupIdArgs, ({ tx, args, ctx }) => deleteGroup(tx, args, ctx.userID)),
+    setMembers: defineMutator(setGroupMembersArgs, ({ tx, args, ctx }) => setGroupMembers(tx, args, ctx.userID)),
   },
   roleDef: {
     create: defineMutator(createRoleArgs, ({ tx, args, ctx }) => createRole(tx, args, ctx.userID)),

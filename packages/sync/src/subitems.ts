@@ -3,6 +3,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { requireWriter } from "./access.ts";
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
+import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 import { createWorkItem, nodeInstanceId } from "./work-items.ts";
 
@@ -20,11 +21,7 @@ export const createSubItemArgs = z.object({
  */
 export async function createSubItem(tx: Transaction, args: z.output<typeof createSubItemArgs>, userID: string) {
   const parent = await tx.run(
-    zql.workItem
-      .where("id", args.parentId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("flowVersion")
-      .one(),
+    zql.workItem.where("id", args.parentId).where(itemVisible(userID)).related("flowVersion").one(),
   );
   if (!parent) throw new Error("工作项不存在或没有权限。");
   await requireWriter(tx, parent.spaceId, userID);
@@ -73,11 +70,7 @@ export const createNodeSubItemArgs = z.object({
  */
 export async function createNodeSubItem(tx: Transaction, args: z.output<typeof createNodeSubItemArgs>, userID: string) {
   const item = await tx.run(
-    zql.workItem
-      .where("id", args.workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("flowVersion")
-      .one(),
+    zql.workItem.where("id", args.workItemId).where(itemVisible(userID)).related("flowVersion").one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   await requireWriter(tx, item.spaceId, userID);

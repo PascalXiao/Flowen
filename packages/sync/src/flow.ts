@@ -21,6 +21,7 @@ import { z } from "zod";
 import { requireWriter, syncFieldAccess } from "./access.ts";
 import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
+import { itemVisible, requireOp } from "./permissions.ts";
 import { type NodePlan, planNodes } from "./planning.ts";
 import { zql } from "./schema.gen.ts";
 import { assertRoleMembers, nodeInstanceId } from "./work-items.ts";
@@ -87,7 +88,7 @@ async function loadFlow(tx: Transaction, workItemId: string, userID: string): Pr
   const item = await tx.run(
     zql.workItem
       .where("id", workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
+      .where(itemVisible(userID))
       .related("space")
       .related("flowVersion")
       .related("fieldValues")
@@ -397,8 +398,14 @@ export async function upgradeWorkItem(
   const ownerRoles = (await tx.run(zql.roleDef.where("typeId", flow.typeId)))
     .filter((r) => r.config?.isOwner)
     .map((r) => r.key);
-  if (!flow.isAdmin && !ownerRoles.some((r) => flow.roles.includes(r)))
-    throw new Error("只有工作项负责人和空间管理员可以升级模板。");
+  await requireOp(
+    tx,
+    { spaceId: item.spaceId, typeId: flow.typeId, itemRoles: flow.roles },
+    userID,
+    "upgrade",
+    () => ownerRoles.some((r) => flow.roles.includes(r)),
+    "你没有权限升级模板（默认只有工作项负责人和空间管理员可以）。",
+  );
   const version = await tx.run(zql.flowVersion.where("id", template.currentVersionId).one());
   const definition = nodeFlowOf(version?.definition);
   if (!version || !definition) throw new Error("模板的当前版本不是节点流程。");
@@ -481,11 +488,7 @@ export async function setRoleMembers(
   userID: string,
 ): Promise<{ spaceId: string; from: string[]; to: string[] }> {
   const item = await tx.run(
-    zql.workItem
-      .where("id", args.workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("roleMembers")
-      .one(),
+    zql.workItem.where("id", args.workItemId).where(itemVisible(userID)).related("roleMembers").one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
@@ -633,11 +636,7 @@ export async function setRolePresence(
   userID: string,
 ): Promise<{ spaceId: string }> {
   const item = await tx.run(
-    zql.workItem
-      .where("id", args.workItemId)
-      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
-      .related("fieldValues")
-      .one(),
+    zql.workItem.where("id", args.workItemId).where(itemVisible(userID)).related("fieldValues").one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
