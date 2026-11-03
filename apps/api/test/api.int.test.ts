@@ -686,6 +686,119 @@ describe("automation rules", () => {
     await services.zero.run("automation.delete", { id: ruleId }, admin.userId);
     expect(await runsOf(ruleId)).toEqual([]);
   });
+
+  it("reacts to a comment by notifying, commenting, adding a task and creating a related work item", async () => {
+    const relationDefId = randomUUID();
+    await services.zero.run(
+      "relationDef.create",
+      { id: relationDefId, fromTypeId: typeId, toTypeId: typeId, name: "跟进项", cardinality: "many" },
+      admin.userId,
+    );
+    const id = await createItem();
+    const [role] = await services.database.db
+      .select()
+      .from(schema.roleMember)
+      .where(eq(schema.roleMember.workItemId, id));
+    if (!role) throw new Error("工作项没有角色成员");
+    const ruleId = randomUUID();
+    await services.zero.run(
+      "automation.create",
+      {
+        id: ruleId,
+        spaceId,
+        name: "评论后跟进",
+        trigger: { kind: "commentAdded", typeId },
+        actions: [
+          { type: "notify", to: [`role:${role.roleKey}`, `user:${member.userId}`], text: "「{{name}}」有新评论" },
+          { type: "addComment", body: "已收到，跟进中" },
+          { type: "createTask", node: "doing", name: "回复「{{name}}」的评论", assigneeId: member.userId },
+          { type: "createWorkItem", typeId, name: "{{name}} 的跟进", relationDefId },
+        ],
+      },
+      admin.userId,
+    );
+    await services.zero.run(
+      "comment.create",
+      { id: randomUUID(), workItemId: id, body: "什么时候能好？", mentions: [] },
+      member.userId,
+    );
+    const commented = (await eventsOf(id)).find((e) => e.kind === "commentAdded");
+    if (!commented) throw new Error("没有 commentAdded 事件");
+    expect(await matchRules(services.database, commented.id)).toEqual([ruleId]);
+    const runner = createMutatorRunner(services.database);
+    expect(await runRule(runner, ruleId, commented.id, "wf-3")).toBe("succeeded");
+    expect((await runsOf(ruleId))[0]?.error ?? null).toBeNull();
+
+    // 角色成员（管理员）收到通知；评论的人自己没选「触发人」，不收
+    const notes = await services.database.db
+      .select()
+      .from(schema.notification)
+      .where(and(eq(schema.notification.workItemId, id), eq(schema.notification.kind, "automation")));
+    expect(notes.map((n) => [n.userId, n.text])).toEqual([[admin.userId, "「新品 X」有新评论"]]);
+
+    const comments = await services.database.db.select().from(schema.comment).where(eq(schema.comment.workItemId, id));
+    expect(comments.map((c) => c.body).sort()).toEqual(["什么时候能好？", "已收到，跟进中"].sort());
+    const tasks = await services.database.db.select().from(schema.nodeTask).where(eq(schema.nodeTask.workItemId, id));
+    expect(tasks.map((t) => [t.name, t.nodeKey, t.assigneeId])).toEqual([
+      ["回复「新品 X」的评论", "doing", member.userId],
+    ]);
+    const [link] = await services.database.db
+      .select()
+      .from(schema.relation)
+      .where(and(eq(schema.relation.fromId, id), eq(schema.relation.relationDefId, relationDefId)));
+    const [followUp] = await services.database.db
+      .select()
+      .from(schema.workItem)
+      .where(eq(schema.workItem.id, link?.toId as string));
+    expect(followUp?.name).toBe("新品 X 的跟进");
+
+    // 自动化自己的评论不再触发规则；重试不会重复
+    const ownComment = (await eventsOf(id)).filter((e) => e.kind === "commentAdded").at(-1);
+    expect(ownComment?.causedBy).toBe(commented.id);
+    expect(await matchRules(services.database, ownComment?.id as number)).toEqual([]);
+    expect(await runRule(runner, ruleId, commented.id, "wf-3")).toBe("succeeded");
+    expect(await runsOf(ruleId)).toHaveLength(1);
+    await services.zero.run("automation.delete", { id: ruleId }, admin.userId);
+  });
+
+  it("matches status, role and termination triggers with their filters", async () => {
+    const ruleId = randomUUID();
+    await services.zero.run(
+      "automation.create",
+      {
+        id: ruleId,
+        spaceId,
+        name: "终止后恢复",
+        trigger: { kind: "workItemTerminated", typeId },
+        actions: [{ type: "restore" }],
+      },
+      admin.userId,
+    );
+    const id = await createItem();
+    await services.zero.run("workItem.terminate", { workItemId: id, reason: "误操作" }, admin.userId);
+    const terminated = (await eventsOf(id)).find((e) => e.kind === "workItemTerminated");
+    expect(await matchRules(services.database, terminated?.id as number)).toEqual([ruleId]);
+    expect(await runRule(createMutatorRunner(services.database), ruleId, terminated?.id as number, "wf-4")).toBe(
+      "succeeded",
+    );
+    const [item] = await services.database.db.select().from(schema.workItem).where(eq(schema.workItem.id, id));
+    expect(item?.status).not.toBe("terminated");
+    await services.zero.run("automation.delete", { id: ruleId }, admin.userId);
+
+    await expect(
+      services.zero.run(
+        "automation.create",
+        {
+          id: randomUUID(),
+          spaceId,
+          name: "x",
+          trigger: { kind: "workItemCreated" },
+          actions: [{ type: "notify", to: [], text: "x" }],
+        },
+        admin.userId,
+      ),
+    ).rejects.toThrow("收件人");
+  });
 });
 
 describe("saved views", () => {
