@@ -15,7 +15,14 @@ export const automationAction = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("setField"),
     field: z.string().min(1),
-    value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]),
+    value: z.union([
+      z.string(),
+      z.number(),
+      z.boolean(),
+      z.array(z.string()),
+      z.object({ start: z.string(), end: z.string() }),
+      z.null(),
+    ]),
   }),
   z.object({ type: z.literal("setRole"), role: z.string().min(1), userIds: z.array(z.string()) }),
   z.object({ type: z.literal("confirmNode"), node: z.string().min(1) }),

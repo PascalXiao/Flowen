@@ -1,3 +1,5 @@
+// 必须最先引入：给 Semi 注入 React 19 的 createRoot（Toast、Modal 等靠它挂载）。
+import "@douyinfe/semi-ui/react19-adapter";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

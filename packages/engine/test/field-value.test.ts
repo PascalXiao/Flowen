@@ -67,11 +67,49 @@ describe("conditions on typed values", () => {
     expect(evaluate(cond.equal("颜色", "green"), { 颜色: ["red", "blue"] })).toBe(false);
   });
 
+  it("treats notEqual as the opposite of equal, empty included", () => {
+    expect(evaluate(cond.notEqual("审核", "不通过"), { 审核: "通过" })).toBe(true);
+    expect(evaluate(cond.notEqual("审核", "不通过"), { 审核: "不通过" })).toBe(false);
+    expect(evaluate(cond.notEqual("审核", "不通过"), {})).toBe(true);
+    expect(evaluate(cond.notEqual("颜色", "red"), { 颜色: ["red", "blue"] })).toBe(false);
+  });
+
   it("compares numbers and dates", () => {
     expect(evaluate(cond.compare("数量", "gte", 10), { 数量: 10 })).toBe(true);
     expect(evaluate(cond.compare("数量", "gt", 10), { 数量: 10 })).toBe(false);
     expect(evaluate(cond.compare("数量", "lt", 10), { 数量: null })).toBe(false);
     expect(evaluate(cond.compare("上市", "lt", "2026-03-01"), { 上市: "2026-02-28" })).toBe(true);
     expect(evaluate(cond.compare("上市", "gt", "2026-03-01"), { 上市: "2026-02-28" })).toBe(false);
+  });
+});
+
+describe("field groups", () => {
+  const group = {
+    name: "成本率维护",
+    dataType: "fieldGroup" as const,
+    config: {
+      columns: [
+        { key: "品牌", name: "品牌", dataType: "select" as const, options },
+        { key: "成本率", name: "成本率", dataType: "number" as const },
+      ],
+    },
+  };
+
+  it("normalizes each row by its columns and drops empty rows", () => {
+    expect(
+      normalizeFieldValue(group, [
+        { 品牌: "red", 成本率: "0.3", 多余: 1 },
+        { 品牌: "", 成本率: null },
+        { 成本率: 0.4 },
+      ]),
+    ).toEqual([{ 品牌: "red", 成本率: 0.3 }, { 成本率: 0.4 }]);
+    expect(normalizeFieldValue(group, [{ 品牌: "" }])).toBeNull();
+    expect(() => normalizeFieldValue(group, [{ 品牌: "red" }, { 品牌: "pink" }])).toThrow("第 2 行");
+  });
+
+  it("shows the row count and indexes every cell", () => {
+    const rows = [{ 品牌: "red", 成本率: 0.3 }, { 品牌: "blue" }];
+    expect(formatFieldValue(group, rows)).toBe("2 行");
+    expect(fieldIndex(group, rows).str).toBe("红 0.3 蓝");
   });
 });

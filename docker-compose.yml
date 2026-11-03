@@ -139,6 +139,8 @@ services:
       ZERO_QUERY_FORWARD_COOKIES: "true"
       ZERO_MUTATE_FORWARD_COOKIES: "true"
       ZERO_ADMIN_PASSWORD: ${ZERO_ADMIN_PASSWORD:-feishu-dev}
+      # 同步进程数默认按 CPU 核数起，每个都要连数据库；核多的机器会把 Postgres 的 100 个连接用光
+      ZERO_NUM_SYNC_WORKERS: ${ZERO_NUM_SYNC_WORKERS:-4}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

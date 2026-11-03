@@ -1,33 +1,49 @@
 import { Slot } from "@radix-ui/react-slot";
-import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-normal transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
-  {
-    variants: {
-      variant: {
-        /** 主按钮：一个区域最多一个。 */
-        default: "bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700",
-        /** 次按钮：白底描边。 */
-        outline: "border border-line bg-surface text-fg hover:bg-canvas active:bg-pressed",
-        /** 文字按钮：工具栏、行内操作。 */
-        ghost: "text-fg hover:bg-hover active:bg-pressed",
-        link: "h-auto px-0 text-brand-500 hover:text-brand-600",
-        danger: "bg-danger-500 text-white hover:bg-danger-600",
-      },
-      size: {
-        default: "h-8 px-3.5",
-        sm: "h-7 px-2.5 text-xs",
-        lg: "h-9 px-4",
-        icon: "size-8",
-        "icon-sm": "size-7",
-      },
-    },
-    defaultVariants: { variant: "default", size: "default" },
-  },
-);
+/**
+ * 按钮：用 Semi Button 的样式类渲染原生 button，外观与 Semi 一致，
+ * 同时保留 ref 和 asChild（弹出层的触发器、链接按钮都靠这两样）。
+ */
+const VARIANTS = {
+  /** 主按钮：一个区域最多一个。 */
+  default: "semi-button-primary",
+  /** 次按钮：灰底。 */
+  outline: "semi-button-tertiary semi-button-light",
+  /** 文字按钮：工具栏、行内操作。 */
+  ghost: "semi-button-tertiary semi-button-borderless",
+  link: "semi-button-primary semi-button-borderless h-auto! p-0! hover:underline",
+  danger: "semi-button-danger",
+} as const;
+
+const SIZES = {
+  default: "",
+  sm: "semi-button-size-small",
+  lg: "semi-button-size-large",
+  icon: "semi-button-with-icon-only w-8 px-0!",
+  "icon-sm": "semi-button-size-small semi-button-with-icon-only w-6 px-0!",
+} as const;
+
+export function buttonVariants({
+  variant = "default",
+  size = "default",
+  disabled,
+  className,
+}: {
+  variant?: keyof typeof VARIANTS | null;
+  size?: keyof typeof SIZES | null;
+  disabled?: boolean;
+  className?: string;
+} = {}) {
+  return cn(
+    "semi-button gap-1.5 [&_svg]:size-4 [&_svg]:shrink-0",
+    VARIANTS[variant ?? "default"],
+    SIZES[size ?? "default"],
+    disabled && "semi-button-disabled",
+    className,
+  );
+}
 
 export function Button({
   className,
@@ -35,14 +51,24 @@ export function Button({
   size,
   asChild = false,
   type,
+  children,
   ...props
-}: React.ComponentProps<"button"> & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "button";
+}: React.ComponentProps<"button"> & {
+  variant?: keyof typeof VARIANTS | null;
+  size?: keyof typeof SIZES | null;
+  asChild?: boolean;
+}) {
+  const cls = buttonVariants({ variant, size, disabled: !!props.disabled, ...(className && { className }) });
+  if (asChild) {
+    return (
+      <Slot className={cls} {...props}>
+        {children}
+      </Slot>
+    );
+  }
   return (
-    <Comp
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...(!asChild && { type: type ?? "button" })}
-      {...props}
-    />
+    <button className={cls} type={type ?? "button"} {...props}>
+      <span className="semi-button-content inline-flex items-center gap-1.5">{children}</span>
+    </button>
   );
 }

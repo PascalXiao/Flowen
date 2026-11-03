@@ -7,7 +7,7 @@ test("plan nodes on the gantt chart: auto schedule, set dates by hand, drag a ba
   await oemSpace(page, "Pascal", `gantt-${suffix}@example.com`, `排期 ${suffix}`);
   await createItem(page, "新品 C");
 
-  await page.getByRole("tab", { name: "甘特图" }).click();
+  await page.getByRole("region", { name: "流程" }).getByRole("tab", { name: "甘特图" }).click();
   const row = (name: string) => page.getByRole("row", { name, exact: true });
   const startOf = (name: string) => row(name).getByLabel("计划开始");
 

@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { createItem, createSpace, openItems, openSettings, signUp } from "./helpers";
+import {
+  choose,
+  closeTypeConfig,
+  createItem,
+  createSpace,
+  openItems,
+  openSettings,
+  openTypeConfig,
+  signUp,
+  typeTab,
+} from "./helpers";
 
 test("the space dashboard counts work items by stage, type and week", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -7,15 +17,17 @@ test("the space dashboard counts work items by stage, type and week", async ({ p
   await createSpace(page, `看板 ${suffix}`);
   await openSettings(page);
   await page.getByLabel("新类型名称").fill("缺陷");
-  await page.getByLabel("流程方式").selectOption("state");
+  await choose(page.getByLabel("流程方式"), "state");
   await page.getByRole("button", { name: "新建类型" }).click();
-  await page.getByRole("main").getByRole("link", { name: /^缺陷/ }).click();
+  await openTypeConfig(page, "缺陷");
+  await typeTab(page, "流程");
   await page.getByLabel("新模板名称").fill("默认");
   await page.getByRole("button", { name: "新建模板" }).click();
   await page.getByRole("link", { name: "默认" }).click();
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
 
+  await closeTypeConfig(page);
   await openItems(page);
   for (const name of ["白屏", "闪退", "卡顿"]) {
     await createItem(page, name, { label: "缺陷名称" });
@@ -34,6 +46,6 @@ test("the space dashboard counts work items by stage, type and week", async ({ p
   await expect(page.getByRole("region", { name: "延期节点 0" })).toContainText("没有延期的节点");
 
   // 按类型筛选
-  await page.getByLabel("工作项类型").selectOption({ label: "缺陷" });
+  await choose(page.getByLabel("工作项类型"), { label: "缺陷" });
   await expect(overview).toContainText("进行中3");
 });

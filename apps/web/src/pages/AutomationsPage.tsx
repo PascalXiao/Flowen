@@ -9,15 +9,14 @@ import {
 import { mutators, queries } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
-import { useParams } from "@tanstack/react-router";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { useActiveSpace } from "@/components/AppShell";
 import { ConditionEditor } from "@/components/ConditionEditor";
 import { FieldInput } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Label, Select } from "@/components/ui/input";
-import { ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
+import { ErrorBanner } from "@/components/ui/page";
 import { newId } from "@/lib/utils";
 
 type Space = NonNullable<QueryResultType<ReturnType<typeof queries.spaces.byId>>>;
@@ -53,6 +52,8 @@ function describeCondition(
   switch (condition.kind) {
     case "equal":
       return `「${fieldName(condition.field)}」为 ${show(condition.field, condition.value)}`;
+    case "notEqual":
+      return `「${fieldName(condition.field)}」不为 ${show(condition.field, condition.value)}`;
     case "notEmpty":
       return `「${fieldName(condition.field)}」不为空`;
     case "compare":
@@ -93,14 +94,12 @@ function describeRule(rule: Rule, types: ItemType[], members: Map<string, string
   return `${type ? `${type.name}：` : ""}${when}${given}，${then}`;
 }
 
-/** 空间的自动化规则：列表、启用停用、执行记录，以及新建规则的表单。只有管理员能改。 */
-export function AutomationsPage() {
-  const { spaceId } = useParams({ from: "/app/spaces/$spaceId/automations" });
+/** 空间配置里的「自动化」页签：规则列表、启用停用、执行记录，以及新建规则的表单。只有管理员能改。 */
+export function AutomationsPanel({ spaceId }: { spaceId: string }) {
   const zero = useZero();
   const [space, spaceResult] = useQuery(queries.spaces.byId({ id: spaceId }));
   const [rules] = useQuery(queries.automations.bySpace({ spaceId }));
   const [error, setError] = useState<string | null>(null);
-  useActiveSpace(spaceId);
 
   if (!space)
     return (
@@ -125,75 +124,68 @@ export function AutomationsPage() {
 
   return (
     <>
-      <PageHeader title="自动化" breadcrumb={space.name} />
-      <PageBody className="max-w-4xl">
-        {error && <ErrorBanner>{error}</ErrorBanner>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>规则</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {rules.length === 0 && <p className="text-sm text-fg-muted">还没有自动化规则。</p>}
-            {rules.map((rule) => (
-              <section key={rule.id} aria-label={rule.name} className="rounded-md border border-line-subtle p-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1">
-                    <h3 className="text-sm font-medium">{rule.name}</h3>
-                    <p className="text-sm text-fg-muted">{describeRule(rule, types, members)}</p>
-                    <p className="text-xs text-fg-subtle">以 {rule.creator?.name ?? "创建人"} 的身份执行</p>
-                  </div>
-                  {isAdmin && (
-                    <>
-                      <label className="flex items-center gap-1.5 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={rule.enabled ?? true}
-                          onChange={(e) =>
-                            run(
-                              mutators.automation.update({
-                                id: rule.id,
-                                name: rule.name,
-                                enabled: e.target.checked,
-                                trigger: rule.trigger as AutomationTrigger,
-                                condition: rule.conditions as Condition | null,
-                                actions: rule.actions as AutomationAction[],
-                              }),
-                            )
-                          }
-                        />
-                        启用
-                      </label>
-                      <Button variant="outline" onClick={() => run(mutators.automation.delete({ id: rule.id }))}>
-                        删除
-                      </Button>
-                    </>
-                  )}
+      <Card>
+        <CardHeader>
+          <CardTitle>规则</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {rules.length === 0 && <p className="text-sm text-fg-muted">还没有自动化规则。</p>}
+          {rules.map((rule) => (
+            <section key={rule.id} aria-label={rule.name} className="rounded-md border border-line-subtle p-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium">{rule.name}</h3>
+                  <p className="text-sm text-fg-muted">{describeRule(rule, types, members)}</p>
+                  <p className="text-xs text-fg-subtle">以 {rule.creator?.name ?? "创建人"} 的身份执行</p>
                 </div>
-                {rule.runs.length > 0 && (
-                  <ul
-                    aria-label="执行记录"
-                    className="mt-2 flex flex-col gap-1 border-t border-line-subtle pt-2 text-xs"
-                  >
-                    {rule.runs.map((r) => (
-                      <li key={r.id} className="flex gap-2">
-                        <span className={r.status === "failed" ? "text-danger-600" : "text-success-600"}>
-                          {RUN_LABEL[r.status] ?? r.status}
-                        </span>
-                        <span>{r.event?.workItem?.name ?? "—"}</span>
-                        <span className="text-fg-subtle">{new Date(r.startedAt ?? 0).toLocaleString("zh-CN")}</span>
-                        {r.error && <span className="text-danger-600">{r.error}</span>}
-                      </li>
-                    ))}
-                  </ul>
+                {isAdmin && (
+                  <>
+                    <label className="flex items-center gap-1.5 text-sm">
+                      <Checkbox
+                        checked={rule.enabled ?? true}
+                        onChange={(e) =>
+                          run(
+                            mutators.automation.update({
+                              id: rule.id,
+                              name: rule.name,
+                              enabled: e.target.checked,
+                              trigger: rule.trigger as AutomationTrigger,
+                              condition: rule.conditions as Condition | null,
+                              actions: rule.actions as AutomationAction[],
+                            }),
+                          )
+                        }
+                      />
+                      启用
+                    </label>
+                    <Button variant="outline" onClick={() => run(mutators.automation.delete({ id: rule.id }))}>
+                      删除
+                    </Button>
+                  </>
                 )}
-              </section>
-            ))}
-          </CardContent>
-        </Card>
+              </div>
+              {rule.runs.length > 0 && (
+                <ul aria-label="执行记录" className="mt-2 flex flex-col gap-1 border-t border-line-subtle pt-2 text-xs">
+                  {rule.runs.map((r) => (
+                    <li key={r.id} className="flex gap-2">
+                      <span className={r.status === "failed" ? "text-danger-600" : "text-success-600"}>
+                        {RUN_LABEL[r.status] ?? r.status}
+                      </span>
+                      <span>{r.event?.workItem?.name ?? "—"}</span>
+                      <span className="text-fg-subtle">{new Date(r.startedAt ?? 0).toLocaleString("zh-CN")}</span>
+                      {r.error && <span className="text-danger-600">{r.error}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </CardContent>
+      </Card>
 
-        {isAdmin && <RuleForm spaceId={spaceId} types={types} members={members} onSubmit={run} />}
-      </PageBody>
+      {isAdmin && <RuleForm spaceId={spaceId} types={types} members={members} onSubmit={run} />}
     </>
   );
 }
@@ -371,7 +363,8 @@ function RuleForm({
                             value={action.value}
                             members={[...members].map(([userId, name]) => ({ userId, name }))}
                             live
-                            onChange={(value) => updateAction(i, { ...action, value })}
+                            // 自动化里不能设字段组，值总是简单值
+                            onChange={(value) => updateAction(i, { ...action, value: value as typeof action.value })}
                           />
                         ) : null;
                       })()}
@@ -395,8 +388,7 @@ function RuleForm({
                     <div className="flex flex-wrap gap-2 text-sm">
                       {[...members].map(([userId, memberName]) => (
                         <label key={userId} className="flex items-center gap-1">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={action.userIds.includes(userId)}
                             onChange={(e) =>
                               updateAction(i, {

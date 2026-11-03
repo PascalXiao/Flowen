@@ -1,29 +1,33 @@
-import { cva, type VariantProps } from "class-variance-authority";
+import { Tag as SemiTag } from "@douyinfe/semi-ui";
 import type * as React from "react";
-import { cn } from "@/lib/utils";
 
-const tagVariants = cva(
-  "inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 text-xs leading-none",
-  {
-    variants: {
-      tone: {
-        neutral: "bg-pressed/60 text-fg-muted",
-        brand: "bg-brand-100 text-brand-600",
-        success: "bg-success-50 text-success-600",
-        warning: "bg-warning-50 text-warning-600",
-        danger: "bg-danger-50 text-danger-600",
-        violet: "bg-violet-50 text-violet-600",
-        teal: "bg-teal-50 text-teal-600",
-      },
-    },
-    defaultVariants: { tone: "neutral" },
-  },
-);
+/** 标签颜色；brand 是飞书蓝，其余用 Semi 的调色板。 */
+const TONES = {
+  neutral: "grey",
+  brand: "blue",
+  success: "green",
+  warning: "orange",
+  danger: "red",
+  violet: "violet",
+  teal: "teal",
+} as const;
 
-export type TagTone = NonNullable<VariantProps<typeof tagVariants>["tone"]>;
+export type TagTone = keyof typeof TONES;
 
-export function Tag({ className, tone, ...props }: React.ComponentProps<"span"> & VariantProps<typeof tagVariants>) {
-  return <span className={cn(tagVariants({ tone, className }))} {...props} />;
+export function Tag({
+  className,
+  tone = "neutral",
+  children,
+}: {
+  className?: string;
+  tone?: TagTone | null;
+  children?: React.ReactNode;
+}) {
+  return (
+    <SemiTag size="small" shape="square" type="light" color={TONES[tone ?? "neutral"]} className={className}>
+      {children}
+    </SemiTag>
+  );
 }
 
 const STATUS: Record<string, [string, TagTone]> = {

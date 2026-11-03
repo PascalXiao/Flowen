@@ -7,6 +7,7 @@ test("global search finds work items by name and by comment text", async ({ page
   await createItem(page, `面霜 ${suffix}`);
   await openItems(page);
   await createItem(page, `精华 ${suffix}`);
+  await page.getByRole("tablist", { name: "详情页签" }).getByRole("tab", { name: /评论/ }).click();
   await page.getByLabel("评论内容").fill(`包材供应商定为 Acme${suffix}`);
   await page.getByRole("button", { name: "发表评论" }).click();
   await expect(page.getByRole("list", { name: "评论列表" })).toContainText(`Acme${suffix}`);

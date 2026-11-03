@@ -10,6 +10,10 @@ import { workItemFilter } from "./views.ts";
  */
 
 const spaceItemsArgs = z.object({ spaceId: z.string(), filter: workItemFilter.optional() });
+/** 列表页的页签：全部、最近浏览、我创建的、我参与的、我关注的、我收藏的。 */
+const listArgs = spaceItemsArgs.extend({
+  tab: z.enum(["all", "recent", "created", "involved", "followed", "starred"]).default("all"),
+});
 
 /** 范围筛选的边界：数字原样；日期（YYYY-MM-DD）换成检索列里的天数。 */
 function rangeBound(value: number | string | undefined): number | null {
@@ -106,11 +110,13 @@ export const queries = defineQueries({
         .where("id", args.id)
         .whereExists("members", (m) => m.where("userId", ctx.userID))
         .related("members", (m) => m.related("user"))
+        .related("businessLines", (b) => b.orderBy("sort", "asc"))
         .related("views", (v) => v.orderBy("createdAt", "asc"))
         .related("workItemTypes", (t) =>
           t
+            .orderBy("sort", "asc")
             .related("fields")
-            .related("roles")
+            .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
             .related("relationDefs")
             // 带上当前版本：前端乐观创建工作项时要用流程定义启动引擎
             .related("flowTemplates", (f) => f.related("currentVersion")),
@@ -152,8 +158,13 @@ export const queries = defineQueries({
       zql.workItemType
         .where("id", args.id)
         .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
-        .related("space", (s) => s.related("members", (m) => m.where("userId", ctx.userID)).related("workItemTypes"))
-        .related("roles", (r) => r.orderBy("createdAt", "asc"))
+        .related("space", (s) =>
+          s
+            .related("members", (m) => m.where("userId", ctx.userID))
+            .related("workItemTypes")
+            .related("businessLines", (b) => b.orderBy("sort", "asc")),
+        )
+        .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
         .related("relationDefs", (r) => r.related("toType").orderBy("createdAt", "asc"))
         .related("fields", (f) => f.orderBy("sort", "asc"))
         .related("flowTemplates", (t) => t.related("versions", (v) => v.orderBy("version", "desc").limit(1)))
@@ -171,7 +182,7 @@ export const queries = defineQueries({
         .related("versions", (v) => v.orderBy("version", "desc"))
         .related("type", (t) =>
           t
-            .related("roles", (r) => r.orderBy("createdAt", "asc"))
+            .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
             .related("fields", (f) => f.orderBy("sort", "asc"))
             .related("space", (s) => s.related("members", (m) => m.where("userId", ctx.userID))),
         )
@@ -205,6 +216,41 @@ export const queries = defineQueries({
         .related("nodes", (n) => n.related("confirmations"))
         .orderBy("createdAt", "asc"),
     ),
+    /**
+     * 列表页：工作项连同列里要显示的东西（字段值、角色成员、节点负责人、自己的关注收藏和浏览记录）。
+     * 页签：我参与的 = 担任任一角色或是节点负责人（负责人从角色来，按角色算）。
+     */
+    list: defineQuery(listArgs, ({ args, ctx }) => {
+      let q = spaceItems(args, ctx.userID);
+      const me = ctx.userID;
+      if (args.tab === "created") q = q.where("createdBy", me);
+      if (args.tab === "involved") q = q.whereExists("roleMembers", (r) => r.where("userId", me));
+      if (args.tab === "followed") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "follow"));
+      if (args.tab === "starred") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "star"));
+      if (args.tab === "recent") q = q.whereExists("visits", (v) => v.where("userId", me));
+      return (
+        q
+          .related("type")
+          .related("flowVersion")
+          .related("fieldValues", visibleFieldValues(me))
+          .related("roleMembers")
+          .related("nodes")
+          // 自定义关联（两个方向）连同另一端的名称、状态和字段值：关联列、关联字段列要显示
+          .related("outgoing", (r) =>
+            r
+              .where("relationDefId", "IS NOT", null)
+              .related("to", (w) => w.related("fieldValues", visibleFieldValues(me))),
+          )
+          .related("incoming", (r) =>
+            r
+              .where("relationDefId", "IS NOT", null)
+              .related("from", (w) => w.related("fieldValues", visibleFieldValues(me))),
+          )
+          .related("marks", (m) => m.where("userId", me))
+          .related("visits", (v) => v.where("userId", me))
+          .orderBy("createdAt", "desc")
+      );
+    }),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
       zql.workItem
         .where("id", args.id)
@@ -213,10 +259,15 @@ export const queries = defineQueries({
         .related("type", (t) =>
           t
             .related("fields", (f) => f.orderBy("sort", "asc"))
+            .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
             .related("relationDefs", (r) => r.related("toType").orderBy("createdAt", "asc")),
         )
-        // 自己在空间里的成员身份：前端乐观执行确认、回滚时要判断是不是管理员
-        .related("space", (s) => s.related("members", (m) => m.where("userId", ctx.userID)))
+        // 自己在空间里的成员身份：前端乐观执行确认、回滚时要判断是不是管理员；业务线树给「业务线」字段当选项
+        .related("space", (s) =>
+          s
+            .related("members", (m) => m.where("userId", ctx.userID))
+            .related("businessLines", (b) => b.orderBy("sort", "asc")),
+        )
         .related("fieldValues", visibleFieldValues(ctx.userID))
         .related("roleMembers", (r) => r.related("user"))
         .related("nodes", (n) => n.related("confirmations"))
@@ -224,9 +275,29 @@ export const queries = defineQueries({
         .related("attachments", (a) => a.related("uploader").orderBy("createdAt", "asc"))
         // 节点子任务；确认节点时乐观执行也要数没完成的子任务
         .related("tasks", (t) => t.orderBy("createdAt", "asc").orderBy("id", "asc"))
+        .related("marks", (m) => m.where("userId", ctx.userID))
         // 子工作项、上级工作项和自定义关联（两个方向）
-        .related("outgoing", (r) => r.related("to").related("def"))
-        .related("incoming", (r) => r.related("from").related("def"))
+        // 关联工作项带上字段值和字段定义：布局里的「关联信息」要显示它们的字段
+        .related("outgoing", (r) =>
+          r
+            .related("to", (w) =>
+              w
+                .related("fieldValues", visibleFieldValues(ctx.userID))
+                .related("type", (t) => t.related("fields"))
+                .related("nodes"),
+            )
+            .related("def"),
+        )
+        .related("incoming", (r) =>
+          r
+            .related("from", (w) =>
+              w
+                .related("fieldValues", visibleFieldValues(ctx.userID))
+                .related("type", (t) => t.related("fields"))
+                .related("nodes"),
+            )
+            .related("def"),
+        )
         .one(),
     ),
     /**

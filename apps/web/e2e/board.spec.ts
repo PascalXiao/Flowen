@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { createItem, createSpace, openSettings, signUp } from "./helpers";
+import {
+  choose,
+  closeTypeConfig,
+  createItem,
+  createSpace,
+  openSettings,
+  openTypeConfig,
+  signUp,
+  typeTab,
+} from "./helpers";
 
 test("the board groups a status-flow type by status, and dragging a card follows its transitions", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -7,15 +16,17 @@ test("the board groups a status-flow type by status, and dragging a card follows
   await createSpace(page, `看板 ${suffix}`);
   await openSettings(page);
   await page.getByLabel("新类型名称").fill("任务");
-  await page.getByLabel("流程方式").selectOption("state");
+  await choose(page.getByLabel("流程方式"), "state");
   await page.getByRole("button", { name: "新建类型" }).click();
-  await page.getByRole("main").getByRole("link", { name: /^任务/ }).click();
+  await openTypeConfig(page, "任务");
+  await typeTab(page, "流程");
   await page.getByLabel("新模板名称").fill("任务流程");
   await page.getByRole("button", { name: "新建模板" }).click();
   await page.getByRole("link", { name: "任务流程" }).click();
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
 
+  await closeTypeConfig(page);
   // 从左侧导航进入“任务”类型，建两个工作项
   await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "任务" }).click();
   await createItem(page, "写周报", { label: "任务名称" });

@@ -29,7 +29,7 @@ export function attachmentRoutes(
   /** 工作项所在空间里自己的角色；不是成员时为 null。 */
   async function roleOn(workItemId: string, userId: string) {
     const [row] = await database.db
-      .select({ spaceId: schema.workItem.spaceId, role: schema.spaceMember.role })
+      .select({ spaceId: schema.workItem.spaceId, typeId: schema.workItem.typeId, role: schema.spaceMember.role })
       .from(schema.workItem)
       .innerJoin(
         schema.spaceMember,
@@ -53,6 +53,15 @@ export function attachmentRoutes(
         const member = await roleOn(workItemId, me);
         if (!member) return c.json({ error: "工作项不存在或没有权限。" }, 404);
         if (member.role === "guest") return c.json({ error: "访客只能查看和评论。" }, 403);
+        // ?field= 表示传到附件字段里：只记上字段键，放不放进字段值由前端随后改字段值决定
+        const fieldKey = c.req.query("field") || null;
+        if (fieldKey) {
+          const [def] = await database.db
+            .select({ dataType: schema.fieldDef.dataType })
+            .from(schema.fieldDef)
+            .where(and(eq(schema.fieldDef.typeId, member.typeId), eq(schema.fieldDef.key, fieldKey)));
+          if (def?.dataType !== "attachment") return c.json({ error: "附件字段不存在。" }, 400);
+        }
         const body = await c.req.parseBody();
         const file = body.file;
         if (!(file instanceof File) || !file.name) return c.json({ error: "请选择文件。" }, 400);
@@ -68,6 +77,7 @@ export function attachmentRoutes(
           contentType: file.type || "application/octet-stream",
           size,
           storageKey,
+          fieldKey,
           uploadedBy: me,
         };
         try {

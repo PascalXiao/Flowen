@@ -31,8 +31,8 @@ export function LoginPage() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-canvas p-4">
       <div className="mb-6 flex items-center gap-2.5">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-brand-500 font-bold text-white">飞</span>
-        <span className="text-lg font-semibold">飞书项目</span>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-brand-500 font-bold text-white">F</span>
+        <span className="text-lg font-semibold">Flowen</span>
       </div>
       <div className="w-full max-w-sm rounded-lg bg-surface p-8 shadow-popover">
         <h1 className="mb-1 text-xl font-semibold">{mode === "signIn" ? "登录" : "注册"}</h1>

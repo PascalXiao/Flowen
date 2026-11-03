@@ -1,4 +1,4 @@
-import type { CompareOp, Condition } from "@fp/engine";
+import { type CompareOp, type Condition, SIGNAL_STATE_LABEL, SIGNAL_STATES } from "@fp/engine";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 
@@ -6,23 +6,32 @@ import { Input, Select } from "@/components/ui/input";
 export interface ConditionField {
   key: string;
   name: string;
-  options: readonly { value: string; label: string }[] | null;
+  options: readonly { value: string; label?: string }[] | null;
   dataType?: string;
 }
 
-type Simple = Extract<Condition, { kind: "equal" | "notEmpty" | "compare" }>;
-const isSimple = (c: Condition): c is Simple => c.kind === "equal" || c.kind === "notEmpty" || c.kind === "compare";
+type Simple = Extract<Condition, { kind: "equal" | "notEqual" | "notEmpty" | "compare" }>;
+const isSimple = (c: Condition): c is Simple =>
+  c.kind === "equal" || c.kind === "notEqual" || c.kind === "notEmpty" || c.kind === "compare";
 
 /** 判断方式：下拉里的值 → 条件。比较类只对数字、日期字段出现。 */
 const COMPARE_LABEL: Record<CompareOp, string> = { gt: "大于", gte: "大于等于", lt: "小于", lte: "小于等于" };
-const ordered = (field: ConditionField | undefined) => field?.dataType === "number" || field?.dataType === "date";
+const ordered = (field: ConditionField | undefined) =>
+  ["number", "date", "datetime", "dateRange"].includes(field?.dataType ?? "");
+/** 「等于」对这些字段表示「包含」（级联字段选上级时，下级也算）。 */
+const contains = (field: ConditionField | undefined) =>
+  ["multiSelect", "user", "cascadeSelect", "cascadeMulti", "businessLine", "attachment", "multiSignal"].includes(
+    field?.dataType ?? "",
+  );
 const choices = (field: ConditionField | undefined): ConditionField["options"] =>
   field?.dataType === "bool"
     ? [
         { value: "true", label: "是" },
         { value: "false", label: "否" },
       ]
-    : (field?.options ?? null);
+    : field?.dataType === "signal" || field?.dataType === "multiSignal"
+      ? SIGNAL_STATES.map((s) => ({ value: s, label: SIGNAL_STATE_LABEL[s] }))
+      : (field?.options ?? null);
 
 /** 新条件或换了字段时的默认值。 */
 function initial(field: ConditionField | undefined, key: string): Simple {
@@ -118,9 +127,9 @@ export function ConditionEditor({
                 if (op === "notEmpty") return update({ kind: "notEmpty", field: item.field });
                 const value =
                   item.kind === "notEmpty" ? (initial(field, item.field) as { value?: unknown }).value : item.value;
-                if (op === "equal")
+                if (op === "equal" || op === "notEqual")
                   return update({
-                    kind: "equal",
+                    kind: op,
                     field: item.field,
                     value: (value ?? "") as string | number | boolean,
                   });
@@ -132,9 +141,8 @@ export function ConditionEditor({
                 });
               }}
             >
-              <option value="equal">
-                {field?.dataType === "multiSelect" || field?.dataType === "user" ? "包含" : "等于"}
-              </option>
+              <option value="equal">{contains(field) ? "包含" : "等于"}</option>
+              <option value="notEqual">{contains(field) ? "不包含" : "不等于"}</option>
               {ordered(field) &&
                 Object.entries(COMPARE_LABEL).map(([op, text]) => (
                   <option key={op} value={op}>
@@ -157,14 +165,20 @@ export function ConditionEditor({
                 >
                   {choices(field)?.map((o) => (
                     <option key={o.value} value={o.value}>
-                      {o.label}
+                      {o.label || o.value}
                     </option>
                   ))}
                 </Select>
               ) : (
                 <Input
                   aria-label="值"
-                  type={field?.dataType === "number" ? "number" : field?.dataType === "date" ? "date" : "text"}
+                  type={
+                    field?.dataType === "number"
+                      ? "number"
+                      : field?.dataType === "date" || field?.dataType === "dateRange"
+                        ? "date"
+                        : "text"
+                  }
                   className="h-8 w-36"
                   value={String(item.value)}
                   onChange={(e) =>

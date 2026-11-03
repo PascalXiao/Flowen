@@ -1,17 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace, openItems, openSettings } from "./helpers";
+import { choose, createItem, createRelation, oemSpace, openItems } from "./helpers";
 
 test("the tree view nests work items by the chosen hierarchy and expands level by level", async ({ page }) => {
   const suffix = `${Date.now()}`;
   await oemSpace(page, "Pascal", `tree-${suffix}@example.com`, `树形 ${suffix}`);
 
   // “项目”上的“子项目”关联：新品 A → 新品 B → 新品 C
-  await openSettings(page);
-  await page.getByRole("main").getByRole("link", { name: /^项目/ }).click();
-  await page.getByLabel("新关联名称").fill("子项目");
-  await page.getByLabel("关联到").selectOption({ label: "项目" });
-  await page.getByRole("button", { name: "添加关联" }).click();
-  await expect(page.getByRole("list", { name: "关联列表" })).toContainText("子项目");
+  await createRelation(page, { from: "项目", to: "项目", name: "子项目" });
 
   await openItems(page);
   for (const name of ["新品 A", "新品 B", "新品 C"]) {
@@ -23,8 +18,8 @@ test("the tree view nests work items by the chosen hierarchy and expands level b
     ["新品 B", "新品 C"],
   ]) {
     await page.getByRole("link", { name: from }).click();
-    const group = page.locator("aside").getByRole("region", { name: "子项目" });
-    await group.getByLabel("添加子项目").selectOption({ label: to });
+    const group = page.getByRole("main").getByRole("region", { name: "子项目" });
+    await choose(group.getByLabel("添加子项目"), { label: to });
     await expect(group.getByRole("link", { name: to })).toBeVisible();
     await openItems(page);
   }
@@ -34,7 +29,7 @@ test("the tree view nests work items by the chosen hierarchy and expands level b
   // 按子工作项分层时三个都是第一层
   await expect(tree.getByRole("link", { name: /^新品 [ABC]$/ })).toHaveCount(3);
 
-  await page.getByLabel("层级").selectOption({ label: "项目 → 项目（子项目）" });
+  await choose(page.getByLabel("层级"), { label: "项目 → 项目（子项目）" });
   await expect(tree.getByRole("link", { name: /^新品 [ABC]$/ })).toHaveCount(1);
   await expect(tree.getByRole("link", { name: "新品 A" })).toBeVisible();
   await tree.getByRole("button", { name: "展开新品 A" }).click();

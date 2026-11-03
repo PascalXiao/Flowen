@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { createItem, createSpace, openItems, openSettings, signUp } from "./helpers";
+import {
+  choose,
+  closeTypeConfig,
+  createItem,
+  createSpace,
+  openItems,
+  openSettings,
+  openTypeConfig,
+  signUp,
+  typeTab,
+} from "./helpers";
 
 test("configure a type from scratch, draw and publish its flow, then create a work item with it", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -10,13 +20,16 @@ test("configure a type from scratch, draw and publish its flow, then create a wo
   // 新建类型，配角色、字段和模板
   await page.getByLabel("新类型名称").fill("缺陷");
   await page.getByRole("button", { name: "新建类型" }).click();
-  await page.getByRole("main").getByRole("link", { name: /^缺陷/ }).click();
+  await openTypeConfig(page, "缺陷");
+  await typeTab(page, "角色");
   await page.getByLabel("新角色名称").fill("开发");
   await page.getByRole("button", { name: "添加角色" }).click();
+  await typeTab(page, "字段");
   await page.getByLabel("新字段名称").fill("需要测试");
   await page.getByLabel("选项（单选、多选用，逗号分隔）").fill("是，否");
   await page.getByRole("button", { name: "添加字段" }).click();
   await expect(page.getByRole("cell", { name: "是 / 否" })).toBeVisible();
+  await typeTab(page, "流程");
   await page.getByLabel("新模板名称").fill("默认流程");
   await page.getByRole("button", { name: "新建模板" }).click();
   await page.getByRole("link", { name: "默认流程" }).click();
@@ -24,7 +37,7 @@ test("configure a type from scratch, draw and publish its flow, then create a wo
 
   // 画流程：开始 → 修复 → 验证（只在需要测试时出现）
   const node = (name: string) => page.locator(".react-flow__node", { hasText: name });
-  const panel = page.locator("aside");
+  const panel = page.getByRole("main");
   await node("开始").click();
   await page.getByRole("button", { name: "添加节点" }).click();
   await panel.getByLabel("节点名称").fill("修复");
@@ -43,14 +56,11 @@ test("configure a type from scratch, draw and publish its flow, then create a wo
   await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
 
   // 用新流程建一个缺陷，不需要测试：验证节点被跳过
+  await closeTypeConfig(page);
   await openItems(page);
   await createItem(page, "登录报错", {
     label: "缺陷名称",
-    before: (dialog) =>
-      dialog
-        .getByLabel("需要测试")
-        .selectOption("否")
-        .then(() => {}),
+    before: (dialog) => choose(dialog.getByLabel("需要测试"), "否"),
   });
 
   await expect(panel.getByRole("region", { name: "修复" })).toBeVisible();

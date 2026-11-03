@@ -78,6 +78,8 @@ function describe(event: FlowEvent): string {
       return "工作项完成";
     case "workItemReopened":
       return "工作项重新打开";
+    case "fieldAssigned":
+      return `${name(event.node)} 改了字段 ${event.field}`;
   }
 }
 

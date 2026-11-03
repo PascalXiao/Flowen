@@ -27,6 +27,7 @@ export async function transitionStatus(
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   if (item.status === "terminated") throw new Error("工作项已终止。");
+  if (item.frozen) throw new Error("工作项已冻结，解冻后才能修改。");
   const definition = statusFlowOf(item.flowVersion?.definition);
   if (!definition) throw new Error("这个工作项不是状态流。");
   const { isAdmin } = await requireWriter(tx, item.spaceId, userID);

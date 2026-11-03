@@ -13,6 +13,8 @@ export interface ScheduleNodeInput {
   pinned?: Span | null;
   /** 节点实际完成的日期。已完成的节点按它推后续节点。 */
   actualEnd?: Day | null;
+  /** 相对排期算出的计划结束日（如上市日往前推 N 个工作日）。手动定过的日期优先。 */
+  anchorEnd?: Day | null;
 }
 
 export interface ScheduleInput {
@@ -23,6 +25,7 @@ export interface ScheduleInput {
 
 /** 节点的预估工期（工作日）。没有配置时，需要人处理的节点按 1 天，自动节点是 0 天的里程碑。 */
 export function durationOf(node: NodeDefinition): number {
+  if (node.milestone) return 0;
   if (node.duration !== undefined) return Math.max(0, Math.floor(node.duration));
   return node.completion === "auto" ? 0 : 1;
 }
@@ -59,6 +62,11 @@ export function schedule(graph: FlowGraph, calendar: WorkCalendar, input: Schedu
     if (info?.pinned) {
       span = info.pinned;
       end = span.end;
+    } else if (info?.anchorEnd != null) {
+      // 相对排期：结束日由基准日期推出，开始日往前数工期
+      const anchor = calendar.onOrBefore(info.anchorEnd);
+      span = { start: duration === 0 ? anchor : calendar.offsetWorkdays(anchor, -(duration - 1)), end: anchor };
+      end = anchor;
     } else if (duration === 0) {
       const day = Math.max(ready, input.start);
       span = { start: day, end: day };

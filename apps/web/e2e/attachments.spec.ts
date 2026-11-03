@@ -29,12 +29,15 @@ test("upload, download and delete work item attachments", async ({ page }) => {
   ]);
   expect(download.suggestedFilename()).toBe("spec-v1.txt");
 
-  await page.getByRole("tablist", { name: "评论和动态" }).getByRole("tab", { name: "动态" }).click();
+  const tabs = page.getByRole("tablist", { name: "详情页签" });
+  await tabs.getByRole("tab", { name: "动态" }).click();
   await expect(page.getByRole("list", { name: "动态列表" })).toContainText("Pascal 上传了附件「spec-v1.txt」");
 
+  await tabs.getByRole("tab", { name: "基本信息" }).click();
   await list.getByRole("listitem").filter({ hasText: "spec-v1.txt" }).hover();
   await list.getByRole("button", { name: "删除附件 spec-v1.txt" }).click();
   await expect(list.getByRole("link", { name: "spec-v1.txt" })).toHaveCount(0);
+  await tabs.getByRole("tab", { name: "动态" }).click();
   await expect(page.getByRole("list", { name: "动态列表" })).toContainText("Pascal 删除了附件「spec-v1.txt」");
 
   // 刷新后仍在：列表来自服务端

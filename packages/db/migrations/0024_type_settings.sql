@@ -1,0 +1,1 @@
+ALTER TABLE "work_item_type" ADD COLUMN "settings" jsonb;

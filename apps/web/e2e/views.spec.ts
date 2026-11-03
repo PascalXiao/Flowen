@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addMember, createItem, oemSpace, openItems, registerColleague } from "./helpers";
+import { addMember, choose, createItem, oemSpace, openItems, registerColleague } from "./helpers";
 
 test("filter the work item list and save the filter as a view", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -14,11 +14,11 @@ test("filter the work item list and save the filter as a view", async ({ page })
   await createItem(page, "新品 I", { roles: ["开发：Lin"] });
   await openItems(page);
 
-  const table = page.getByRole("table");
+  const table = page.getByRole("grid");
   await expect(table.getByRole("link", { name: "新品 H" })).toBeVisible();
   await expect(table.getByRole("link", { name: "新品 I" })).toBeVisible();
 
-  await page.getByLabel("按参与人筛选").selectOption("Lin");
+  await choose(page.getByLabel("按参与人筛选"), "Lin");
   await expect(table.getByRole("link", { name: "新品 H" })).toHaveCount(0);
   await expect(table.getByRole("link", { name: "新品 I" })).toBeVisible();
 
@@ -31,10 +31,10 @@ test("filter the work item list and save the filter as a view", async ({ page })
   await expect(table.getByRole("link", { name: "新品 H" })).toBeVisible();
   await views.getByRole("tab", { name: "Lin 参与的" }).click();
   await expect(table.getByRole("link", { name: "新品 H" })).toHaveCount(0);
-  await expect(page.getByLabel("按参与人筛选")).toHaveValue(/.+/);
+  await expect(page.getByLabel("按参与人筛选")).not.toContainText("全部参与人");
 
   // 状态筛选：没有已完成的工作项
-  await page.getByLabel("按状态筛选").selectOption("已完成");
+  await choose(page.getByLabel("按状态筛选"), "已完成");
   await expect(page.getByText("没有符合条件的工作项")).toBeVisible();
 
   await views.getByRole("button", { name: "删除视图 Lin 参与的" }).click({ force: true });

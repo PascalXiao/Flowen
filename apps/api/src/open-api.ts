@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { Database } from "@fp/db";
+import { type Database, schema } from "@fp/db";
 import { nodeFlowOf, statusFlowOf } from "@fp/engine";
 import { queries, workItemFilter } from "@fp/sync";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, os } from "@orpc/server";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { tokenUser } from "./tokens.ts";
 import type { createZeroHandlers } from "./zero/handlers.ts";
@@ -88,7 +89,9 @@ const spaceDetail = space.extend({
         z.object({
           key: z.string(),
           name: z.string(),
+          alias: z.string().nullable().describe("对接标识：读写字段值时可以代替字段键"),
           dataType: z.string(),
+          description: z.string().nullable().describe("帮助说明"),
           options: z.array(z.object({ value: z.string(), label: z.string() })).nullable(),
         }),
       ),
@@ -154,6 +157,17 @@ function toDetail(item: Detail): z.output<typeof workItemDetail> {
 }
 
 /** 读回工作项；写操作之后用它返回最新状态。 */
+/** 字段值的键可以写字段键，也可以写对接标识；这里统一换成字段键。 */
+async function byFieldKey(database: Database, typeId: string, fields: Record<string, unknown>) {
+  const defs = await database.db
+    .select({ key: schema.fieldDef.key, config: schema.fieldDef.config })
+    .from(schema.fieldDef)
+    .where(eq(schema.fieldDef.typeId, typeId));
+  const keyOf = new Map<string, string>();
+  for (const d of defs) if (d.config?.alias) keyOf.set(d.config.alias, d.key);
+  return Object.fromEntries(Object.entries(fields).map(([k, v]) => [keyOf.get(k) ?? k, v]));
+}
+
 async function detail(zero: Zero, id: string, userId: string) {
   const item = await loadItem(zero, id, userId);
   if (!item) throw notFound();
@@ -205,7 +219,9 @@ export const openApiRouter = {
               .map((f) => ({
                 key: f.key,
                 name: f.name,
+                alias: f.config?.alias ?? null,
                 dataType: f.dataType,
+                description: f.config?.description ?? null,
                 options: f.options ? f.options.map((o) => ({ value: o.value, label: o.label })) : null,
               })),
             roles: t.roles.map((r) => ({ key: r.key, name: r.name })),
@@ -276,7 +292,8 @@ export const openApiRouter = {
       .output(workItemDetail)
       .handler(async ({ input, context }) => {
         const id = randomUUID();
-        await mutate(context.zero, "workItem.create", { id, ...input }, context.userId);
+        const fields = input.fields && (await byFieldKey(context.database, input.typeId, input.fields));
+        await mutate(context.zero, "workItem.create", { id, ...input, ...(fields && { fields }) }, context.userId);
         return detail(context.zero, id, context.userId);
       }),
     setFields: authed
@@ -284,13 +301,19 @@ export const openApiRouter = {
         method: "PATCH",
         path: "/work-items/{id}/fields",
         summary: "修改字段值",
-        description: "一次可以改多个字段，按顺序逐个保存；某个字段失败时，它前面的已经保存了。值传 null 表示清空。",
+        description:
+          "字段可以用字段键或对接标识。一次可以改多个字段，按顺序逐个保存；某个字段失败时，它前面的已经保存了。值传 null 表示清空。",
         tags: tags.items,
       })
       .input(z.object({ id: z.string(), fields: fieldValues }))
       .output(workItemDetail)
       .handler(async ({ input, context }) => {
-        for (const [fieldKey, value] of Object.entries(input.fields))
+        const [item] = await context.database.db
+          .select({ typeId: schema.workItem.typeId })
+          .from(schema.workItem)
+          .where(eq(schema.workItem.id, input.id));
+        const fields = item ? await byFieldKey(context.database, item.typeId, input.fields) : input.fields;
+        for (const [fieldKey, value] of Object.entries(fields))
           await mutate(context.zero, "fieldValue.set", { workItemId: input.id, fieldKey, value }, context.userId);
         return detail(context.zero, input.id, context.userId);
       }),
@@ -375,12 +398,12 @@ export function createOpenApiHandler() {
         schemaConverters: [new ZodToJsonSchemaConverter()],
         specPath: "/spec.json",
         docsPath: "/docs",
-        docsTitle: "飞书项目复刻 · 开放接口",
+        docsTitle: "Flowen · 开放接口",
         // 固定文档页脚本的版本，不跟着 CDN 上的最新版走
         docsScriptUrl: "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.73.0",
         specGenerateOptions: {
           info: {
-            title: "飞书项目复刻 · 开放接口",
+            title: "Flowen · 开放接口",
             version: "1.0.0",
             description:
               "用 `Authorization: Bearer <令牌>` 调用，令牌在「开放接口」页面创建。令牌代表创建它的用户，权限和这个用户在界面上一样。",

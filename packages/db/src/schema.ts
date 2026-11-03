@@ -4,9 +4,12 @@ import type {
   CalendarConfig,
   Condition,
   DetailLayout,
+  FieldConfig,
   FieldDataType,
   FlowDefinition,
   NodeState,
+  RoleConfig,
+  RoleOverrides,
   StatusFlowDefinition,
   WorkItemStatus,
 } from "@fp/engine";
@@ -126,6 +129,26 @@ export const space = pgTable("space", {
   createdAt: createdAt(),
 });
 
+/** 空间的业务线树。工作项的「业务线」字段从这里选，角色的出现和默认成员可以按业务线判断。 */
+export const businessLine = pgTable(
+  "business_line",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => space.id),
+    name: text("name").notNull(),
+    parentId: text("parent_id"),
+    /** 业务线管理员（用户 id）。 */
+    admins: jsonb("admins").$type<string[]>(),
+    /** 停用的业务线不能再选，已经选了的保留。 */
+    disabled: boolean("disabled").notNull().default(false),
+    sort: integer("sort").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("business_line_space").on(t.spaceId)],
+);
+
 export type SpaceRole = "admin" | "member" | "guest";
 
 export const spaceMember = pgTable(
@@ -143,6 +166,14 @@ export const spaceMember = pgTable(
   (t) => [primaryKey({ columns: [t.spaceId, t.userId] })],
 );
 
+/** 工作项类型的设置（对照飞书项目工作项类型的「基础设置」）。 */
+export interface TypeSettings {
+  /** 复制工作项时不带过去的字段（字段键或关联名）。 */
+  copyExcludeFields?: string[];
+  /** 复制工作项时不带过去的角色。 */
+  copyExcludeRoles?: string[];
+}
+
 export const workItemType = pgTable(
   "work_item_type",
   {
@@ -155,6 +186,10 @@ export const workItemType = pgTable(
     flowMode: text("flow_mode").$type<FlowMode>().notNull().default("node"),
     /** 详情页布局：字段怎么分组、哪些不显示；为空时所有字段放在一组。 */
     detailLayout: jsonb("detail_layout").$type<DetailLayout>(),
+    /** 列表的默认显示（列和顺序、排序、分组、行着色）：管理员在「列」页签里配置，成员打开列表时的起点。 */
+    defaultDisplay: jsonb("default_display").$type<ViewDisplay>(),
+    /** 类型的其他设置：复制工作项时不带过去的字段和角色等。 */
+    settings: jsonb("settings").$type<TypeSettings>(),
     sort: integer("sort").notNull().default(0),
     createdAt: createdAt(),
   },
@@ -171,11 +206,14 @@ export const fieldDef = pgTable(
     key: text("key").notNull(),
     name: text("name").notNull(),
     dataType: text("data_type").$type<FieldDataType>().notNull(),
-    /** 选项类字段的候选值。 */
-    options: jsonb("options").$type<{ value: string; label: string; color?: string }[]>(),
+    /** 选项类字段的候选值；级联字段的选项用 parent 指向上级。 */
+    options:
+      jsonb("options").$type<{ value: string; label: string; color?: string; parent?: string; disabled?: boolean }[]>(),
     /** 非空即公式字段，值由公式引擎计算后缓存在 field_value。 */
     formula: text("formula"),
     required: boolean("required").notNull().default(false),
+    /** 帮助说明、对接标识、有效性、条件显示和必填、默认值、数字格式等（见 engine 的 FieldConfig）。 */
+    config: jsonb("config").$type<FieldConfig>(),
     /** 能看到这个字段的工作项角色（角色键）；为空时所有人可见。空间管理员总是可见。 */
     viewRoles: jsonb("view_roles").$type<string[]>(),
     /** 能修改这个字段的工作项角色；为空时能改工作项的人都能改。空间管理员总是可以。 */
@@ -196,6 +234,10 @@ export const roleDef = pgTable(
     key: text("key").notNull(),
     name: text("name").notNull(),
     inheritFrom: jsonb("inherit_from").$type<RoleInheritance>(),
+    /** 出现方式、成员分配、单人、负责人、成员编辑权限（见 engine 的 RoleConfig）。 */
+    config: jsonb("config").$type<RoleConfig>(),
+    /** 顺序：角色列表和新建表单里按它排。 */
+    sort: integer("sort").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("role_def_type_key").on(t.typeId, t.key)],
@@ -216,6 +258,10 @@ export const relationDef = pgTable("relation_def", {
   fieldKey: text("field_key").notNull(),
   name: text("name").notNull(),
   cardinality: text("cardinality").$type<Cardinality>().notNull(),
+  /** 互相关联：另一端（to 类型）上这条关联的字段名，如「关联项目」；为空时另一端只显示只读的反向关联。 */
+  reverseName: text("reverse_name"),
+  /** 另一端的字段能选几个（一个 to 工作项最多被几个 from 工作项关联）。 */
+  reverseCardinality: text("reverse_cardinality").$type<Cardinality>(),
   createdAt: createdAt(),
 });
 
@@ -344,6 +390,24 @@ export type FieldFilter =
   | { field: string; op: "contains"; text: string };
 
 /** 保存下来的工作项视图：空间成员都能看到和使用。 */
+/** 列表视图的显示设置：列、排序、分组、行着色。 */
+export interface ViewDisplay {
+  /** 显示的列（列键，见前端的列定义）和列宽，按顺序。 */
+  columns?: { key: string; width?: number }[];
+  sort?: { key: string; desc?: boolean }[];
+  groupBy?: string | null;
+  /** 行着色：满足条件的行用这个颜色。 */
+  colors?: { when: Condition; color: string }[];
+  /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
+  frozen?: number;
+  /** 行高：低、中、高、超高。 */
+  rowHeight?: "low" | "medium" | "high" | "xhigh";
+  /** 底部汇总行：列键 → 统计方式。 */
+  summary?: Record<string, SummaryKind>;
+}
+/** 汇总行的统计方式：计数、已填写、未填写、已填写百分比、求和、平均、最大、最小。 */
+export type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";
+
 export const savedView = pgTable("saved_view", {
   id: text("id").primaryKey(),
   spaceId: text("space_id")
@@ -351,6 +415,7 @@ export const savedView = pgTable("saved_view", {
     .references(() => space.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   filter: jsonb("filter").$type<WorkItemFilter>().notNull(),
+  display: jsonb("display").$type<ViewDisplay>(),
   createdBy: text("created_by")
     .notNull()
     .references(() => user.id),
@@ -377,6 +442,12 @@ export const workItem = pgTable(
     /** 状态流的当前状态键。节点流为空。 */
     flowStatus: text("flow_status"),
     status: text("status").$type<WorkItemStatus | "terminated">().notNull().default("inProgress"),
+    /** 终止原因（终止时填，恢复后清空）。 */
+    terminateReason: text("terminate_reason"),
+    /** 冻结：字段、节点、状态都不能再改，直到解冻。 */
+    frozen: boolean("frozen").notNull().default(false),
+    /** 用户手动加上、删掉的角色（之后不再跟着角色的出现规则变）。 */
+    roleOverrides: jsonb("role_overrides").$type<RoleOverrides>(),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
@@ -441,6 +512,37 @@ export const fieldViewer = pgTable(
   (t) => [primaryKey({ columns: [t.workItemId, t.fieldKey, t.userId] })],
 );
 
+/** 关注、收藏：每人对每个工作项各一条。 */
+export const workItemMark = pgTable(
+  "work_item_mark",
+  {
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"follow" | "star">().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workItemId, t.userId, t.kind] }), index("work_item_mark_user").on(t.userId, t.kind)],
+);
+
+/** 最近浏览：每人对每个工作项只留最后一次。 */
+export const workItemVisit = pgTable(
+  "work_item_visit",
+  {
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    visitedAt: timestamp("visited_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workItemId, t.userId] }), index("work_item_visit_user").on(t.userId, t.visitedAt)],
+);
+
 export const roleMember = pgTable(
   "role_member",
   {
@@ -497,6 +599,16 @@ export const nodeInstance = pgTable(
     actualEnd: timestamp("actual_end", { withTimezone: true, mode: "date" }),
     /** 计划日期被人手动改过，排期重算时不覆盖。 */
     plannedPinned: boolean("planned_pinned").notNull().default(false),
+    /** 整体完成结论（结论选项值）和意见。 */
+    conclusion: text("conclusion"),
+    comment: text("comment"),
+    /** 每位负责人的个人结论和意见：用户 id → { value, comment }。 */
+    verdicts: jsonb("verdicts").$type<Record<string, { value: string | null; comment?: string | null }>>(),
+    /** 节点字段的值：节点字段键 → 值。 */
+    fields: jsonb("fields").$type<Record<string, unknown>>(),
+    /** 估分（人天等，按团队习惯）和实际工时（小时）。 */
+    points: doublePrecision("points"),
+    actualHours: doublePrecision("actual_hours"),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("node_instance_work_item_node").on(t.workItemId, t.nodeKey)],
@@ -568,6 +680,8 @@ export const attachment = pgTable(
     contentType: text("content_type").notNull(),
     size: bigint("size", { mode: "number" }).notNull(),
     storageKey: text("storage_key").notNull(),
+    /** 附件字段上传的附件记字段键；为空的是工作项的附件（附件卡片）。 */
+    fieldKey: text("field_key"),
     uploadedBy: text("uploaded_by")
       .notNull()
       .references(() => user.id),
@@ -712,6 +826,11 @@ export const spaceRelations = relations(space, ({ many }) => ({
   automationRules: many(automationRule),
   views: many(savedView),
   webhooks: many(webhook),
+  businessLines: many(businessLine),
+}));
+
+export const businessLineRelations = relations(businessLine, ({ one }) => ({
+  space: one(space, { fields: [businessLine.spaceId], references: [space.id] }),
 }));
 
 export const spaceMemberRelations = relations(spaceMember, ({ one }) => ({
@@ -775,7 +894,17 @@ export const automationRuleRelations = relations(automationRule, ({ one, many })
   runs: many(automationRun),
 }));
 
+export const workItemMarkRelations = relations(workItemMark, ({ one }) => ({
+  workItem: one(workItem, { fields: [workItemMark.workItemId], references: [workItem.id] }),
+}));
+
+export const workItemVisitRelations = relations(workItemVisit, ({ one }) => ({
+  workItem: one(workItem, { fields: [workItemVisit.workItemId], references: [workItem.id] }),
+}));
+
 export const workItemRelations = relations(workItem, ({ one, many }) => ({
+  marks: many(workItemMark),
+  visits: many(workItemVisit),
   space: one(space, { fields: [workItem.spaceId], references: [space.id] }),
   type: one(workItemType, { fields: [workItem.typeId], references: [workItemType.id] }),
   flowVersion: one(flowVersion, { fields: [workItem.flowVersionId], references: [flowVersion.id] }),

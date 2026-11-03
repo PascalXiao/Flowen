@@ -17,6 +17,13 @@ interface Def {
   toTypeId: string;
   cardinality: "one" | "many";
 }
+/** 互相关联在本工作项这一端的字段：别的工作项（fromTypeId 类型）关联到本工作项。 */
+interface ReverseDef {
+  id: string;
+  name: string;
+  fromTypeId: string;
+  cardinality: "one" | "many";
+}
 interface Linked {
   id: string;
   relationDefId: string | null;
@@ -32,19 +39,25 @@ export function RelationsCard({
   workItemId,
   spaceId,
   defs,
+  reverseDefs = [],
   outgoing,
   incoming,
+  title = "关联",
 }: {
+  title?: string;
   workItemId: string;
   spaceId: string;
   defs: readonly Def[];
+  reverseDefs?: readonly ReverseDef[];
   outgoing: readonly Linked[];
   incoming: readonly Linked[];
 }) {
   const zero = useZero();
   const [error, setError] = useState<string | null>(null);
-  const backlinks = incoming.filter((r) => r.relationDefId && r.item);
-  if (defs.length === 0 && backlinks.length === 0) return null;
+  // 有字段名的反向关联单独成组，没有的才列在「被关联」里
+  const reverseIds = new Set(reverseDefs.map((d) => d.id));
+  const backlinks = incoming.filter((r) => r.relationDefId && r.item && !reverseIds.has(r.relationDefId));
+  if (defs.length === 0 && reverseDefs.length === 0 && backlinks.length === 0) return null;
 
   async function run(request: Parameters<typeof zero.mutate>[0]) {
     setError(null);
@@ -54,7 +67,7 @@ export function RelationsCard({
   }
 
   return (
-    <Panel title="关联">
+    <Panel title={title}>
       <div className="flex flex-col gap-4">
         {defs.map((def) => (
           <RelationGroup
@@ -65,6 +78,19 @@ export function RelationsCard({
             linked={outgoing.filter((r) => r.relationDefId === def.id)}
             onAdd={(toId) =>
               run(mutators.relation.add({ id: newId(), relationDefId: def.id, fromId: workItemId, toId }))
+            }
+            onRemove={(id) => run(mutators.relation.remove({ id }))}
+          />
+        ))}
+        {reverseDefs.map((def) => (
+          <RelationGroup
+            key={def.id}
+            def={{ id: def.id, name: def.name, toTypeId: def.fromTypeId, cardinality: def.cardinality }}
+            spaceId={spaceId}
+            workItemId={workItemId}
+            linked={incoming.filter((r) => r.relationDefId === def.id)}
+            onAdd={(otherId) =>
+              run(mutators.relation.add({ id: newId(), relationDefId: def.id, fromId: otherId, toId: workItemId }))
             }
             onRemove={(id) => run(mutators.relation.remove({ id }))}
           />

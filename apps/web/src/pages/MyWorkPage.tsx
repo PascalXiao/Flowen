@@ -4,6 +4,7 @@ import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState, PageBody, PageHeader } from "@/components/ui/page";
 import { Segmented } from "@/components/ui/tabs";
 import { Tag } from "@/components/ui/tag";
@@ -136,8 +137,7 @@ export function MyWorkPage() {
                     className="flex h-11 items-center gap-3 border-b border-line-subtle px-4 last:border-b-0 hover:bg-hover/50"
                   >
                     {e.taskId ? (
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={`完成子任务：${e.title}`}
                         className="size-3.5 accent-brand-500"
                         onChange={() => zero.mutate(mutators.task.setDone({ id: e.taskId as string, done: true }))}

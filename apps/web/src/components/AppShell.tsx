@@ -1,7 +1,7 @@
 import { queries } from "@fp/sync";
 import { useQuery } from "@rocicorp/zero/react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ChartColumn, ChevronsUpDown, House, Inbox, KeyRound, LayoutList, LogOut, Settings, Zap } from "lucide-react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { ChartColumn, ChevronsUpDown, House, Inbox, KeyRound, LogOut, Settings } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { SearchDialog } from "@/components/SearchDialog";
@@ -31,11 +31,13 @@ export function useActiveSpace(spaceId: string | null | undefined) {
 /** 应用外框：左侧导航（空间切换、空间内的功能入口、通知和账号），右侧是页面。 */
 export function AppShell({ user, children }: { user: { id: string; name: string }; children: ReactNode }) {
   const [spaceId, setSpaceId] = useState<string | undefined>();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const fullScreen = /\/setting\/(workObject\/[^/]+|advanced)/.test(pathname);
   return (
     <ActiveSpace.Provider value={setSpaceId}>
       <div className="flex h-full">
-        <Sidebar spaceId={spaceId} user={user} />
-        <main className="flex min-w-0 flex-1 flex-col overflow-auto">{children}</main>
+        {!fullScreen && <Sidebar spaceId={spaceId} user={user} pathname={pathname} />}
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-auto">{children}</main>
       </div>
     </ActiveSpace.Provider>
   );
@@ -45,7 +47,15 @@ export function AppShell({ user, children }: { user: { id: string; name: string 
 const navItem =
   "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-fg hover:bg-hover [&_svg]:size-4 [&_svg]:text-fg-muted data-[status=active]:bg-brand-50 data-[status=active]:font-medium data-[status=active]:text-brand-500 data-[status=active]:[&_svg]:text-brand-500";
 
-function Sidebar({ spaceId, user }: { spaceId: string | undefined; user: { id: string; name: string } }) {
+function Sidebar({
+  spaceId,
+  user,
+  pathname,
+}: {
+  spaceId: string | undefined;
+  user: { id: string; name: string };
+  pathname: string;
+}) {
   const [spaces] = useQuery(queries.spaces.mine());
   const [space] = useQuery(spaceId ? queries.spaces.byId({ id: spaceId }) : undefined);
   const navigate = useNavigate();
@@ -54,9 +64,9 @@ function Sidebar({ spaceId, user }: { spaceId: string | undefined; user: { id: s
     <nav aria-label="主导航" className="flex w-56 shrink-0 flex-col border-r border-line-subtle bg-surface">
       <div className="flex h-14 items-center gap-2 px-4">
         <span className="flex size-6 items-center justify-center rounded-md bg-brand-500 text-xs font-bold text-white">
-          飞
+          F
         </span>
-        <span className="font-semibold">飞书项目</span>
+        <span className="font-semibold">Flowen</span>
       </div>
 
       <div className="flex flex-col gap-0.5 px-3 pb-2">
@@ -108,40 +118,42 @@ function Sidebar({ spaceId, user }: { spaceId: string | undefined; user: { id: s
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3">
         {space ? (
           <>
-            <Link
-              to="/spaces/$spaceId"
-              params={{ spaceId: space.id }}
-              search={{}}
-              activeOptions={{ exact: true, includeSearch: true }}
-              className={navItem}
-            >
-              <LayoutList />
-              全部工作项
-            </Link>
-            {space.workItemTypes.map((t) => (
-              <Link
-                key={t.id}
-                to="/spaces/$spaceId"
-                params={{ spaceId: space.id }}
-                search={{ type: t.id }}
-                activeOptions={{ exact: true, includeSearch: true }}
-                className={cn(navItem, "pl-8")}
-              >
-                {t.name}
-              </Link>
-            ))}
-            <Link to="/spaces/$spaceId/dashboard" params={{ spaceId: space.id }} className={cn(navItem, "mt-2")}>
+            <Link to="/spaces/$spaceId/overview" params={{ spaceId: space.id }} className={navItem}>
               <ChartColumn />
               仪表盘
             </Link>
-            <Link to="/spaces/$spaceId/automations" params={{ spaceId: space.id }} className={navItem}>
-              <Zap />
-              自动化
-            </Link>
-            <Link to="/spaces/$spaceId/settings" params={{ spaceId: space.id }} className={navItem}>
+            <Link
+              to="/spaces/$spaceId/setting/$tab"
+              params={{ spaceId: space.id, tab: "basicInfo" }}
+              className={cn(
+                navItem,
+                pathname.startsWith(`/spaces/${space.id}/setting`) &&
+                  "bg-brand-50 font-medium text-brand-500 [&_svg]:text-brand-500",
+              )}
+            >
               <Settings />
-              空间设置
+              空间配置
             </Link>
+            {/* 每个工作项一个入口，点进去是它的主页（工作项列表 / 视图列表） */}
+            <section aria-label="工作项" className="flex flex-col gap-0.5">
+              {space.workItemTypes.map((t) => (
+                <Link
+                  key={t.id}
+                  to="/spaces/$spaceId/$typeKey"
+                  params={{ spaceId: space.id, typeKey: t.key }}
+                  activeOptions={{ includeSearch: false }}
+                  className={navItem}
+                >
+                  <span
+                    aria-hidden
+                    className="flex size-4 shrink-0 items-center justify-center rounded bg-brand-500 text-[10px] font-medium text-white"
+                  >
+                    {t.name.slice(0, 1)}
+                  </span>
+                  <span className="truncate">{t.name}</span>
+                </Link>
+              ))}
+            </section>
           </>
         ) : (
           <Link to="/" className={navItem}>

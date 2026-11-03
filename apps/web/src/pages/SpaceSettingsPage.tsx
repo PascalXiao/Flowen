@@ -1,31 +1,48 @@
 import { mutators, queries, SPACE_ROLE_LABEL, type SpaceRole, spaceRoles } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
-import { Link, useParams } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
+import { BusinessLinesCard } from "@/components/BusinessLinesCard";
 import { CalendarCard } from "@/components/CalendarCard";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { PageBody, PageHeader } from "@/components/ui/page";
+import { Tabs } from "@/components/ui/tabs";
 import { Tag } from "@/components/ui/tag";
 import { WebhooksCard } from "@/components/WebhooksCard";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
+import { AutomationsPanel } from "@/pages/AutomationsPage";
+import { ImportOem } from "@/pages/SpacePage";
 
 const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
 
 type Space = NonNullable<QueryResultType<ReturnType<typeof queries.spaces.byId>>>;
 
-/** 空间设置：成员、工作项类型、工作日历、Webhook（只给管理员）。只有管理员能改，成员只读。 */
+/** 空间配置的页签，和飞书项目一致。 */
+const SETTING_TABS = [
+  ["basicInfo", "空间信息"],
+  ["workObjectSetting", "工作项"],
+  ["permission", "权限"],
+  ["automation", "自动化"],
+] as const;
+type SettingTab = (typeof SETTING_TABS)[number][0];
+
+/**
+ * 空间配置：空间信息（业务线、工作日历）、工作项（类型卡片，点进去是全屏配置页）、权限（成员）、
+ * 关联（工作项之间的关系）、自动化（规则和 Webhook）。只有管理员能改，成员只读。
+ */
 export function SpaceSettingsPage() {
-  const { spaceId } = useParams({ from: "/app/spaces/$spaceId/settings" });
+  const { spaceId, tab: rawTab } = useParams({ from: "/app/spaces/$spaceId/setting/$tab" });
+  const navigate = useNavigate();
   const zero = useZero();
   const [space, result] = useQuery(queries.spaces.byId({ id: spaceId }));
   useActiveSpace(spaceId);
+  const tab: SettingTab = SETTING_TABS.some(([k]) => k === rawTab) ? (rawTab as SettingTab) : "basicInfo";
 
   if (!space)
     return (
@@ -35,12 +52,38 @@ export function SpaceSettingsPage() {
 
   return (
     <>
-      <PageHeader title="空间设置" breadcrumb={space.name} />
-      <PageBody className="max-w-4xl">
-        <MembersCard space={space} canManage={isAdmin} />
-        <TypesCard space={space} canManage={isAdmin} />
-        <CalendarCard spaceId={spaceId} calendar={space.calendar ?? NO_CALENDAR} canManage={isAdmin} />
-        {isAdmin && <WebhooksCard spaceId={spaceId} />}
+      <PageHeader
+        title="空间配置"
+        tabs={
+          <Tabs
+            label="空间配置"
+            value={tab}
+            onChange={(next) => navigate({ to: "/spaces/$spaceId/setting/$tab", params: { spaceId, tab: next } })}
+            items={SETTING_TABS}
+          />
+        }
+      />
+      <PageBody className={tab === "workObjectSetting" ? "max-w-6xl" : "max-w-4xl"}>
+        {tab === "basicInfo" && (
+          <>
+            <BusinessLinesCard
+              key={JSON.stringify(space.businessLines)}
+              spaceId={spaceId}
+              lines={space.businessLines}
+              members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
+              canManage={isAdmin}
+            />
+            <CalendarCard spaceId={spaceId} calendar={space.calendar ?? NO_CALENDAR} canManage={isAdmin} />
+          </>
+        )}
+        {tab === "workObjectSetting" && <TypesCard space={space} canManage={isAdmin} />}
+        {tab === "permission" && <MembersCard space={space} canManage={isAdmin} />}
+        {tab === "automation" && (
+          <>
+            <AutomationsPanel spaceId={spaceId} />
+            {isAdmin && <WebhooksCard spaceId={spaceId} />}
+          </>
+        )}
       </PageBody>
     </>
   );
@@ -159,7 +202,7 @@ function MembersCard({ space, canManage }: { space: Space; canManage: boolean })
   );
 }
 
-/** 空间里的工作项类型，点进去配置角色、字段和流程。管理员可以新建类型。 */
+/** 空间里的工作项：卡片列表，点进去是全屏的配置页。管理员可以新建工作项类型、导入 OEM 演示。 */
 function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
   const zero = useZero();
   const [error, setError] = useState<string | null>(null);
@@ -182,36 +225,62 @@ function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>工作项类型</CardTitle>
-        <CardDescription>每种类型有自己的角色、字段、关联和流程模板。</CardDescription>
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <CardTitle>工作项</CardTitle>
+            <CardDescription>配置工作项的详情、表单、流程和角色。</CardDescription>
+          </div>
+          <Button variant="outline" asChild>
+            <Link to="/spaces/$spaceId/setting/advanced" params={{ spaceId: space.id }}>
+              高级设置
+            </Link>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {space.workItemTypes.length > 0 && (
-          <ul className="flex flex-col divide-y divide-line-subtle rounded-md border border-line-subtle">
+        {space.workItemTypes.length > 0 ? (
+          <ul aria-label="工作项类型" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {space.workItemTypes.map((t) => {
               const published = t.flowTemplates.filter((f) => f.currentVersionId).length;
               return (
                 <li key={t.id}>
                   <Link
-                    to="/types/$typeId"
-                    params={{ typeId: t.id }}
-                    className="flex h-12 items-center gap-3 px-3 hover:bg-hover/50"
+                    to="/spaces/$spaceId/setting/workObject/$typeKey"
+                    params={{ spaceId: space.id, typeKey: t.key }}
+                    className="flex h-16 items-center gap-3 rounded-lg border border-line-subtle px-3 hover:border-brand-500 hover:bg-hover/50"
                   >
-                    <span className="font-medium">{t.name}</span>
-                    <span className="text-xs text-fg-subtle">
-                      {t.flowMode === "state" ? "状态流" : "节点流"} · {t.roles.length} 个角色 · {t.fields.length}{" "}
-                      个字段 · {published} 个已发布流程
+                    <span
+                      aria-hidden
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-500 text-sm font-medium text-white"
+                    >
+                      {t.name.slice(0, 1)}
                     </span>
-                    <ChevronRight className="ml-auto size-4 text-fg-subtle" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium">{t.name}</span>
+                      <span className="truncate text-xs text-fg-subtle">
+                        {t.flowMode === "state" ? "状态流" : "节点流"} · {t.roles.length} 个角色 · {t.fields.length}{" "}
+                        个字段 · {published} 个已发布流程
+                      </span>
+                    </span>
                   </Link>
                 </li>
               );
             })}
           </ul>
+        ) : (
+          <div className="flex flex-col items-start gap-2 text-sm text-fg-muted">
+            还没有工作项。
+            {canManage && <ImportOem spaceId={space.id} />}
+          </div>
         )}
         {canManage && (
           <form className="flex items-center gap-2" onSubmit={add}>
-            <Input name="name" aria-label="新类型名称" placeholder="新类型名称，例如：缺陷、需求" className="flex-1" />
+            <Input
+              name="name"
+              aria-label="新类型名称"
+              placeholder="新工作项名称，例如：缺陷、需求"
+              className="flex-1"
+            />
             <Select name="flowMode" aria-label="流程方式" defaultValue="node" className="w-44">
               <option value="node">节点流（多角色协作）</option>
               <option value="state">状态流（缺陷、工单）</option>

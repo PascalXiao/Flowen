@@ -6,6 +6,8 @@ export * from "./context.ts";
 export * from "./field-values.ts";
 export * from "./flow.ts";
 export * from "./formulas.ts";
+export * from "./lifecycle.ts";
+export * from "./marks.ts";
 export * from "./mutators.ts";
 export * from "./planning.ts";
 export * from "./queries.ts";

@@ -29,20 +29,27 @@ const LABEL_WIDTH = 220;
 const DAY_WIDTH = 26;
 const HANDLE = 6;
 
-const COLORS = {
-  grid: "#eff0f1",
-  weekend: "#f5f6f7",
-  text: "#1f2329",
-  muted: "#8f959e",
-  today: "#f54a45",
-  dep: "#bbbfc4",
-  actual: "#2ea121",
-  bar: { notStarted: "#bbbfc4", inProgress: "#3370ff", completed: "#34c724", skipped: "#eff0f1" } as Record<
-    NodeState,
-    string
-  >,
-  pinned: "#1f2329",
-};
+/** Canvas 画不了 CSS 变量，绘制时从主题变量里取实际颜色（换主题、切暗色都跟着变）。 */
+function themeColors() {
+  const css = getComputedStyle(document.body);
+  const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  return {
+    grid: v("--semi-color-border", "#eff0f1"),
+    weekend: v("--semi-color-fill-0", "#f5f6f7"),
+    text: v("--semi-color-text-0", "#1f2329"),
+    muted: v("--semi-color-text-2", "#8f959e"),
+    today: v("--semi-color-danger", "#f54a45"),
+    dep: v("--semi-color-disabled-text", "#bbbfc4"),
+    actual: v("--semi-color-success-hover", "#2ea121"),
+    bar: {
+      notStarted: v("--semi-color-disabled-text", "#bbbfc4"),
+      inProgress: v("--semi-color-primary", "#3370ff"),
+      completed: v("--semi-color-success", "#34c724"),
+      skipped: v("--semi-color-fill-1", "#eff0f1"),
+    } as Record<NodeState, string>,
+    pinned: v("--semi-color-text-0", "#1f2329"),
+  };
+}
 
 type Drag = { key: string; mode: "move" | "resize"; originX: number; delta: number };
 
@@ -92,6 +99,7 @@ export function GanttChart({
   };
 
   useEffect(() => {
+    const COLORS = themeColors();
     const ratio = window.devicePixelRatio || 1;
     const setup = (canvas: HTMLCanvasElement | null, h: number) => {
       if (!canvas) return null;

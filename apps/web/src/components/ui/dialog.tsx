@@ -1,48 +1,106 @@
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
-import type * as React from "react";
-import { cn } from "@/lib/utils";
+import { Modal } from "@douyinfe/semi-ui";
+import * as React from "react";
 
-export const Dialog = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose = DialogPrimitive.Close;
+/**
+ * 弹窗（Semi Modal），沿用 Dialog / DialogTrigger / DialogContent / DialogClose 的组合写法：
+ * Dialog 管开关，Trigger 打开，Close 关上，Content 是弹窗本身。
+ */
+const DialogState = React.createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
+  open: false,
+  setOpen: () => {},
+});
+
+export function Dialog({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const [own, setOwn] = React.useState(false);
+  const value = {
+    open: open ?? own,
+    setOpen: (next: boolean) => {
+      if (open === undefined) setOwn(next);
+      onOpenChange?.(next);
+    },
+  };
+  return <DialogState.Provider value={value}>{children}</DialogState.Provider>;
+}
+
+/** 给子元素加上点击行为；asChild 时直接用子元素，否则包一个按钮。 */
+function withClick(children: React.ReactNode, asChild: boolean | undefined, onClick: () => void, className?: string) {
+  if (asChild && React.isValidElement<{ onClick?: (e: React.MouseEvent) => void }>(children))
+    return React.cloneElement(children, {
+      onClick: (e: React.MouseEvent) => {
+        children.props.onClick?.(e);
+        onClick();
+      },
+    });
+  return (
+    <button type="button" className={className} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+export function DialogTrigger({
+  asChild,
+  className,
+  children,
+}: {
+  asChild?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { setOpen } = React.useContext(DialogState);
+  return withClick(children, asChild, () => setOpen(true), className);
+}
+
+export function DialogClose({ asChild, children }: { asChild?: boolean; children: React.ReactNode }) {
+  const { setOpen } = React.useContext(DialogState);
+  return withClick(children, asChild, () => setOpen(false));
+}
 
 export function DialogContent({
   className,
   children,
   title,
   description,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & { title: React.ReactNode; description?: React.ReactNode }) {
+}: {
+  className?: string;
+  children: React.ReactNode;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+}) {
+  const { open, setOpen } = React.useContext(DialogState);
+  // 宽度：调用方用 max-w-2xl 这类写法表示宽弹窗
+  const width = className?.includes("max-w-2xl") ? 672 : className?.includes("max-w-xl") ? 576 : 512;
+  // Esc 先收起弹窗里打开的气泡、下拉，没有打开的才关弹窗（Semi 自带的 Esc 会连弹窗一起关掉）
+  React.useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"]:not([aria-modal="true"]), [role="listbox"]')) return;
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  });
   return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40" />
-      <DialogPrimitive.Content
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg bg-surface shadow-popover focus:outline-none",
-          className,
-        )}
-        {...(!description && { "aria-describedby": undefined })}
-        {...props}
-      >
-        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
-          <div className="flex flex-col gap-1">
-            <DialogPrimitive.Title className="text-base font-semibold">{title}</DialogPrimitive.Title>
-            {description && (
-              <DialogPrimitive.Description className="text-sm text-fg-subtle">
-                {description}
-              </DialogPrimitive.Description>
-            )}
-          </div>
-          <DialogPrimitive.Close
-            aria-label="关闭"
-            className="-mr-1.5 rounded-md p-1 text-fg-subtle hover:bg-hover hover:text-fg"
-          >
-            <X className="size-4" />
-          </DialogPrimitive.Close>
-        </div>
-        <div className="min-h-0 overflow-y-auto px-6 pb-6">{children}</div>
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
+    <Modal
+      visible={open}
+      title={title}
+      width={width}
+      footer={null}
+      onCancel={() => setOpen(false)}
+      closeOnEsc={false}
+      bodyStyle={{ maxHeight: "70vh", overflowY: "auto", paddingBottom: 24 }}
+    >
+      {description && <p className="mb-4 text-sm text-fg-subtle">{description}</p>}
+      {children}
+    </Modal>
   );
 }

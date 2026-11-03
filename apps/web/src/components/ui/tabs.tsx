@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-/** 下划线页签：页面里切换同一对象的不同视图（流程图、甘特图）。 */
+/** 下划线页签（Semi Tabs 的 line 样式）：页面里切换同一对象的不同视图（流程图、甘特图）。 */
 export function Tabs<K extends string>({
   value,
   onChange,
@@ -16,7 +16,11 @@ export function Tabs<K extends string>({
   label?: string;
 }) {
   return (
-    <div role="tablist" aria-label={label} className={cn("flex gap-6 border-b border-line-subtle", className)}>
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cn("semi-tabs-bar semi-tabs-bar-line semi-tabs-bar-top flex", className)}
+    >
       {items.map(([key, text]) => (
         <button
           key={key}
@@ -24,12 +28,7 @@ export function Tabs<K extends string>({
           role="tab"
           aria-selected={value === key}
           onClick={() => onChange(key)}
-          className={cn(
-            "-mb-px cursor-pointer border-b-2 py-2.5 text-sm transition-colors",
-            value === key
-              ? "border-brand-500 font-medium text-brand-500"
-              : "border-transparent text-fg-muted hover:text-fg",
-          )}
+          className={cn("semi-tabs-tab semi-tabs-tab-top semi-tabs-tab-small", value === key && "semi-tabs-tab-active")}
         >
           {text}
         </button>

@@ -6,12 +6,15 @@ export function PageHeader({
   title,
   breadcrumb,
   actions,
+  tabs,
   children,
   className,
 }: {
   title: React.ReactNode;
   breadcrumb?: React.ReactNode;
   actions?: React.ReactNode;
+  /** 标题下面一行的页签（如工作项主页的「工作项列表 / 视图列表」）。 */
+  tabs?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
 }) {
@@ -23,6 +26,7 @@ export function PageHeader({
         {children}
         {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
+      {tabs && <div className="-mb-3">{tabs}</div>}
     </header>
   );
 }

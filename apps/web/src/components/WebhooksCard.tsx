@@ -4,6 +4,7 @@ import { useQuery, useZero } from "@rocicorp/zero/react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tag, type TagTone } from "@/components/ui/tag";
 import { newId } from "@/lib/utils";
@@ -94,8 +95,7 @@ function EventPicker({ value, onChange }: { value: WebhookEvent[]; onChange: (ne
       <span className="text-fg-muted">事件：</span>
       {EVENT_KEYS.map((key) => (
         <label key={key} className="flex items-center gap-1">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={value.includes(key)}
             onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((k) => k !== key))}
           />
@@ -129,8 +129,7 @@ function WebhookItem({
           {hook.url}
         </code>
         <label className="flex items-center gap-1 text-sm">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={hook.enabled ?? true}
             onChange={(e) => run(mutators.webhook.update({ id: hook.id, enabled: e.target.checked }))}
           />

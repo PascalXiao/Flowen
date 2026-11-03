@@ -41,6 +41,7 @@ async function editableNode(tx: Transaction, workItemId: string, nodeKey: string
   if (!item) throw new Error("工作项不存在或没有权限。");
   await requireWriter(tx, item.spaceId, userID);
   if (item.status === "terminated") throw new Error("工作项已终止。");
+  if (item.frozen) throw new Error("工作项已冻结，解冻后才能修改。");
   const node = nodeFlowOf(item.flowVersion?.definition)?.nodes.find((n) => n.key === nodeKey);
   if (!node) throw new Error("节点不存在。");
   const instance = await tx.run(zql.nodeInstance.where("id", nodeInstanceId(workItemId, nodeKey)).one());

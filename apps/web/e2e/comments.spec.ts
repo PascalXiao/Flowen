@@ -19,7 +19,8 @@ test("comment with a mention, and both people get notified", async ({ page, brow
   await expect(bell).toHaveAccessibleName("通知");
   await bell.click();
 
-  // 评论并提及 Lin
+  // 评论并提及 Lin（评论在详情页签里）
+  await page.getByRole("tablist", { name: "详情页签" }).getByRole("tab", { name: /评论/ }).click();
   await page.getByLabel("评论内容").fill("配方先按 A 方案走");
   await page.getByRole("button", { name: "@Lin" }).click();
   await page.getByRole("button", { name: "发表评论" }).click();
@@ -38,6 +39,7 @@ test("comment with a mention, and both people get notified", async ({ page, brow
   await linBell.click();
   await lin.getByRole("button", { name: /Pascal 在「新品 J」的评论里提到了你/ }).click();
   await expect(lin.getByRole("heading", { name: "新品 J" })).toBeVisible();
+  await lin.getByRole("tablist", { name: "详情页签" }).getByRole("tab", { name: /评论/ }).click();
   await expect(lin.getByRole("list", { name: "评论列表" })).toContainText("配方先按 A 方案走");
   await expect(linBell).toHaveAccessibleName("通知");
   await linContext.close();

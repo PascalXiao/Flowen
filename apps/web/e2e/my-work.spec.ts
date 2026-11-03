@@ -7,7 +7,7 @@ test("my work lists the nodes I own and the tasks assigned to me, grouped by due
   await createItem(page, "新品 W");
 
   // 在进行中的节点上加一个已经过了截止日期的子任务，指派给自己
-  const current = page.locator("aside").getByRole("region", { name: "需求立项提案" });
+  const current = page.getByRole("main").getByRole("region", { name: "需求立项提案" });
   await current.getByLabel("给需求立项提案添加子任务").fill("准备立项材料");
   await current.getByLabel("给需求立项提案添加子任务").press("Enter");
   await current.getByLabel("准备立项材料的截止日期").fill("2020-01-02");

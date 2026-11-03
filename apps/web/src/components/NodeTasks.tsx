@@ -4,6 +4,7 @@ import { useZero } from "@rocicorp/zero/react";
 import { UserRound, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, newId } from "@/lib/utils";
@@ -80,8 +81,7 @@ export function NodeTasks({
           const assignee = members.find((m) => m.userId === task.assigneeId);
           return (
             <li key={task.id} className="group flex h-8 items-center gap-2 rounded-md px-1 hover:bg-hover/60">
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label={`完成子任务：${task.name}`}
                 className="size-3.5 accent-brand-500"
                 checked={task.done === true}

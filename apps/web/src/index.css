@@ -1,59 +1,116 @@
+/* Semi 主题样式放进自己的层，排在 Tailwind 的 base 之后、utilities 之前：盖过默认重置，又能被页面上的工具类覆盖。 */
+@layer theme, base, semi, components, utilities;
+@import "@semi-bot/semi-theme-doucreator/semi.min.css" layer(semi);
 @import "tailwindcss";
 
 /*
- * 设计规范：参照飞书项目的视觉语言。
- * 颜色只用这里的语义 token（text-fg、bg-canvas、border-line、bg-brand-500 …），页面里不直接写 slate/sky。
+ * 配色参照飞书项目：组件用 Semi，主题包只取字体、圆角这些，颜色在这里换成飞书的蓝、灰和状态色。
+ * 写在 semi 层里、排在主题包之后，同名变量以这里为准。
+ */
+@layer semi {
+  /* 勾选框、单选框的原生 input 盖在装饰层上面，点击和测试都落在真正的控件上 */
+  .semi-checkbox-input,
+  .semi-radio-input {
+    z-index: 1;
+    cursor: pointer;
+  }
+
+  body {
+    --semi-color-primary: #3370ff;
+    --semi-color-primary-hover: #4e83fd;
+    --semi-color-primary-active: #245bdb;
+    --semi-color-primary-disabled: #bacefd;
+    --semi-color-primary-light-default: #f0f4ff;
+    --semi-color-primary-light-hover: #e1eaff;
+    --semi-color-primary-light-active: #bacefd;
+    --semi-color-focus-border: #3370ff;
+    --semi-color-link: #3370ff;
+    --semi-color-link-hover: #4e83fd;
+    --semi-color-link-active: #245bdb;
+    --semi-color-link-visited: #3370ff;
+    --semi-color-info: #3370ff;
+    --semi-color-text-0: #1f2329;
+    --semi-color-text-1: #646a73;
+    --semi-color-text-2: #8f959e;
+    --semi-color-text-3: #bbbfc4;
+    --semi-color-disabled-text: #bbbfc4;
+    --semi-color-border: #dee0e3;
+    --semi-color-fill-0: rgba(31, 35, 41, 0.05);
+    --semi-color-fill-1: rgba(31, 35, 41, 0.08);
+    --semi-color-fill-2: rgba(31, 35, 41, 0.12);
+    --semi-color-success: #34c724;
+    --semi-color-success-hover: #2ea121;
+    --semi-color-success-active: #278a1c;
+    --semi-color-success-light-default: #f0fbef;
+    --semi-color-success-light-hover: #d9f5d6;
+    --semi-color-warning: #ff8800;
+    --semi-color-warning-hover: #de7802;
+    --semi-color-warning-active: #b26206;
+    --semi-color-warning-light-default: #fff5eb;
+    --semi-color-warning-light-hover: #feead2;
+    --semi-color-danger: #f54a45;
+    --semi-color-danger-hover: #d83931;
+    --semi-color-danger-active: #ac2f28;
+    --semi-color-danger-light-default: #fef1f1;
+    --semi-color-danger-light-hover: #fde2e2;
+  }
+}
+
+/*
+ * 设计规范：布局和交互参照飞书项目，组件用 Semi Design（主题包见上），配色参照飞书项目。
+ * 页面里只用这里的语义 token（text-fg、bg-canvas、border-line、bg-brand-500 …），它们都指向 Semi 的主题变量，
+ * 换主题或切暗色时自动跟着变。不直接写 slate/sky，也不直接写十六进制颜色。
  * 字号：12 辅助信息、14 正文和控件、16 卡片标题、20 页面标题。控件高度 32px，圆角 6px，间距以 4px 为单位。
  */
-@theme {
+@theme inline {
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial,
-    sans-serif;
+    Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
 
-  /* 品牌蓝：主按钮、链接、选中态 */
-  --color-brand-50: #f0f4ff;
-  --color-brand-100: #e1eaff;
-  --color-brand-200: #bacefd;
-  --color-brand-300: #82a7fc;
-  --color-brand-500: #3370ff;
-  --color-brand-600: #245bdb;
-  --color-brand-700: #1c4cba;
+  /* 品牌色：主按钮、链接、选中态（主题主色） */
+  --color-brand-50: var(--semi-color-primary-light-default);
+  --color-brand-100: var(--semi-color-primary-light-hover);
+  --color-brand-200: var(--semi-color-primary-light-active);
+  --color-brand-300: color-mix(in srgb, var(--semi-color-primary) 55%, transparent);
+  --color-brand-500: var(--semi-color-primary);
+  --color-brand-600: var(--semi-color-primary-hover);
+  --color-brand-700: var(--semi-color-primary-active);
 
   /* 文字 */
-  --color-fg: #1f2329;
-  --color-fg-muted: #646a73;
-  --color-fg-subtle: #8f959e;
-  --color-fg-disabled: #bbbfc4;
+  --color-fg: var(--semi-color-text-0);
+  --color-fg-muted: var(--semi-color-text-1);
+  --color-fg-subtle: var(--semi-color-text-2);
+  --color-fg-disabled: var(--semi-color-disabled-text);
 
   /* 线和底色 */
-  --color-line: #dee0e3;
-  --color-line-subtle: #eff0f1;
+  --color-line: #d0d3d6;
+  --color-line-subtle: var(--semi-color-border);
   --color-canvas: #f5f6f7;
-  --color-surface: #ffffff;
-  --color-hover: #1f23290d;
-  --color-pressed: #1f23291a;
+  --color-surface: var(--semi-color-bg-0);
+  --color-hover: var(--semi-color-fill-0);
+  --color-pressed: var(--semi-color-fill-1);
 
   /* 状态色：文字用 -600，浅底用 -50 */
-  --color-success-50: #e4f6e0;
-  --color-success-500: #34c724;
-  --color-success-600: #2ea121;
-  --color-warning-50: #fff3e5;
-  --color-warning-500: #ff8800;
-  --color-warning-600: #de7802;
-  --color-danger-50: #fde2e2;
-  --color-danger-500: #f54a45;
-  --color-danger-600: #d83931;
-  --color-violet-50: #efe6fe;
-  --color-violet-600: #6425d0;
-  --color-teal-50: #d5f6f2;
-  --color-teal-600: #078372;
+  --color-success-50: var(--semi-color-success-light-default);
+  --color-success-500: var(--semi-color-success);
+  --color-success-600: var(--semi-color-success-hover);
+  --color-warning-50: var(--semi-color-warning-light-default);
+  --color-warning-500: var(--semi-color-warning);
+  --color-warning-600: var(--semi-color-warning-hover);
+  --color-danger-50: var(--semi-color-danger-light-default);
+  --color-danger-500: var(--semi-color-danger);
+  --color-danger-600: var(--semi-color-danger-hover);
+  --color-violet-50: rgba(var(--semi-violet-0), 1);
+  --color-violet-600: rgba(var(--semi-violet-6), 1);
+  --color-teal-50: rgba(var(--semi-teal-0), 1);
+  --color-teal-600: rgba(var(--semi-teal-6), 1);
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-sm: var(--semi-border-radius-small);
+  --radius-md: var(--semi-border-radius-medium);
+  --radius-lg: var(--semi-border-radius-large);
 
-  --shadow-popover: 0 6px 24px 0 #1f23290f, 0 3px 6px -4px #1f23291f, 0 9px 28px 8px #1f23290d;
-  --shadow-card: 0 1px 2px 0 #1f23290a;
+  --shadow-popover: var(--semi-shadow-elevated);
+  --shadow-card: 0 1px 2px 0 rgba(var(--semi-grey-9), 0.04);
 }
 
 @layer base {
@@ -85,4 +142,36 @@
   overflow: hidden;
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-line-subtle);
+}
+
+/* 富文本字段的排版（编辑区和只读显示共用）。 */
+.rich-text p,
+.rich-text div {
+  margin: 0.25rem 0;
+}
+.rich-text ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.rich-text ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.rich-text a {
+  color: var(--color-brand-500);
+  text-decoration: underline;
+}
+.rich-text h1 {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.rich-text h2,
+.rich-text h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.rich-text blockquote {
+  border-left: 3px solid var(--color-line);
+  padding-left: 0.75rem;
+  color: var(--color-fg-muted);
 }

@@ -73,7 +73,7 @@ export function StatusDiagram({
   });
   const edges: Edge[] = definition.transitions.map((t) => {
     const back = (depth.get(t.to) ?? 0) <= (depth.get(t.from) ?? 0);
-    const color = back ? "#bbbfc4" : "#8f959e";
+    const color = back ? "var(--color-fg-disabled)" : "var(--color-fg-subtle)";
     return {
       id: `${t.from}->${t.to}`,
       source: t.from,
@@ -96,7 +96,7 @@ export function StatusDiagram({
         proOptions={{ hideAttribution: true }}
         className="readonly bg-canvas"
       >
-        <Background color="#dee0e3" gap={20} />
+        <Background color="var(--color-line)" gap={20} />
       </ReactFlow>
     </div>
   );

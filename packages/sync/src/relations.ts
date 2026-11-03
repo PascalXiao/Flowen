@@ -1,6 +1,7 @@
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { requireWriter } from "./access.ts";
+import { recomputeFormulas } from "./formulas.ts";
 import { zql } from "./schema.gen.ts";
 import { assertAdmin } from "./templates.ts";
 
@@ -10,6 +11,9 @@ export const createRelationDefArgs = z.object({
   toTypeId: z.string(),
   name: z.string().trim().min(1, "关联要有名称。").max(50),
   cardinality: z.enum(["one", "many"]),
+  /** 互相关联：另一端的字段名和数量；不填就只在 from 一端有字段。 */
+  reverseName: z.string().trim().min(1).max(50).optional(),
+  reverseCardinality: z.enum(["one", "many"]).optional(),
 });
 export const deleteRelationDefArgs = z.object({ id: z.string() });
 export const addRelationArgs = z.object({
@@ -28,6 +32,17 @@ export async function createRelationDef(tx: Transaction, args: z.output<typeof c
   const to = await tx.run(zql.workItemType.where("id", args.toTypeId).one());
   if (to?.spaceId !== from.spaceId) throw new Error("只能关联同一个空间的类型。");
   if (from.relationDefs.some((d) => d.name === args.name)) throw new Error(`关联「${args.name}」已经存在。`);
+  if (args.reverseName) {
+    // 另一端的字段名不能和那一端已有的关联重名
+    const taken = [
+      ...(await tx.run(zql.relationDef.where("fromTypeId", args.toTypeId))).map((d) => d.name),
+      ...(await tx.run(zql.relationDef.where("toTypeId", args.toTypeId))).flatMap((d) =>
+        d.reverseName ? [d.reverseName] : [],
+      ),
+    ];
+    if (taken.includes(args.reverseName) || (args.toTypeId === args.fromTypeId && args.reverseName === args.name))
+      throw new Error(`关联「${args.reverseName}」已经存在。`);
+  }
   await tx.mutate.relationDef.insert({
     id: args.id,
     spaceId: from.spaceId,
@@ -36,6 +51,8 @@ export async function createRelationDef(tx: Transaction, args: z.output<typeof c
     fieldKey: args.name,
     name: args.name,
     cardinality: args.cardinality,
+    reverseName: args.reverseName ?? null,
+    reverseCardinality: args.reverseName ? (args.reverseCardinality ?? "many") : null,
     createdAt: Date.now(),
   });
 }
@@ -77,6 +94,11 @@ export async function addRelation(tx: Transaction, args: z.output<typeof addRela
   if (existing.some((r) => r.toId === to.id)) throw new Error(`已经关联过「${to.name}」。`);
   const replaced = def.cardinality === "one" ? existing : [];
   for (const r of replaced) await tx.mutate.relation.delete({ id: r.id });
+  if (def.reverseName && def.reverseCardinality === "one") {
+    const crowded = await tx.run(zql.relation.where("relationDefId", def.id).where("toId", to.id));
+    for (const r of crowded) await tx.mutate.relation.delete({ id: r.id });
+    for (const r of crowded) await recomputeFormulas(tx, r.fromId);
+  }
   await tx.mutate.relation.insert({
     id: args.id,
     relationDefId: def.id,
@@ -85,6 +107,8 @@ export async function addRelation(tx: Transaction, args: z.output<typeof addRela
     toId: to.id,
     createdAt: Date.now(),
   });
+  // 两端的公式可能用 RELATED 读关联的工作项
+  for (const id of [from.id, to.id, ...replaced.map((r) => r.toId)]) await recomputeFormulas(tx, id);
   return { spaceId: from.spaceId, replaced: replaced.map((r) => r.toId) };
 }
 
@@ -95,5 +119,6 @@ export async function removeRelation(tx: Transaction, args: z.output<typeof remo
   if (!relation?.relationDefId || !from) throw new Error("关联不存在或没有权限。");
   await requireWriter(tx, from.spaceId, userID);
   await tx.mutate.relation.delete({ id: args.id });
+  for (const id of [relation.fromId, relation.toId]) await recomputeFormulas(tx, id);
   return { spaceId: from.spaceId, relation };
 }

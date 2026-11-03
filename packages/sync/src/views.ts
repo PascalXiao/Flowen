@@ -1,4 +1,4 @@
-import type { WorkItemFilter } from "@fp/db/schema";
+import type { ViewDisplay, WorkItemFilter } from "@fp/db/schema";
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { spaceMemberOf } from "./access.ts";
@@ -28,11 +28,41 @@ export const workItemFilter = z.object({
 });
 export type WorkItemFilterArgs = z.output<typeof workItemFilter>;
 
+/** 列表视图的显示设置：列、排序、分组、行着色（见 db 的 ViewDisplay）。 */
+export const viewDisplay = z.object({
+  columns: z
+    .array(z.object({ key: z.string().min(1).max(100), width: z.number().int().min(40).max(1000).optional() }))
+    .max(100)
+    .optional(),
+  sort: z
+    .array(z.object({ key: z.string(), desc: z.boolean().optional() }))
+    .max(5)
+    .optional(),
+  groupBy: z.string().nullable().optional(),
+  colors: z
+    .array(z.object({ when: z.json(), color: z.string().max(32) }))
+    .max(20)
+    .optional(),
+  frozen: z.number().int().min(0).max(10).optional(),
+  rowHeight: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  summary: z
+    .record(z.string(), z.enum(["count", "filled", "empty", "filledPct", "sum", "avg", "max", "min"]))
+    .optional(),
+});
+
 export const createViewArgs = z.object({
   id: z.string(),
   spaceId: z.string(),
   name: z.string().trim().min(1, "视图要有名称。").max(50),
   filter: workItemFilter,
+  display: viewDisplay.optional(),
+});
+/** 改视图的名称、筛选或显示设置：创建人或空间管理员。 */
+export const updateViewArgs = z.object({
+  id: z.string(),
+  name: z.string().trim().min(1).max(50).optional(),
+  filter: workItemFilter.optional(),
+  display: viewDisplay.optional(),
 });
 export const deleteViewArgs = z.object({ id: z.string() });
 
@@ -47,8 +77,24 @@ export async function createView(tx: Transaction, args: z.output<typeof createVi
     name: args.name,
     // 只存有值的条件
     filter: Object.fromEntries(Object.entries(args.filter).filter(([, v]) => v?.length)) as WorkItemFilter,
+    display: (args.display ?? null) as ViewDisplay | null,
     createdBy: userID,
     createdAt: Date.now(),
+  });
+}
+
+export async function updateView(tx: Transaction, args: z.output<typeof updateViewArgs>, userID: string) {
+  const view = await tx.run(zql.savedView.where("id", args.id).one());
+  if (!view) throw new Error("视图不存在。");
+  const member = await spaceMemberOf(tx, view.spaceId, userID);
+  if (view.createdBy !== userID && member?.role !== "admin") throw new Error("只有创建人或空间管理员可以修改视图。");
+  await tx.mutate.savedView.update({
+    id: args.id,
+    ...(args.name !== undefined && { name: args.name }),
+    ...(args.filter !== undefined && {
+      filter: Object.fromEntries(Object.entries(args.filter).filter(([, v]) => v?.length)) as WorkItemFilter,
+    }),
+    ...(args.display !== undefined && { display: args.display as ViewDisplay }),
   });
 }
 

@@ -9,7 +9,7 @@ test("sign up, import OEM, create a project and see its flow", async ({ page }) 
 
   await createItem(page, "新品 A");
   await expect(page.getByText("概念阶段")).toBeVisible();
-  const panel = page.locator("aside");
+  const panel = page.getByRole("main");
   const proposal = panel.getByRole("region", { name: "需求立项提案" });
   await expect(proposal).toBeVisible();
   await expect(proposal.getByText("Pascal", { exact: true })).toBeVisible();
@@ -44,7 +44,7 @@ test("add a colleague to the space and assign them a role", async ({ page }) => 
   await openItems(page);
 
   await createItem(page, "新品 B", { roles: ["开发：Pascal", "开发：Lin"] });
-  const panel = page.locator("aside");
+  const panel = page.getByRole("main");
   const proposal = panel.getByRole("region", { name: "需求立项提案" });
   await expect(proposal.getByText("Pascal", { exact: true })).toBeVisible();
   await expect(proposal.getByText("Lin", { exact: true })).toBeVisible();

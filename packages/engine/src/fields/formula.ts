@@ -8,9 +8,67 @@
  *
  * 字段写成 {字段名}（也可以写字段键），保存时统一换成字段键。空值在加减乘除里按 0 算，
  * 在 & 拼接里按空字符串算；除以 0 得到空值。结果是数字、文本、日期（YYYY-MM-DD）或是否。
+ *
+ * 也能沿关联取别的工作项（对照飞书项目的计算字段）：
+ *
+ *   COUNT(RELATED("关联风险")) > 0                          是否存在关联风险
+ *   COUNTIF(RELATED("关联风险"), each.状态 = "进行中")       进行中的关联风险个数
+ *   SUM(MAP(CHILDREN(), each.{工时}))                        子工作项工时之和
+ *   FILTER(RELATED("关联SKU"), each.{是否上市}).名称         符合条件的关联 SKU 名称
+ *   NODE("需求评审").状态 = "completed"                      节点状态、结论（.结论）
+ *
+ * 字段组的值是行的列表，each.{列名} 取这一行的列。
+ *
+ * RELATED、CHILDREN 得到工作项列表；列表.{字段} 取每一项的字段；each 是 FILTER、MAP、COUNTIF、SUMIF、
+ * ANYOF、ALLOF 里当前的那一项。工作项上除了字段，还有 名称、状态、阶段、流程类型 四个属性，
+ * 以及 节点（这个工作项的流程节点列表，每个节点有 名称、状态、结论）：
+ *
+ *   COUNTIF(RELATED("关联评审管理"), each.流程类型 = "CDCP") > 0         关联的评审里有没有 CDCP 流程的
+ *   COUNTIF(FILTER(RELATED("关联产品资料").节点, each.名称 = "产品手册"), each.状态 = "completed") > 0
+ *
+ * 节点还有 计划开始、计划结束、实际结束（YYYY-MM-DD）。TEMPLATE()、TYPE() 是本工作项的流程类型和类型名，
+ * LIST(a, b, …) 把几个值放成一个列表（对照飞书的 [a, b]）：JOIN(LIST(RELATED("关联项目").名称, TEMPLATE()), " ")。
+ *FIND(列表, 条件) 取第一个满足的项；
+ * LEVEL(级联值, n) 取级联选项路径上的第 n 级（对照飞书的「级联字段第三级」）：
+ *
+ *   FIND(FILTER(RELATED("关联需求SKU流程").节点, TRUE), each.名称 = "成品到仓").计划结束
+ *   FIND(RELATED("关联成本率").{成本率维护}, LEVEL(each.{分类}, 3) = LEVEL({分类}, 3)).{成本率}
  */
 
 export type FormulaValue = number | string | boolean | null;
+
+/** 公式里能拿到的另一个工作项（关联的、子工作项）。 */
+export interface FormulaItem {
+  name: string;
+  status: string | null;
+  stage: string | null;
+  /** 流程类型（流程模板的名称）。 */
+  template?: string | null;
+  /** 这个工作项的流程节点；不提供时 .节点 得到空列表。 */
+  nodes?: readonly FormulaNodeItem[];
+  /** 按字段名或字段键取值。 */
+  field(ref: string): unknown;
+}
+
+/** 列表里的一个节点（取 .节点 得到的）：节点名、状态（notStarted/inProgress/completed/skipped）、结论。 */
+export interface FormulaNodeItem {
+  name: string;
+  state: string;
+  conclusion: string | null;
+  /** 计划开始、计划结束、实际结束（YYYY-MM-DD）。 */
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  actualEnd?: string | null;
+}
+
+/** 公式里能拿到的节点。 */
+export interface FormulaNode {
+  state: string;
+  conclusion: string | null;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  actualEnd?: string | null;
+}
 
 export class FormulaError extends Error {
   override name = "FormulaError";
@@ -23,7 +81,14 @@ type Node =
   | { kind: "ref"; key: string }
   | { kind: "unary"; op: "-"; arg: Node }
   | { kind: "binary"; op: string; left: Node; right: Node }
-  | { kind: "call"; name: string; args: Node[] };
+  | { kind: "call"; name: string; args: Node[] }
+  /** 取属性：工作项的字段或 名称/状态/阶段，列表上取每一项的。 */
+  | { kind: "member"; target: Node; prop: string; field: boolean }
+  /** FILTER、MAP 等里面当前的那一项。 */
+  | { kind: "each" };
+
+/** 用到别的工作项的函数：只能在服务端算。 */
+const CROSS_ITEM = ["RELATED", "CHILDREN", "NODE"] as const;
 
 /** 子工作项汇总：参数是子工作项上的字段（按字段键或名称对上）。 */
 const AGGREGATES = ["SUBITEMS_SUM", "SUBITEMS_AVG", "SUBITEMS_MIN", "SUBITEMS_MAX"] as const;
@@ -53,6 +118,28 @@ export const FORMULA_FUNCTIONS: Record<string, { args: [number, number]; doc: st
   SUBITEMS_MAX: { args: [1, 1], doc: "SUBITEMS_MAX({字段})" },
   SUBITEMS_COUNT: { args: [0, 0], doc: "SUBITEMS_COUNT() 子工作项个数" },
   SUBITEMS_DONE: { args: [0, 0], doc: "SUBITEMS_DONE() 已完成的子工作项个数" },
+  RELATED: { args: [1, 1], doc: 'RELATED("关联名") 关联的工作项列表（两个方向都算）' },
+  CHILDREN: { args: [0, 0], doc: "CHILDREN() 子工作项列表" },
+  NODE: { args: [1, 1], doc: 'NODE("节点名或键") 节点，取 .状态（notStarted/inProgress/completed/skipped）、.结论' },
+  COUNT: { args: [1, 1], doc: "COUNT(列表) 个数" },
+  COUNTIF: { args: [2, 2], doc: "COUNTIF(列表, each 的条件) 满足条件的个数" },
+  SUMIF: { args: [2, 3], doc: "SUMIF(列表, each 的条件, each 的数值) 满足条件的求和" },
+  FILTER: { args: [2, 2], doc: "FILTER(列表, each 的条件) 满足条件的项" },
+  MAP: { args: [2, 2], doc: "MAP(列表, each 的表达式) 每一项算出的值" },
+  ANYOF: { args: [2, 2], doc: "ANYOF(列表, each 的条件) 有一项满足" },
+  ALLOF: { args: [2, 2], doc: "ALLOF(列表, each 的条件) 每一项都满足" },
+  CONTAINS: { args: [2, 2], doc: "CONTAINS(列表或文本, 值) 是否包含" },
+  JOIN: { args: [1, 2], doc: "JOIN(列表, 分隔符) 连成文本，默认用「、」" },
+  FIRST: { args: [1, 1], doc: "FIRST(列表) 第一项" },
+  FIND: { args: [2, 2], doc: "FIND(列表, each 的条件) 第一个满足条件的项" },
+  STRING: { args: [1, 1], doc: "STRING(值) 转成文本" },
+  EMPTY: { args: [1, 1], doc: "EMPTY(值) 是否为空（空列表也算）" },
+  DATE: { args: [1, 1], doc: 'DATE("2026-01-01") 日期' },
+  LEVEL: { args: [2, 2], doc: "LEVEL(级联值, n) 级联选项路径上的第 n 级" },
+  LIST: { args: [1, 99], doc: "LIST(值1, 值2, …) 放成一个列表，空值不算" },
+  TEMPLATE: { args: [0, 0], doc: "TEMPLATE() 本工作项的流程类型" },
+  TYPE: { args: [0, 0], doc: "TYPE() 本工作项的类型名" },
+  TODAY: { args: [0, 0], doc: "TODAY() 今天（YYYY-MM-DD）" },
 };
 
 type Token =
@@ -68,6 +155,9 @@ function tokenize(source: string): Token[] {
   while (i < source.length) {
     const c = source.charAt(i);
     if (/\s/.test(c)) {
+      i++;
+    } else if (c === "." && !/[0-9]/.test(source.charAt(i + 1))) {
+      tokens.push({ t: "op", v: "." });
       i++;
     } else if (/[0-9.]/.test(c)) {
       const m = /^[0-9]*\.?[0-9]+|^[0-9]+\.?/.exec(source.slice(i));
@@ -87,6 +177,11 @@ function tokenize(source: string): Token[] {
     } else if (/[A-Za-z_]/.test(c)) {
       const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i)) as RegExpExecArray;
       tokens.push({ t: "id", v: m[0].toUpperCase() });
+      i += m[0].length;
+    } else if (/[\u4e00-\u9fff]/.test(c)) {
+      // 中文属性名（.名称 .状态 .阶段 .结论）
+      const m = /^[\u4e00-\u9fff]+/.exec(source.slice(i)) as RegExpExecArray;
+      tokens.push({ t: "id", v: m[0] });
       i += m[0].length;
     } else {
       const two = source.slice(i, i + 2);
@@ -166,7 +261,16 @@ class Parser {
       this.pos++;
       return { kind: "unary", op: "-", arg: this.unary() };
     }
-    return this.primary();
+    let node = this.primary();
+    while (this.isOp(".")) {
+      this.pos++;
+      const t = this.peek();
+      this.pos++;
+      if (t?.t === "ref") node = { kind: "member", target: node, prop: t.v, field: true };
+      else if (t?.t === "id") node = { kind: "member", target: node, prop: t.v, field: false };
+      else throw new FormulaError("「.」后面要写字段 {字段名} 或 名称、状态、阶段、结论。");
+    }
+    return node;
   }
   private primary(): Node {
     const t = this.peek();
@@ -181,6 +285,7 @@ class Parser {
         return { kind: "ref", key: t.v };
       case "id": {
         if (t.v === "TRUE" || t.v === "FALSE") return { kind: "bool", value: t.v === "TRUE" };
+        if (t.v === "EACH") return { kind: "each" };
         const fn = FORMULA_FUNCTIONS[t.v];
         if (!fn) throw new FormulaError(`没有函数 ${t.v}。`);
         this.expect("(");
@@ -216,6 +321,19 @@ export interface FormulaScope {
   subItemValues?(ref: string): unknown[];
   subItemCount?: number;
   subItemsDone?: number;
+  /** 按关联名（或关联键）取关联的工作项。 */
+  related?(name: string): FormulaItem[];
+  /** 子工作项。 */
+  children?(): FormulaItem[];
+  /** 按节点名或节点键取节点。 */
+  node?(ref: string): FormulaNode | null;
+  /** 今天（YYYY-MM-DD），不提供时按 UTC 当天。 */
+  today?: string;
+  /** 级联选项值从第一级到它自己的路径；不提供时 LEVEL 只认第一级。 */
+  optionPath?(value: string): string[];
+  /** 本工作项的流程类型（流程模板名）和类型名。 */
+  template?: string | null;
+  typeName?: string | null;
 }
 
 export interface CompiledFormula {
@@ -225,6 +343,8 @@ export interface CompiledFormula {
   refs: string[];
   /** 是否用到子工作项汇总（要在服务端算）。 */
   usesSubItems: boolean;
+  /** 是否用到别的工作项（关联、子工作项列表、节点），要在服务端算，关联的工作项变了也要重算。 */
+  usesRelated: boolean;
   evaluate(scope: FormulaScope): FormulaValue;
 }
 
@@ -240,11 +360,53 @@ const num = (v: unknown): number => {
 };
 const text = (v: unknown): string => {
   if (blank(v)) return "";
-  if (Array.isArray(v)) return v.join("、");
+  if (Array.isArray(v)) return v.map(text).join("、");
+  if (isItem(v)) return v.name;
   if (typeof v === "boolean") return v ? "是" : "否";
   return String(v);
 };
 const truthy = (v: unknown): boolean => !blank(v) && v !== false && v !== 0 && v !== "false";
+const isItem = (v: unknown): v is FormulaItem =>
+  typeof v === "object" &&
+  v !== null &&
+  !Array.isArray(v) &&
+  "field" in v &&
+  typeof (v as FormulaItem).field === "function";
+const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : blank(v) ? [] : [v]);
+/** 取一个值上的属性：工作项的字段或名称/状态/阶段，节点的状态/结论。 */
+function memberOf(v: unknown, prop: string, field: boolean): unknown {
+  if (Array.isArray(v)) return v.flatMap((x) => list(memberOf(x, prop, field)));
+  if (isItem(v)) {
+    if (field) return v.field(prop) ?? null;
+    if (prop === "名称" || prop === "NAME") return v.name;
+    if (prop === "状态" || prop === "STATUS") return v.status;
+    if (prop === "阶段" || prop === "STAGE") return v.stage;
+    if (prop === "流程类型" || prop === "TEMPLATE") return v.template ?? null;
+    if (prop === "节点" || prop === "NODES") return v.nodes ?? [];
+    return v.field(prop) ?? null;
+  }
+  // 列表里的节点：名称、状态、结论
+  if (typeof v === "object" && v !== null && "name" in v && "state" in v) {
+    const n = v as FormulaNodeItem;
+    if (prop === "名称" || prop === "NAME") return n.name;
+    if (prop === "状态" || prop === "STATE" || prop === "STATUS") return n.state;
+    if (prop === "结论" || prop === "CONCLUSION") return n.conclusion;
+    if (prop === "计划开始" || prop === "PLANNEDSTART") return n.plannedStart ?? null;
+    if (prop === "计划结束" || prop === "PLANNEDEND") return n.plannedEnd ?? null;
+    if (prop === "实际结束" || prop === "ACTUALEND") return n.actualEnd ?? null;
+  }
+  if (typeof v === "object" && v !== null && "state" in v) {
+    const n = v as FormulaNode;
+    if (prop === "状态" || prop === "STATE" || prop === "STATUS") return n.state;
+    if (prop === "结论" || prop === "CONCLUSION") return n.conclusion;
+    if (prop === "计划开始" || prop === "PLANNEDSTART") return n.plannedStart ?? null;
+    if (prop === "计划结束" || prop === "PLANNEDEND") return n.plannedEnd ?? null;
+    if (prop === "实际结束" || prop === "ACTUALEND") return n.actualEnd ?? null;
+  }
+  // 字段组的一行：按列取值
+  if (typeof v === "object" && v !== null) return (v as Record<string, unknown>)[prop] ?? null;
+  return null;
+}
 const finite = (n: number): number | null => (Number.isFinite(n) ? n : null);
 
 function compareValues(op: string, a: unknown, b: unknown): boolean {
@@ -278,8 +440,12 @@ function output(v: unknown): FormulaValue {
   return text(v);
 }
 
-function evaluateNode(node: Node, scope: FormulaScope): unknown {
+function evaluateNode(node: Node, scope: FormulaScope, each: unknown = null): unknown {
   switch (node.kind) {
+    case "each":
+      return each;
+    case "member":
+      return memberOf(evaluateNode(node.target, scope, each), node.prop, node.field);
     case "num":
     case "str":
     case "bool":
@@ -287,10 +453,10 @@ function evaluateNode(node: Node, scope: FormulaScope): unknown {
     case "ref":
       return scope.field(node.key) ?? null;
     case "unary":
-      return -num(evaluateNode(node.arg, scope));
+      return -num(evaluateNode(node.arg, scope, each));
     case "binary": {
-      const a = evaluateNode(node.left, scope);
-      const b = evaluateNode(node.right, scope);
+      const a = evaluateNode(node.left, scope, each);
+      const b = evaluateNode(node.right, scope, each);
       switch (node.op) {
         case "&":
           return text(a) + text(b);
@@ -307,15 +473,81 @@ function evaluateNode(node: Node, scope: FormulaScope): unknown {
       }
     }
     case "call":
-      return call(node, scope);
+      return call(node, scope, each);
   }
 }
 
-function call(node: Extract<Node, { kind: "call" }>, scope: FormulaScope): unknown {
-  const arg = (i: number) => evaluateNode(node.args[i] as Node, scope);
-  const all = () => node.args.map((a) => evaluateNode(a, scope));
+function call(node: Extract<Node, { kind: "call" }>, scope: FormulaScope, each: unknown): unknown {
+  const arg = (i: number) => evaluateNode(node.args[i] as Node, scope, each);
+  // SUM、MIN 这些也接受列表（如 SUM(MAP(…))）
+  const all = () => node.args.flatMap((a) => list(evaluateNode(a, scope, each)));
   const nums = () => all().flatMap((v) => (blank(v) ? [] : [num(v)]));
+  /** 对列表的每一项求第 i 个参数（each 指这一项）。 */
+  const perItem = (i: number) => (x: unknown) => evaluateNode(node.args[i] as Node, scope, x);
   switch (node.name) {
+    case "RELATED":
+      return scope.related?.(text(arg(0))) ?? [];
+    case "CHILDREN":
+      return scope.children?.() ?? [];
+    case "NODE":
+      return scope.node?.(text(arg(0))) ?? null;
+    case "COUNT":
+      return list(arg(0)).length;
+    case "COUNTIF":
+      return list(arg(0)).filter((x) => truthy(perItem(1)(x))).length;
+    case "SUMIF": {
+      const value = node.args.length > 2 ? perItem(2) : (x: unknown) => x;
+      return list(arg(0))
+        .filter((x) => truthy(perItem(1)(x)))
+        .reduce((sum: number, x) => sum + num(value(x)), 0);
+    }
+    case "FILTER":
+      return list(arg(0)).filter((x) => truthy(perItem(1)(x)));
+    case "MAP":
+      return list(arg(0)).flatMap((x) => list(perItem(1)(x)));
+    case "ANYOF":
+      return list(arg(0)).some((x) => truthy(perItem(1)(x)));
+    case "ALLOF": {
+      const items = list(arg(0));
+      return items.length > 0 && items.every((x) => truthy(perItem(1)(x)));
+    }
+    case "CONTAINS": {
+      const hay = arg(0);
+      const needle = arg(1);
+      return Array.isArray(hay) ? hay.some((x) => text(x) === text(needle)) : text(hay).includes(text(needle));
+    }
+    case "JOIN":
+      return list(arg(0))
+        .map(text)
+        .filter(Boolean)
+        .join(node.args.length > 1 ? text(arg(1)) : "、");
+    case "FIRST":
+      return list(arg(0))[0] ?? null;
+    case "FIND":
+      return list(arg(0)).find((x) => truthy(perItem(1)(x))) ?? null;
+    case "STRING":
+      return text(arg(0));
+    case "EMPTY":
+      return blank(arg(0));
+    case "DATE": {
+      const day = text(arg(0)).trim();
+      return dayOf(day) === null ? null : day;
+    }
+    case "LIST":
+      return all().filter((v) => !blank(v));
+    case "TEMPLATE":
+      return scope.template ?? null;
+    case "TYPE":
+      return scope.typeName ?? null;
+    case "LEVEL": {
+      const value = arg(0);
+      const n = Math.trunc(num(arg(1)));
+      if (blank(value) || n < 1) return null;
+      const path = scope.optionPath?.(text(value)) ?? [text(value)];
+      return path[n - 1] ?? null;
+    }
+    case "TODAY":
+      return scope.today ?? new Date().toISOString().slice(0, 10);
     case "IF":
       return truthy(arg(0)) ? arg(1) : node.args.length > 2 ? arg(2) : null;
     case "AND":
@@ -401,6 +633,10 @@ function print(node: Node): string {
     }
     case "call":
       return `${node.name}(${node.args.map(print).join(", ")})`;
+    case "each":
+      return "each";
+    case "member":
+      return `${wrap(node.target, precedence(node.target) < 6)}.${node.field ? `{${node.prop}}` : node.prop}`;
   }
 }
 const wrap = (node: Node, parens: boolean) => (parens ? `(${print(node)})` : print(node));
@@ -413,8 +649,12 @@ export function compileFormula(source: string, resolve: (ref: string) => string 
   const tree = new Parser(tokenize(source)).parse();
   const refs = new Set<string>();
   let usesSubItems = false;
+  let usesRelated = false;
   const walk = (node: Node, inAggregate: boolean): Node => {
     switch (node.kind) {
+      case "member":
+        // 成员上的字段是别的工作项的字段，不按本类型解析
+        return { ...node, target: walk(node.target, inAggregate) };
       case "ref": {
         if (inAggregate) return node;
         const key = resolve(node.key);
@@ -429,6 +669,7 @@ export function compileFormula(source: string, resolve: (ref: string) => string 
       case "call": {
         const aggregate = (AGGREGATES as readonly string[]).includes(node.name);
         if (aggregate || (COUNTS as readonly string[]).includes(node.name)) usesSubItems = true;
+        if ((CROSS_ITEM as readonly string[]).includes(node.name)) usesRelated = true;
         if (aggregate && node.args[0]?.kind !== "ref")
           throw new FormulaError(`${node.name} 的参数要写成一个字段，比如 ${node.name}({工时})。`);
         return { ...node, args: node.args.map((a) => walk(a, aggregate)) };
@@ -442,6 +683,7 @@ export function compileFormula(source: string, resolve: (ref: string) => string 
     source: print(resolved),
     refs: [...refs],
     usesSubItems,
+    usesRelated,
     evaluate: (scope) => output(evaluateNode(resolved, scope)),
   };
 }

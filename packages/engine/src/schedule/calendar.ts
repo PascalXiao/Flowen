@@ -86,6 +86,21 @@ export class WorkCalendar {
     return d;
   }
 
+  /** 当天或之前的最后一个工作日。 */
+  onOrBefore(day: Day): Day {
+    let d = day;
+    while (!this.isWorkday(d)) d--;
+    return d;
+  }
+
+  /** 往前（n 为负）或往后数 n 个工作日；起点不是工作日时先挪到最近的工作日。 */
+  offsetWorkdays(day: Day, n: number): Day {
+    if (n >= 0) return this.addWorkdays(day, n);
+    let d = this.onOrBefore(day);
+    for (let left = -n; left > 0; left--) d = this.onOrBefore(d - 1);
+    return d;
+  }
+
   /** 两个日期之间（含首尾）的工作日数。 */
   workdaysBetween(start: Day, end: Day): number {
     let count = 0;

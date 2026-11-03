@@ -1,20 +1,27 @@
 import {
+  applyDefaults,
+  conditionView,
   dayInTimeZone,
   dayToTimestamp,
+  defaultRoleMembers,
   FlowEngine,
   type FlowEvent,
   isFinal,
+  missingRequired,
   nodeFlowOf,
   normalizeFieldValue,
+  type RoleOverrides,
   resolveOwners,
+  roleAppears,
   StatusFlow,
   statusFlowOf,
+  TEMPLATE_CONDITION_KEY,
   WorkCalendar,
 } from "@fp/engine";
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { assertSpaceMembers, requireWriter, syncFieldAccess } from "./access.ts";
-import { fieldDefOf, writeFieldValue } from "./field-values.ts";
+import { withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import { recomputeFlow } from "./flow.ts";
 import { recomputeFormulas } from "./formulas.ts";
 import { planNodes } from "./planning.ts";
@@ -29,6 +36,10 @@ export const createWorkItemArgs = z.object({
   fields: z.record(z.string(), z.json()).default({}),
   /** 角色 → 成员用户 id。 */
   roles: z.record(z.string(), z.array(z.string())).default({}),
+  /** 用户在新建表单里手动加上、删掉的角色。 */
+  roleOverrides: z
+    .object({ added: z.array(z.string()).optional(), removed: z.array(z.string()).optional() })
+    .optional(),
 });
 export type CreateWorkItemArgs = z.output<typeof createWorkItemArgs>;
 
@@ -75,13 +86,54 @@ export async function createWorkItem(
   );
   if (!type) throw new Error("工作项类型不存在或没有权限。");
   await requireWriter(tx, type.spaceId, userID);
-  await assertRoleMembers(tx, type.spaceId, Object.values(args.roles).flat());
   // 字段值先按类型整理成规范形式，流程引擎按整理后的值判断出现条件
-  const fields: Record<string, unknown> = {};
+  const defs = await withRuntimeOptions(
+    tx,
+    type.spaceId,
+    await tx.run(zql.fieldDef.where("typeId", args.typeId).orderBy("sort", "asc")),
+  );
+  const given: Record<string, unknown> = {};
   for (const [fieldKey, input] of Object.entries(args.fields)) {
-    const value = normalizeFieldValue(await fieldDefOf(tx, args.typeId, fieldKey), input);
-    if (value !== null) fields[fieldKey] = value;
+    const def = defs.find((f) => f.key === fieldKey);
+    if (!def) throw new Error(`字段「${fieldKey}」不存在。`);
+    const value = normalizeFieldValue(def, input);
+    if (value !== null) given[fieldKey] = value;
   }
+  // 流程类型（流程模板名）当条件用：默认值、条件必填、角色出现规则里都能按它判断
+  const chosenTemplates = zql.flowTemplate.where("typeId", args.typeId);
+  const chosen = await tx.run(
+    (args.flowTemplateId
+      ? chosenTemplates.where("id", args.flowTemplateId)
+      : chosenTemplates.orderBy("createdAt", "asc")
+    ).one(),
+  );
+  const templateCondition = { [TEMPLATE_CONDITION_KEY]: chosen?.name ?? "" };
+  // 没填的字段套默认值，再检查必填（有效且显示出来的必填字段）
+  const fields: Record<string, unknown> = {};
+  for (const [fieldKey, value] of Object.entries(applyDefaults(defs, { ...given, ...templateCondition }))) {
+    if (fieldKey === TEMPLATE_CONDITION_KEY) continue;
+    const def = defs.find((f) => f.key === fieldKey);
+    const normalized = def && !(fieldKey in given) ? normalizeFieldValue(def, value) : value;
+    if (normalized !== null) fields[fieldKey] = normalized;
+  }
+  const missing = missingRequired(
+    defs.filter((f) => f.dataType !== "attachment" && f.dataType !== "formula"),
+    { ...fields, ...templateCondition },
+  );
+  if (missing.length > 0) throw new Error(`请填写必填字段：${missing.map((f) => f.name).join("、")}。`);
+
+  // 角色：按出现规则决定有哪些角色，没给成员的角色按分配方式带上默认成员
+  const roleDefs = await tx.run(zql.roleDef.where("typeId", args.typeId).orderBy("sort", "asc"));
+  const view = conditionView(defs, { ...fields, ...templateCondition });
+  const overrides = cleanOverrides(args.roleOverrides, roleDefs);
+  const roles: Record<string, string[]> = {};
+  for (const role of roleDefs) {
+    if (!roleAppears(role, view, overrides)) continue;
+    const members = [...new Set(args.roles[role.key] ?? defaultRoleMembers(role, view, userID))];
+    if (role.config?.single && members.length > 1) throw new Error(`角色「${role.name}」只能有一个人。`);
+    roles[role.key] = members;
+  }
+  await assertRoleMembers(tx, type.spaceId, Object.values(roles).flat());
 
   // 节点流和状态流都从类型的流程模板（默认第一个）的当前发布版本开始
   const templates = zql.flowTemplate.where("typeId", args.typeId);
@@ -98,7 +150,7 @@ export async function createWorkItem(
 
   const now = Date.now();
   const engine = definition ? new FlowEngine(definition) : null;
-  const flow = definition && engine ? engine.start(fields, resolveOwners(definition, args.roles)) : null;
+  const flow = definition && engine ? engine.start(fields, resolveOwners(definition, roles)) : null;
   // 自动排期从创建那天（空间时区）开始；一开始就完成的节点（开始节点）算当天完成
   const space = await tx.run(zql.space.where("id", type.spaceId).one());
   const today = dayInTimeZone(now, space?.timezone ?? "Asia/Shanghai");
@@ -115,6 +167,7 @@ export async function createWorkItem(
               { start: null, end: null, pinned: false, actualEnd: n.state === "completed" ? today : null },
             ]),
           ),
+          fields,
         )
       : {};
 
@@ -128,13 +181,14 @@ export async function createWorkItem(
     stage: flow?.state.stage ?? statusFlow?.initial.name ?? null,
     flowStatus: statusFlow?.initial.key ?? null,
     status: flow?.state.status ?? (statusFlow && isFinal(statusFlow.initial.category) ? "completed" : "inProgress"),
+    roleOverrides: overrides,
     createdBy: userID,
     createdAt: now,
     updatedAt: now,
   });
   for (const [fieldKey, value] of Object.entries(fields))
     await writeFieldValue(tx, { id: args.id, typeId: args.typeId, spaceId: type.spaceId }, fieldKey, value);
-  for (const [roleKey, userIds] of Object.entries(args.roles))
+  for (const [roleKey, userIds] of Object.entries(roles))
     for (const userId of new Set(userIds))
       await tx.mutate.roleMember.insert({ workItemId: args.id, roleKey, userId, source: "manual" });
 
@@ -173,8 +227,115 @@ export async function createWorkItem(
 
   await syncFieldAccess(tx, args.id);
   const events: FlowEvent[] = [...(flow?.events ?? [])];
+  // 开始时就到达或完成的节点上的事件可能要改字段：写进去，再重算流程
+  const assigned = events.filter((e) => e.type === "fieldAssigned");
+  for (const e of assigned)
+    if (e.type === "fieldAssigned")
+      await writeFieldValue(tx, { id: args.id, typeId: args.typeId, spaceId: type.spaceId }, e.field, e.value);
   // 公式在服务端算；算出的值可能让流程的出现条件、自动节点有变化
-  if ((await recomputeFormulas(tx, args.id)).length > 0 && definition)
+  if (((await recomputeFormulas(tx, args.id)).length > 0 || assigned.length > 0) && definition)
     events.push(...(await recomputeFlow(tx, args.id, userID)));
   return { spaceId: type.spaceId, flowVersionId, events };
+}
+
+/** 只留存在的角色，空的时候存 null。 */
+function cleanOverrides(
+  overrides: { added?: string[] | undefined; removed?: string[] | undefined } | undefined,
+  roles: readonly { key: string }[],
+): RoleOverrides | null {
+  const keys = new Set(roles.map((r) => r.key));
+  const added = [...new Set(overrides?.added ?? [])].filter((k) => keys.has(k));
+  const removed = [...new Set(overrides?.removed ?? [])].filter((k) => keys.has(k) && !added.includes(k));
+  return added.length || removed.length ? { added, removed } : null;
+}
+
+export const copyWorkItemArgs = z.object({ sourceId: z.string(), id: z.string(), name: z.string().trim().min(1) });
+
+/**
+ * 复制工作项（对照飞书项目的「复制」）：同一类型、同一流程模板，字段值、角色成员、自定义关联带过去，
+ * 类型设置里「复制时排除」的字段（字段键或关联名）和角色不带；公式字段重新算。新工作项从流程开头开始。
+ */
+export async function copyWorkItem(
+  tx: Transaction,
+  args: z.output<typeof copyWorkItemArgs>,
+  userID: string,
+): Promise<{ spaceId: string; typeId: string; flowVersionId: string | null; events: FlowEvent[] }> {
+  const source = await tx.run(
+    zql.workItem
+      .where("id", args.sourceId)
+      .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID)))
+      .related("type", (t) => t.related("fields"))
+      .related("flowVersion")
+      .related("fieldValues")
+      .related("roleMembers")
+      .related("outgoing", (r) => r.where("relationDefId", "IS NOT", null).related("def"))
+      .related("incoming", (r) => r.where("relationDefId", "IS NOT", null).related("def"))
+      .one(),
+  );
+  if (!source?.type) throw new Error("工作项不存在或没有权限。");
+  const settings = source.type.settings ?? {};
+  const excluded = new Set(settings.copyExcludeFields ?? []);
+  const fieldByKey = new Map(source.type.fields.map((f) => [f.key, f]));
+  const skipField = (key: string) => {
+    const f = fieldByKey.get(key);
+    return !f || f.dataType === "formula" || excluded.has(key) || excluded.has(f.name);
+  };
+  const fields = Object.fromEntries(
+    source.fieldValues.filter((v) => !skipField(v.fieldKey)).map((v) => [v.fieldKey, v.value as never]),
+  );
+  const excludedRoles = new Set(settings.copyExcludeRoles ?? []);
+  const roles: Record<string, string[]> = {};
+  for (const m of source.roleMembers)
+    if (!excludedRoles.has(m.roleKey)) roles[m.roleKey] = [...(roles[m.roleKey] ?? []), m.userId];
+
+  const created = await createWorkItem(
+    tx,
+    {
+      id: args.id,
+      typeId: source.typeId,
+      name: args.name,
+      ...(source.flowVersion?.templateId && { flowTemplateId: source.flowVersion.templateId }),
+      fields,
+      roles,
+      ...(source.roleOverrides && {
+        roleOverrides: {
+          added: (source.roleOverrides.added ?? []).filter((r) => !excludedRoles.has(r)),
+          removed: source.roleOverrides.removed ?? [],
+        },
+      }),
+    },
+    userID,
+  );
+
+  // 自定义关联：本端的关联按关联名、对端的按对端字段名排除；会挤掉别人已有关联的（单选）不带
+  const now = Date.now();
+  for (const r of source.outgoing) {
+    if (!r.def || excluded.has(r.def.name) || (r.def.reverseName && r.def.reverseCardinality === "one")) continue;
+    await tx.mutate.relation.insert({
+      id: `${args.id}/copy/${r.id}`,
+      relationDefId: r.def.id,
+      parentNodeKey: null,
+      fromId: args.id,
+      toId: r.toId,
+      createdAt: now,
+    });
+  }
+  for (const r of source.incoming) {
+    if (!r.def?.reverseName || excluded.has(r.def.reverseName) || r.def.cardinality === "one") continue;
+    await tx.mutate.relation.insert({
+      id: `${args.id}/copy/${r.id}`,
+      relationDefId: r.def.id,
+      parentNodeKey: null,
+      fromId: r.fromId,
+      toId: args.id,
+      createdAt: now,
+    });
+  }
+  await recomputeFormulas(tx, args.id);
+  return {
+    spaceId: created.spaceId,
+    typeId: source.typeId,
+    flowVersionId: created.flowVersionId,
+    events: created.events,
+  };
 }

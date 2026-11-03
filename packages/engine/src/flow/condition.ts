@@ -5,6 +5,8 @@ export type Fields = Readonly<Record<string, unknown>>;
 export type Condition =
   /** 等于；多值字段（多选、人员）表示包含这个值。 */
   | { kind: "equal"; field: string; value: string | number | boolean }
+  /** 不等于；空值也算不等于，多值字段表示不包含这个值。 */
+  | { kind: "notEqual"; field: string; value: string | number | boolean }
   | { kind: "notEmpty"; field: string }
   /** 大小比较，用于数字和日期（YYYY-MM-DD 按字符串比较即按日期先后）。 */
   | { kind: "compare"; field: string; op: CompareOp; value: number | string }
@@ -15,6 +17,7 @@ export type CompareOp = "gt" | "gte" | "lt" | "lte";
 
 export const cond = {
   equal: (field: string, value: string | number | boolean): Condition => ({ kind: "equal", field, value }),
+  notEqual: (field: string, value: string | number | boolean): Condition => ({ kind: "notEqual", field, value }),
   notEmpty: (field: string): Condition => ({ kind: "notEmpty", field }),
   compare: (field: string, op: CompareOp, value: number | string): Condition => ({ kind: "compare", field, op, value }),
   all: (...items: Condition[]): Condition => ({ kind: "all", items }),
@@ -52,6 +55,8 @@ export function evaluate(condition: Condition, fields: Fields): boolean {
       if (Array.isArray(actual)) return actual.some((v) => String(v) === String(condition.value));
       return actual !== null && actual !== undefined && String(actual) === String(condition.value);
     }
+    case "notEqual":
+      return !evaluate({ kind: "equal", field: condition.field, value: condition.value }, fields);
     case "compare":
       return compare(fields[condition.field], condition.op, condition.value);
     case "notEmpty":

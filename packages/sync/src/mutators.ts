@@ -1,3 +1,4 @@
+import { fieldStates } from "@fp/engine";
 import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import {
@@ -19,20 +20,38 @@ import {
   updateAutomationArgs,
 } from "./automations.ts";
 import { createComment, createCommentArgs, markNotificationsRead, markReadArgs } from "./comments.ts";
-import { fieldDefOf, writeFieldValue } from "./field-values.ts";
+import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import {
   completeBySubItems,
   confirmNode,
   confirmNodeArgs,
   nodeActionArgs,
+  pressButton,
+  pressButtonArgs,
   recomputeFlow,
   rollbackNode,
+  setEffortArgs,
+  setNodeEffort,
   setNodePlan,
   setPlanArgs,
   setRoleArgs,
   setRoleMembers,
+  setRolePresence,
+  setRolePresenceArgs,
+  upgradeArgs,
+  upgradeWorkItem,
 } from "./flow.ts";
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
+import {
+  assertNotFrozen,
+  restoreWorkItem,
+  setFrozenArgs,
+  setWorkItemFrozen,
+  terminateArgs,
+  terminateWorkItem,
+  workItemIdArgs,
+} from "./lifecycle.ts";
+import { markArgs, recordVisit, setMark, visitArgs } from "./marks.ts";
 import {
   addRelation,
   addRelationArgs,
@@ -44,9 +63,9 @@ import {
   removeRelationArgs,
 } from "./relations.ts";
 import { zql } from "./schema.gen.ts";
-import { setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
+import { setBusinessLines, setBusinessLinesArgs, setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
 import { transitionArgs, transitionStatus } from "./status.ts";
-import { createSubItem, createSubItemArgs } from "./subitems.ts";
+import { createNodeSubItem, createNodeSubItemArgs, createSubItem, createSubItemArgs } from "./subitems.ts";
 import {
   createTask,
   createTaskArgs,
@@ -68,16 +87,26 @@ import {
   createTypeArgs,
   publishArgs,
   publishVersion,
+  reorderRoles,
+  reorderRolesArgs,
   saveDraft,
   saveDraftArgs,
+  setDefaultDisplay,
+  setDefaultDisplayArgs,
   setFieldAccess,
   setFieldAccessArgs,
   setFormula,
   setFormulaArgs,
   setLayout,
   setLayoutArgs,
+  setTypeSettings,
+  setTypeSettingsArgs,
+  updateField,
+  updateFieldArgs,
+  updateRole,
+  updateRoleArgs,
 } from "./templates.ts";
-import { createView, createViewArgs, deleteView, deleteViewArgs } from "./views.ts";
+import { createView, createViewArgs, deleteView, deleteViewArgs, updateView, updateViewArgs } from "./views.ts";
 import {
   createWebhook,
   createWebhookArgs,
@@ -86,7 +115,7 @@ import {
   updateWebhook,
   updateWebhookArgs,
 } from "./webhooks.ts";
-import { createWorkItem, createWorkItemArgs } from "./work-items.ts";
+import { copyWorkItem, copyWorkItemArgs, createWorkItem, createWorkItemArgs } from "./work-items.ts";
 
 /*
  * 前端的所有写操作都走这里的 mutator：浏览器里先乐观执行，再由服务端（apps/api）权威执行一遍。
@@ -120,10 +149,12 @@ export async function setFieldValue(tx: Transaction, args: z.output<typeof setFi
   const item = await visibleWorkItem(tx, args.workItemId, userID);
   if (!item) throw new Error("工作项不存在或没有权限。");
   const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
+  assertNotFrozen(item);
   const field = await fieldDefOf(tx, item.typeId, args.fieldKey);
   if (!isAdmin && field.editRoles?.length && !hasAnyRole(field.editRoles, await myRoles(tx, item.id, userID)))
     throw new Error(`你没有权限修改「${field.name}」。`);
   const { from, to, created } = await writeFieldValue(tx, item, args.fieldKey, args.value);
+  if (to === null) await assertNotRequired(tx, item, field);
   if (created) await syncFieldAccess(tx, args.workItemId);
   // 先重算公式（流转条件可能用到），再重算流程，最后是汇总了这个工作项的上级
   await recomputeFormulas(tx, args.workItemId);
@@ -132,7 +163,23 @@ export async function setFieldValue(tx: Transaction, args: z.output<typeof setFi
   return { spaceId: item.spaceId, from, to, events };
 }
 
+/** 清空字段时检查：按当前的字段值，它要是必填的（有效、显示且必填）就不能清空。 */
+async function assertNotRequired(
+  tx: Transaction,
+  item: { id: string; typeId: string; spaceId: string },
+  field: { key: string; name: string },
+) {
+  const defs = await withRuntimeOptions(tx, item.spaceId, await tx.run(zql.fieldDef.where("typeId", item.typeId)));
+  const rows = await tx.run(zql.fieldValue.where("workItemId", item.id));
+  const values = Object.fromEntries(rows.map((r) => [r.fieldKey, r.value]));
+  if (fieldStates(defs, values)[field.key]?.required) throw new Error(`「${field.name}」是必填字段，不能清空。`);
+}
+
 export const mutators = defineMutators({
+  mark: {
+    set: defineMutator(markArgs, ({ tx, args, ctx }) => setMark(tx, args, ctx.userID)),
+    visit: defineMutator(visitArgs, ({ tx, args, ctx }) => recordVisit(tx, args, ctx.userID)),
+  },
   space: {
     /** 新建空间，创建人成为空间管理员。 */
     create: defineMutator(createSpaceArgs, async ({ tx, args, ctx }) => {
@@ -151,6 +198,9 @@ export const mutators = defineMutators({
     }),
     setMemberRole: defineMutator(setMemberRoleArgs, ({ tx, args, ctx }) => setMemberRole(tx, args, ctx.userID)),
     removeMember: defineMutator(removeMemberArgs, ({ tx, args, ctx }) => removeMember(tx, args, ctx.userID)),
+    setBusinessLines: defineMutator(setBusinessLinesArgs, ({ tx, args, ctx }) =>
+      setBusinessLines(tx, args, ctx.userID),
+    ),
   },
   automation: {
     create: defineMutator(createAutomationArgs, ({ tx, args, ctx }) => createAutomation(tx, args, ctx.userID)),
@@ -172,6 +222,7 @@ export const mutators = defineMutators({
   },
   view: {
     create: defineMutator(createViewArgs, ({ tx, args, ctx }) => createView(tx, args, ctx.userID)),
+    update: defineMutator(updateViewArgs, ({ tx, args, ctx }) => updateView(tx, args, ctx.userID)),
     delete: defineMutator(deleteViewArgs, ({ tx, args, ctx }) => deleteView(tx, args, ctx.userID)),
   },
   relationDef: {
@@ -189,14 +240,21 @@ export const mutators = defineMutators({
   workItemType: {
     create: defineMutator(createTypeArgs, ({ tx, args, ctx }) => createType(tx, args, ctx.userID)),
     setLayout: defineMutator(setLayoutArgs, ({ tx, args, ctx }) => setLayout(tx, args, ctx.userID)),
+    setDefaultDisplay: defineMutator(setDefaultDisplayArgs, ({ tx, args, ctx }) =>
+      setDefaultDisplay(tx, args, ctx.userID),
+    ),
+    setSettings: defineMutator(setTypeSettingsArgs, ({ tx, args, ctx }) => setTypeSettings(tx, args, ctx.userID)),
   },
   roleDef: {
     create: defineMutator(createRoleArgs, ({ tx, args, ctx }) => createRole(tx, args, ctx.userID)),
+    update: defineMutator(updateRoleArgs, ({ tx, args, ctx }) => updateRole(tx, args, ctx.userID)),
+    reorder: defineMutator(reorderRolesArgs, ({ tx, args, ctx }) => reorderRoles(tx, args, ctx.userID)),
   },
   fieldDef: {
     create: defineMutator(createFieldArgs, ({ tx, args, ctx }) => createField(tx, args, ctx.userID)),
     setAccess: defineMutator(setFieldAccessArgs, ({ tx, args, ctx }) => setFieldAccess(tx, args, ctx.userID)),
     setFormula: defineMutator(setFormulaArgs, ({ tx, args, ctx }) => setFormula(tx, args, ctx.userID)),
+    update: defineMutator(updateFieldArgs, ({ tx, args, ctx }) => updateField(tx, args, ctx.userID)),
   },
   flowTemplate: {
     create: defineMutator(createTemplateArgs, ({ tx, args, ctx }) => createTemplate(tx, args, ctx.userID)),
@@ -212,8 +270,23 @@ export const mutators = defineMutators({
     createSubItem: defineMutator(createSubItemArgs, async ({ tx, args, ctx }) => {
       await createSubItem(tx, args, ctx.userID);
     }),
+    createNodeSubItem: defineMutator(createNodeSubItemArgs, async ({ tx, args, ctx }) => {
+      await createNodeSubItem(tx, args, ctx.userID);
+    }),
     transition: defineMutator(transitionArgs, async ({ tx, args, ctx }) => {
       await transitionStatus(tx, args, ctx.userID);
+    }),
+    terminate: defineMutator(terminateArgs, async ({ tx, args, ctx }) => {
+      await terminateWorkItem(tx, args, ctx.userID);
+    }),
+    copy: defineMutator(copyWorkItemArgs, async ({ tx, args, ctx }) => {
+      await copyWorkItem(tx, args, ctx.userID);
+    }),
+    restore: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      await restoreWorkItem(tx, args, ctx.userID);
+    }),
+    setFrozen: defineMutator(setFrozenArgs, async ({ tx, args, ctx }) => {
+      await setWorkItemFrozen(tx, args, ctx.userID);
     }),
   },
   node: {
@@ -226,8 +299,17 @@ export const mutators = defineMutators({
     setPlan: defineMutator(setPlanArgs, async ({ tx, args, ctx }) => {
       await setNodePlan(tx, args, ctx.userID);
     }),
+    setEffort: defineMutator(setEffortArgs, async ({ tx, args, ctx }) => {
+      await setNodeEffort(tx, args, ctx.userID);
+    }),
     completeBySubItems: defineMutator(nodeActionArgs, async ({ tx, args, ctx }) => {
       await completeBySubItems(tx, args, ctx.userID);
+    }),
+    press: defineMutator(pressButtonArgs, async ({ tx, args, ctx }) => {
+      await pressButton(tx, args, ctx.userID);
+    }),
+    upgrade: defineMutator(upgradeArgs, async ({ tx, args, ctx }) => {
+      await upgradeWorkItem(tx, args, ctx.userID);
     }),
   },
   task: {
@@ -247,6 +329,9 @@ export const mutators = defineMutators({
   role: {
     set: defineMutator(setRoleArgs, async ({ tx, args, ctx }) => {
       await setRoleMembers(tx, args, ctx.userID);
+    }),
+    setPresence: defineMutator(setRolePresenceArgs, async ({ tx, args, ctx }) => {
+      await setRolePresence(tx, args, ctx.userID);
     }),
   },
   fieldValue: {

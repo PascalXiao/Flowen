@@ -120,6 +120,69 @@
       "when": 1792602637880,
       "tag": "0016_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792662702800,
+      "tag": "0017_field_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792678278371,
+      "tag": "0018_roles_business_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792722799362,
+      "tag": "0019_node_conclusions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792738677140,
+      "tag": "0020_marks_visits_view_display",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792984439355,
+      "tag": "0021_type_default_display",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792995718838,
+      "tag": "0022_mutual_relations",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793355571517,
+      "tag": "0023_terminate_freeze",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793357661461,
+      "tag": "0024_type_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793585642767,
+      "tag": "0025_node_effort",
+      "breakpoints": true
     }
   ]
 }

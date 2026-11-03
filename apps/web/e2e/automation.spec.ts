@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace, openAutomations, openItems } from "./helpers";
+import { choose, createItem, oemSpace, openAutomations, openItems } from "./helpers";
 
 test("an automation rule fills a field on new work items through the Temporal worker", async ({ page }) => {
   const suffix = `${Date.now()}`;
@@ -9,11 +9,11 @@ test("an automation rule fills a field on new work items through the Temporal wo
   await openAutomations(page);
   await expect(page.getByText("还没有自动化规则。")).toBeVisible();
   await page.getByLabel("规则名称").fill("创建后填 SKU");
-  await page.getByLabel("触发时机").selectOption("工作项创建后");
+  await choose(page.getByLabel("触发时机"), "工作项创建后");
   await page.getByRole("button", { name: "添加动作" }).click();
   const action = page.getByRole("group", { name: "动作 1" });
-  await action.getByLabel("动作类型").selectOption("修改字段");
-  await action.getByRole("combobox", { name: "字段", exact: true }).selectOption("关联需求SKU流程");
+  await choose(action.getByLabel("动作类型"), "修改字段");
+  await choose(action.getByRole("combobox", { name: "字段", exact: true }), "关联需求SKU流程");
   await action.getByLabel("设为").fill("SKU-AUTO");
   await page.getByRole("button", { name: "保存规则" }).click();
   const rule = page.getByRole("region", { name: "创建后填 SKU" });
