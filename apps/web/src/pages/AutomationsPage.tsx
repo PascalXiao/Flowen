@@ -1,5 +1,6 @@
 import {
   type AutomationAction,
+  type AutomationBranch,
   type AutomationRecipient,
   type AutomationTrigger,
   type Condition,
@@ -44,7 +45,12 @@ const TRIGGER_LABEL: Record<AutomationTrigger["kind"], string> = {
   commentAdded: "有新评论时",
   taskCreated: "新建子任务时",
   taskDone: "子任务完成时",
+  schedule: "定时触发",
+  dateReached: "日期临近、到期或超期时",
 };
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WHEN_LABEL = { before: "临期（提前）", on: "到期当天", after: "超期" } as const;
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const ACTION_LABEL: Record<AutomationAction["type"], string> = {
   setField: "修改字段",
   setRole: "设置角色成员",
@@ -129,6 +135,21 @@ function describeTrigger(trigger: AutomationTrigger, names: ReturnType<typeof na
     }
     case "roleChanged":
       return trigger.role ? `「${names.role(trigger.role)}」人员变更时` : label;
+    case "schedule": {
+      const at = `${String(trigger.hour).padStart(2, "0")}:00`;
+      if (trigger.frequency === "week") return `每${(trigger.weekdays ?? []).map((d) => WEEKDAYS[d]).join("、")} ${at}`;
+      if (trigger.frequency === "month") return `每月 ${(trigger.monthDays ?? []).join("、")} 号 ${at}`;
+      return `每天 ${at}`;
+    }
+    case "dateReached": {
+      const date = trigger.date.startsWith("node:")
+        ? `「${names.node(trigger.date.slice(5))}」计划完成日`
+        : `「${names.field(trigger.date)}」`;
+      const at = `${String(trigger.hour).padStart(2, "0")}:00`;
+      if (trigger.when === "before") return `${date}前 ${trigger.days} 天 ${at}`;
+      if (trigger.when === "after") return `${date}超过 ${trigger.days} 天 ${at}`;
+      return `${date}当天 ${at}`;
+    }
     case "relationAdded":
     case "relationRemoved":
       return trigger.relation
@@ -183,8 +204,13 @@ function describeRule(rule: Rule, types: ItemType[], members: Map<string, string
     return f ? formatFieldValue(f, value, names.user) : String(value);
   };
   const given = condition ? `，且${describeCondition(condition, names.field, show)}` : "";
-  const then = (rule.actions as AutomationAction[]).map((a) => describeAction(a, names, show)).join("；");
-  return `${type ? `${type.name}：` : ""}${describeTrigger(trigger, names)}${given}，${then}`;
+  const list = (actions: AutomationAction[]) => actions.map((a) => describeAction(a, names, show)).join("；");
+  const branches = ((rule.branches as AutomationBranch[] | null) ?? []).map((b) =>
+    b.condition
+      ? `；否则如果${describeCondition(b.condition, names.field, show)}，${list(b.actions)}`
+      : `；否则${list(b.actions)}`,
+  );
+  return `${type ? `${type.name}：` : ""}${describeTrigger(trigger, names)}${given}，${list(rule.actions as AutomationAction[])}${branches.join("")}`;
 }
 
 /** 空间配置里的「自动化」页签：规则列表、启用停用、执行记录，以及新建规则的表单。只有管理员能改。 */
@@ -213,6 +239,19 @@ export function AutomationsPanel({ spaceId }: { spaceId: string }) {
         setError(outcome.error.message);
         return false;
       }
+    return true;
+  }
+
+  /** 新建规则：浏览器端校验通过就算提交成功、清空表单；服务端万一拒绝，再把错误显示出来。 */
+  async function create(request: Parameters<typeof zero.mutate>[0]) {
+    setError(null);
+    const { client, server } = zero.mutate(request);
+    const local = await client;
+    if (local.type === "error") {
+      setError(local.error.message);
+      return false;
+    }
+    server.then((outcome) => outcome.type === "error" && setError(outcome.error.message));
     return true;
   }
 
@@ -248,6 +287,7 @@ export function AutomationsPanel({ spaceId }: { spaceId: string }) {
                               trigger: rule.trigger as AutomationTrigger,
                               condition: rule.conditions as Condition | null,
                               actions: rule.actions as AutomationAction[],
+                              branches: rule.branches as AutomationBranch[] | null,
                             }),
                           )
                         }
@@ -298,7 +338,7 @@ export function AutomationsPanel({ spaceId }: { spaceId: string }) {
         </CardContent>
       </Card>
 
-      {isAdmin && <RuleForm spaceId={spaceId} types={types} members={members} onSubmit={run} />}
+      {isAdmin && <RuleForm spaceId={spaceId} types={types} members={members} onSubmit={create} />}
     </>
   );
 }
@@ -341,6 +381,7 @@ function RuleForm({
     (initial?.conditions as Condition | null) ?? undefined,
   );
   const [actions, setActions] = useState<AutomationAction[]>((initial?.actions as AutomationAction[]) ?? []);
+  const [branches, setBranches] = useState<AutomationBranch[]>((initial?.branches as AutomationBranch[] | null) ?? []);
 
   const type = ready.find((t) => t.id === typeId) ?? ready[0];
   if (!type) return <p className="text-sm text-fg-muted">先给空间配置一个有已发布流程的工作项类型。</p>;
@@ -350,6 +391,13 @@ function RuleForm({
   const userFields = fields.filter((f) => f.dataType === "user" || f.dataType === "singleUser");
   const memberList: Member[] = [...members].map(([userId, memberName]) => ({ userId, name: memberName }));
   const allDefs = types.flatMap((t) => t.relationDefs);
+  // 动态时间触发可选的日期：日期类字段，以及每个节点的计划完成日
+  const dateSources = [
+    ...fields
+      .filter((f) => f.dataType === "date" || f.dataType === "datetime" || f.dataType === "dateRange")
+      .map((f) => ({ key: f.key, name: f.name })),
+    ...nodes.map((n) => ({ key: `node:${n.key}`, name: `节点「${n.name}」计划完成` })),
+  ];
   // 节点流类型没有状态，状态流类型没有节点：只列这个类型用得上的触发器和动作
   const triggerKinds = (Object.keys(TRIGGER_LABEL) as AutomationTrigger["kind"][]).filter((k) =>
     statuses.length ? !isNodeTrigger(k) : k !== "statusChanged",
@@ -360,6 +408,9 @@ function RuleForm({
 
   function setKind(kind: AutomationTrigger["kind"]) {
     if (kind === "fieldChanged") setTrigger({ kind, field: fields[0]?.key ?? "" });
+    else if (kind === "schedule") setTrigger({ kind, frequency: "day", hour: 9 });
+    else if (kind === "dateReached")
+      setTrigger({ kind, date: dateSources[0]?.key ?? "", when: "before", days: 1, hour: 9 });
     else setTrigger({ kind } as AutomationTrigger);
   }
 
@@ -387,8 +438,205 @@ function RuleForm({
         return { type: kind, to: [], text: "「{{name}}」" };
     }
   }
-  const updateAction = (i: number, next: AutomationAction) =>
-    setActions((prev) => prev.map((a, j) => (j === i ? next : a)));
+
+  /** 一组动作的编辑区：主动作和每个分支都用它。是普通函数而不是组件，避免每次渲染都重新挂载丢掉输入焦点。 */
+  function renderActions(list: AutomationAction[], setList: (next: AutomationAction[]) => void, prefix = "") {
+    const update = (i: number, next: AutomationAction) => setList(list.map((a, j) => (j === i ? next : a)));
+    return (
+      <div className="flex flex-col gap-3">
+        {list.map((action, i) => (
+          <fieldset
+            // biome-ignore lint/suspicious/noArrayIndexKey: 动作没有自己的 id，按位置编辑
+            key={i}
+            aria-label={`${prefix}动作 ${i + 1}`}
+            className="grid grid-cols-3 items-end gap-3 rounded-md border border-line-subtle p-3"
+          >
+            <Field label="动作类型">
+              <Select
+                value={action.type}
+                onChange={(e) => update(i, newAction(e.target.value as AutomationAction["type"]))}
+              >
+                {actionTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {ACTION_LABEL[t]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {action.type === "setField" && (
+              <>
+                <Field label="字段">
+                  <Select
+                    value={action.field}
+                    onChange={(e) => update(i, { ...action, field: e.target.value, value: "" })}
+                  >
+                    {fieldOptions}
+                  </Select>
+                </Field>
+                <Field label="设为">
+                  {(() => {
+                    const target = fields.find((f) => f.key === action.field);
+                    return target ? (
+                      <FieldInput
+                        field={target}
+                        label="设为"
+                        value={action.value}
+                        members={memberList}
+                        live
+                        // 自动化里不能设字段组，值总是简单值
+                        onChange={(value) => update(i, { ...action, value: value as typeof action.value })}
+                      />
+                    ) : null;
+                  })()}
+                </Field>
+              </>
+            )}
+            {action.type === "setRole" && (
+              <>
+                <Field label="角色">
+                  <Select value={action.role} onChange={(e) => update(i, { ...action, role: e.target.value })}>
+                    {roleOptions}
+                  </Select>
+                </Field>
+                <MemberChecks
+                  members={memberList}
+                  selected={action.userIds}
+                  onChange={(userIds) => update(i, { ...action, userIds })}
+                />
+              </>
+            )}
+            {action.type === "confirmNode" && (
+              <Field label="节点">
+                <Select value={action.node} onChange={(e) => update(i, { ...action, node: e.target.value })}>
+                  {nodeOptions}
+                </Select>
+              </Field>
+            )}
+            {action.type === "transitionStatus" && (
+              <Field label="流转到">
+                <Select value={action.to} onChange={(e) => update(i, { ...action, to: e.target.value })}>
+                  {statusOptions}
+                </Select>
+              </Field>
+            )}
+            {action.type === "terminate" && (
+              <Field label="终止原因">
+                <Input value={action.reason ?? ""} onChange={(e) => update(i, { ...action, reason: e.target.value })} />
+              </Field>
+            )}
+            {action.type === "addComment" && (
+              <Field label="评论内容">
+                <Input value={action.body} onChange={(e) => update(i, { ...action, body: e.target.value })} />
+              </Field>
+            )}
+            {action.type === "createTask" && (
+              <>
+                <Field label="节点">
+                  <Select value={action.node} onChange={(e) => update(i, { ...action, node: e.target.value })}>
+                    {nodeOptions}
+                  </Select>
+                </Field>
+                <Field label="子任务名称">
+                  <Input value={action.name} onChange={(e) => update(i, { ...action, name: e.target.value })} />
+                </Field>
+                <Field label="负责人">
+                  <Select
+                    value={action.assigneeId ?? ""}
+                    onChange={(e) => update(i, { ...action, assigneeId: e.target.value || null })}
+                  >
+                    <option value="">不指定</option>
+                    {memberOptions}
+                  </Select>
+                </Field>
+              </>
+            )}
+            {action.type === "createWorkItem" && (
+              <>
+                <Field label="新工作项类型">
+                  <Select
+                    value={action.typeId}
+                    onChange={(e) => update(i, { ...action, typeId: e.target.value, relationDefId: null })}
+                  >
+                    {ready.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="新工作项名称">
+                  <Input value={action.name} onChange={(e) => update(i, { ...action, name: e.target.value })} />
+                </Field>
+                <Field label="关联方式">
+                  <Select
+                    value={action.relationDefId ?? ""}
+                    onChange={(e) => update(i, { ...action, relationDefId: e.target.value || null })}
+                  >
+                    <option value="">不关联</option>
+                    {allDefs
+                      .filter(
+                        (d) =>
+                          (d.fromTypeId === type.id && d.toTypeId === action.typeId) ||
+                          (d.toTypeId === type.id && d.fromTypeId === action.typeId),
+                      )
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fromTypeId === type.id ? d.name : (d.reverseName ?? d.name)}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+            {action.type === "notify" && (
+              <>
+                <Field label="通知内容">
+                  <Input value={action.text} onChange={(e) => update(i, { ...action, text: e.target.value })} />
+                </Field>
+                <fieldset aria-label="收件人" className="col-span-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                  <legend className="mb-1 text-sm font-medium">收件人</legend>
+                  {recipients.map((r) => (
+                    <label key={r.value} className="flex items-center gap-1">
+                      <Checkbox
+                        aria-label={`通知 ${r.label}`}
+                        checked={action.to.includes(r.value)}
+                        onChange={(e) =>
+                          update(i, {
+                            ...action,
+                            to: e.target.checked ? [...action.to, r.value] : action.to.filter((v) => v !== r.value),
+                          })
+                        }
+                      />
+                      {r.label}
+                    </label>
+                  ))}
+                </fieldset>
+              </>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="col-start-3 justify-self-end"
+              onClick={() => setList(list.filter((_, j) => j !== i))}
+            >
+              移除动作
+            </Button>
+          </fieldset>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start"
+          onClick={() => setList([...list, newAction("setField")])}
+        >
+          {prefix ? `给${prefix}添加动作` : "添加动作"}
+        </Button>
+      </div>
+    );
+  }
+
+  const clean = (list: AutomationAction[]) =>
+    list.map((a) => (a.type === "setField" && a.value === "" ? { ...a, value: null } : a));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -396,7 +644,8 @@ function RuleForm({
       name,
       trigger: { ...trigger, typeId: type?.id } as AutomationTrigger,
       condition: condition ?? null,
-      actions: actions.map((a) => (a.type === "setField" && a.value === "" ? { ...a, value: null } : a)),
+      actions: clean(actions),
+      branches: condition ? branches.map((b) => ({ condition: b.condition ?? null, actions: clean(b.actions) })) : [],
     };
     const ok = await onSubmit(
       initial
@@ -407,6 +656,7 @@ function RuleForm({
       setName("");
       setCondition(undefined);
       setActions([]);
+      setBranches([]);
     }
   }
 
@@ -452,6 +702,7 @@ function RuleForm({
                   setTrigger({ kind: "workItemCreated" });
                   setCondition(undefined);
                   setActions([]);
+                  setBranches([]);
                 }}
               >
                 {ready.map((t) => (
@@ -515,6 +766,126 @@ function RuleForm({
               </Field>
             )}
           </div>
+          {trigger.kind === "schedule" && (
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="频率">
+                  <Select
+                    value={trigger.frequency}
+                    onChange={(e) =>
+                      setTrigger({
+                        ...trigger,
+                        frequency: e.target.value as "day" | "week" | "month",
+                        weekdays: e.target.value === "week" ? [1] : undefined,
+                        monthDays: e.target.value === "month" ? [1] : undefined,
+                      })
+                    }
+                  >
+                    <option value="day">每天</option>
+                    <option value="week">每周</option>
+                    <option value="month">每月</option>
+                  </Select>
+                </Field>
+                <Field label="时间">
+                  <Select
+                    value={String(trigger.hour)}
+                    onChange={(e) => setTrigger({ ...trigger, hour: Number(e.target.value) })}
+                  >
+                    {HOURS.map((h) => (
+                      <option key={h} value={String(h)}>{`${String(h).padStart(2, "0")}:00`}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              {trigger.frequency === "week" && (
+                <fieldset aria-label="每周哪几天" className="flex flex-wrap gap-3 text-sm">
+                  {WEEKDAYS.map((label, d) => (
+                    <label key={label} className="flex items-center gap-1">
+                      <Checkbox
+                        checked={trigger.weekdays?.includes(d) ?? false}
+                        onChange={(e) =>
+                          setTrigger({
+                            ...trigger,
+                            weekdays: e.target.checked
+                              ? [...(trigger.weekdays ?? []), d].sort()
+                              : (trigger.weekdays ?? []).filter((x) => x !== d),
+                          })
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              {trigger.frequency === "month" && (
+                <Field label="每月几号（逗号分隔）">
+                  <Input
+                    defaultValue={(trigger.monthDays ?? []).join(",")}
+                    onChange={(e) =>
+                      setTrigger({
+                        ...trigger,
+                        monthDays: e.target.value
+                          .split(/[,，\s]+/)
+                          .map(Number)
+                          .filter((n) => Number.isInteger(n) && n >= 1 && n <= 31),
+                      })
+                    }
+                  />
+                </Field>
+              )}
+              <p className="text-xs text-fg-subtle">
+                按空间时区，在选中的时间对这个类型里每个没终止的工作项检查一次执行条件，满足就执行。
+              </p>
+            </div>
+          )}
+          {trigger.kind === "dateReached" && (
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="按哪个日期">
+                <Select value={trigger.date} onChange={(e) => setTrigger({ ...trigger, date: e.target.value })}>
+                  {dateSources.map((d) => (
+                    <option key={d.key} value={d.key}>
+                      {d.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="什么时候">
+                <Select
+                  value={trigger.when}
+                  onChange={(e) => {
+                    const when = e.target.value as "before" | "on" | "after";
+                    setTrigger({ ...trigger, when, days: when === "on" ? 0 : Math.max(trigger.days, 1) });
+                  }}
+                >
+                  {Object.entries(WHEN_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {trigger.when !== "on" && (
+                <Field label="天数">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={trigger.days}
+                    onChange={(e) => setTrigger({ ...trigger, days: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </Field>
+              )}
+              <Field label="时间">
+                <Select
+                  value={String(trigger.hour)}
+                  onChange={(e) => setTrigger({ ...trigger, hour: Number(e.target.value) })}
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={String(h)}>{`${String(h).padStart(2, "0")}:00`}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          )}
           {trigger.kind === "statusChanged" && (
             <div className="grid grid-cols-3 gap-3">
               <Field label="原状态">
@@ -548,212 +919,57 @@ function RuleForm({
           <div className="flex flex-col gap-3">
             <h4 className="text-sm font-medium text-fg">动作</h4>
             <p className="text-xs text-fg-subtle">文本里写 {"{{name}}"} 会换成触发的工作项名称。</p>
-            {actions.map((action, i) => (
-              <fieldset
-                // biome-ignore lint/suspicious/noArrayIndexKey: 动作没有自己的 id，按位置编辑
-                key={i}
-                aria-label={`动作 ${i + 1}`}
-                className="grid grid-cols-3 items-end gap-3 rounded-md border border-line-subtle p-3"
-              >
-                <Field label="动作类型">
-                  <Select
-                    value={action.type}
-                    onChange={(e) => updateAction(i, newAction(e.target.value as AutomationAction["type"]))}
-                  >
-                    {actionTypes.map((t) => (
-                      <option key={t} value={t}>
-                        {ACTION_LABEL[t]}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                {action.type === "setField" && (
-                  <>
-                    <Field label="字段">
-                      <Select
-                        value={action.field}
-                        onChange={(e) => updateAction(i, { ...action, field: e.target.value, value: "" })}
-                      >
-                        {fieldOptions}
-                      </Select>
-                    </Field>
-                    <Field label="设为">
-                      {(() => {
-                        const target = fields.find((f) => f.key === action.field);
-                        return target ? (
-                          <FieldInput
-                            field={target}
-                            label="设为"
-                            value={action.value}
-                            members={memberList}
-                            live
-                            // 自动化里不能设字段组，值总是简单值
-                            onChange={(value) => updateAction(i, { ...action, value: value as typeof action.value })}
-                          />
-                        ) : null;
-                      })()}
-                    </Field>
-                  </>
-                )}
-                {action.type === "setRole" && (
-                  <>
-                    <Field label="角色">
-                      <Select
-                        value={action.role}
-                        onChange={(e) => updateAction(i, { ...action, role: e.target.value })}
-                      >
-                        {roleOptions}
-                      </Select>
-                    </Field>
-                    <MemberChecks
-                      members={memberList}
-                      selected={action.userIds}
-                      onChange={(userIds) => updateAction(i, { ...action, userIds })}
-                    />
-                  </>
-                )}
-                {action.type === "confirmNode" && (
-                  <Field label="节点">
-                    <Select value={action.node} onChange={(e) => updateAction(i, { ...action, node: e.target.value })}>
-                      {nodeOptions}
-                    </Select>
-                  </Field>
-                )}
-                {action.type === "transitionStatus" && (
-                  <Field label="流转到">
-                    <Select value={action.to} onChange={(e) => updateAction(i, { ...action, to: e.target.value })}>
-                      {statusOptions}
-                    </Select>
-                  </Field>
-                )}
-                {action.type === "terminate" && (
-                  <Field label="终止原因">
-                    <Input
-                      value={action.reason ?? ""}
-                      onChange={(e) => updateAction(i, { ...action, reason: e.target.value })}
-                    />
-                  </Field>
-                )}
-                {action.type === "addComment" && (
-                  <Field label="评论内容">
-                    <Input value={action.body} onChange={(e) => updateAction(i, { ...action, body: e.target.value })} />
-                  </Field>
-                )}
-                {action.type === "createTask" && (
-                  <>
-                    <Field label="节点">
-                      <Select
-                        value={action.node}
-                        onChange={(e) => updateAction(i, { ...action, node: e.target.value })}
-                      >
-                        {nodeOptions}
-                      </Select>
-                    </Field>
-                    <Field label="子任务名称">
-                      <Input
-                        value={action.name}
-                        onChange={(e) => updateAction(i, { ...action, name: e.target.value })}
-                      />
-                    </Field>
-                    <Field label="负责人">
-                      <Select
-                        value={action.assigneeId ?? ""}
-                        onChange={(e) => updateAction(i, { ...action, assigneeId: e.target.value || null })}
-                      >
-                        <option value="">不指定</option>
-                        {memberOptions}
-                      </Select>
-                    </Field>
-                  </>
-                )}
-                {action.type === "createWorkItem" && (
-                  <>
-                    <Field label="新工作项类型">
-                      <Select
-                        value={action.typeId}
-                        onChange={(e) => updateAction(i, { ...action, typeId: e.target.value, relationDefId: null })}
-                      >
-                        {ready.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field label="新工作项名称">
-                      <Input
-                        value={action.name}
-                        onChange={(e) => updateAction(i, { ...action, name: e.target.value })}
-                      />
-                    </Field>
-                    <Field label="关联方式">
-                      <Select
-                        value={action.relationDefId ?? ""}
-                        onChange={(e) => updateAction(i, { ...action, relationDefId: e.target.value || null })}
-                      >
-                        <option value="">不关联</option>
-                        {allDefs
-                          .filter(
-                            (d) =>
-                              (d.fromTypeId === type.id && d.toTypeId === action.typeId) ||
-                              (d.toTypeId === type.id && d.fromTypeId === action.typeId),
-                          )
-                          .map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.fromTypeId === type.id ? d.name : (d.reverseName ?? d.name)}
-                            </option>
-                          ))}
-                      </Select>
-                    </Field>
-                  </>
-                )}
-                {action.type === "notify" && (
-                  <>
-                    <Field label="通知内容">
-                      <Input
-                        value={action.text}
-                        onChange={(e) => updateAction(i, { ...action, text: e.target.value })}
-                      />
-                    </Field>
-                    <fieldset aria-label="收件人" className="col-span-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                      <legend className="mb-1 text-sm font-medium">收件人</legend>
-                      {recipients.map((r) => (
-                        <label key={r.value} className="flex items-center gap-1">
-                          <Checkbox
-                            aria-label={`通知 ${r.label}`}
-                            checked={action.to.includes(r.value)}
-                            onChange={(e) =>
-                              updateAction(i, {
-                                ...action,
-                                to: e.target.checked ? [...action.to, r.value] : action.to.filter((v) => v !== r.value),
-                              })
-                            }
-                          />
-                          {r.label}
-                        </label>
-                      ))}
-                    </fieldset>
-                  </>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="col-start-3 justify-self-end"
-                  onClick={() => setActions((prev) => prev.filter((_, j) => j !== i))}
-                >
-                  移除动作
-                </Button>
-              </fieldset>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              className="self-start"
-              onClick={() => setActions((prev) => [...prev, newAction("setField")])}
-            >
-              添加动作
-            </Button>
+            {renderActions(actions, setActions)}
           </div>
+
+          {(condition || branches.length > 0) && (
+            <div className="flex flex-col gap-3">
+              <h4 className="text-sm font-medium text-fg">条件分支</h4>
+              <p className="text-xs text-fg-subtle">
+                执行条件不满足时，按顺序找第一个条件满足的分支执行；分支不加条件就是「否则」。
+              </p>
+              {branches.map((branch, bi) => (
+                <section
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 分支没有自己的 id，按位置编辑
+                  key={bi}
+                  aria-label={`分支 ${bi + 1}`}
+                  className="flex flex-col gap-3 rounded-md border border-dashed border-line p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-sm font-medium">{`分支 ${bi + 1}`}</h5>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setBranches(branches.filter((_, j) => j !== bi))}
+                    >
+                      删除分支
+                    </Button>
+                  </div>
+                  <ConditionEditor
+                    label="分支条件（不加表示否则）"
+                    value={branch.condition ?? undefined}
+                    fields={fields}
+                    onChange={(c) =>
+                      setBranches(branches.map((x, j) => (j === bi ? { ...x, condition: c ?? null } : x)))
+                    }
+                  />
+                  {renderActions(
+                    branch.actions,
+                    (next) => setBranches(branches.map((x, j) => (j === bi ? { ...x, actions: next } : x))),
+                    `分支 ${bi + 1} `,
+                  )}
+                </section>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                onClick={() => setBranches([...branches, { condition: null, actions: [] }])}
+              >
+                添加分支
+              </Button>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <Button type="submit">保存规则</Button>

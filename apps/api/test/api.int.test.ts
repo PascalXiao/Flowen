@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { schema } from "@fp/db";
 import { createTestDatabase } from "@fp/db/testing";
 import { dayInTimeZone, dayToIso, type FlowDefinition, oemV289 } from "@fp/engine";
-import { cascadeSubItems, createMutatorRunner, matchRules, notify, runRule } from "@fp/server";
+import { cascadeSubItems, createMutatorRunner, matchRules, notify, runRule, tickAutomations } from "@fp/server";
 import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp, createServices, type Services } from "../src/app.ts";
@@ -798,6 +798,148 @@ describe("automation rules", () => {
         admin.userId,
       ),
     ).rejects.toThrow("收件人");
+  });
+});
+
+describe("timed automation and branches", () => {
+  const spaceId = randomUUID();
+  let admin: { cookie: string; userId: string };
+  let typeId: string;
+  const { F } = oemV289;
+  // 2026-11-03 09:00（上海）
+  const nine = Date.parse("2026-11-03T01:00:00Z");
+
+  beforeAll(async () => {
+    admin = await signUp(`timed-${spaceId}@example.com`);
+    await services.zero.run("space.create", { id: spaceId, name: "定时" }, admin.userId);
+    ({ typeId } = await importOemTemplate(services.database.db, spaceId));
+  });
+
+  async function createItem(name: string, phaseOut = "是") {
+    const id = randomUUID();
+    await services.zero.run(
+      "workItem.create",
+      { id, typeId, name, fields: { [F.needPhaseOut]: phaseOut }, roles: {} },
+      admin.userId,
+    );
+    return id;
+  }
+  const clockEvents = (workItemId: string, kind: string) =>
+    services.database.db
+      .select()
+      .from(schema.eventLog)
+      .where(and(eq(schema.eventLog.workItemId, workItemId), eq(schema.eventLog.kind, kind)));
+  const commentsOf = (workItemId: string) =>
+    services.database.db.select().from(schema.comment).where(eq(schema.comment.workItemId, workItemId));
+
+  it("fires a daily schedule once per item at the chosen local hour, with branches by condition", async () => {
+    const a = await createItem("新品 A", "是");
+    const b = await createItem("新品 B", "否");
+    const ruleId = randomUUID();
+    await services.zero.run(
+      "automation.create",
+      {
+        id: ruleId,
+        spaceId,
+        name: "每天 9 点提醒",
+        trigger: { kind: "schedule", typeId, frequency: "day", hour: 9 },
+        condition: { kind: "equal", field: F.needPhaseOut, value: "是" },
+        actions: [{ type: "addComment", body: "记得评估下市风险" }],
+        branches: [{ condition: null, actions: [{ type: "addComment", body: "今天也要推进" }] }],
+      },
+      admin.userId,
+    );
+    await expect(
+      services.zero.run(
+        "automation.create",
+        {
+          id: randomUUID(),
+          spaceId,
+          name: "x",
+          trigger: { kind: "schedule", typeId, frequency: "week", weekdays: [], hour: 9 },
+          actions: [{ type: "restore" }],
+        },
+        admin.userId,
+      ),
+    ).rejects.toThrow("至少要选一天");
+
+    // 8 点不触发；9 点每个工作项一条；同一个整点再调一次不重复
+    expect(await tickAutomations(services.database, nine - 3_600_000)).toBe(0);
+    expect(await tickAutomations(services.database, nine)).toBe(2);
+    expect(await tickAutomations(services.database, nine + 5)).toBe(0);
+
+    const runner = createMutatorRunner(services.database);
+    for (const [id, body] of [
+      [a, "记得评估下市风险"],
+      [b, "今天也要推进"],
+    ] as const) {
+      const [event] = await clockEvents(id, "schedule");
+      if (!event) throw new Error("没有定时事件");
+      expect(event.payload).toEqual({ ruleId, slot: nine });
+      expect(await matchRules(services.database, event.id)).toEqual([ruleId]);
+      expect(await runRule(runner, ruleId, event.id, "wf-clock")).toBe("succeeded");
+      expect((await commentsOf(id)).map((c) => c.body)).toEqual([body]);
+    }
+
+    // 去掉兜底分支后，不满足条件的工作项不匹配；规则停用后时钟不再触发
+    await services.zero.run(
+      "automation.update",
+      {
+        id: ruleId,
+        name: "每天 9 点提醒",
+        enabled: false,
+        trigger: { kind: "schedule", typeId, frequency: "day", hour: 9 },
+        condition: { kind: "equal", field: F.needPhaseOut, value: "是" },
+        actions: [{ type: "addComment", body: "记得评估下市风险" }],
+      },
+      admin.userId,
+    );
+    const [bEvent] = await clockEvents(b, "schedule");
+    expect(await matchRules(services.database, bEvent?.id as number)).toEqual([]);
+    expect(await tickAutomations(services.database, nine + 86_400_000)).toBe(0);
+  });
+
+  it("fires a due-soon trigger on a node's planned end and skips items whose branch no longer applies", async () => {
+    const id = await createItem("新品 C");
+    const other = await createItem("新品 D");
+    await services.zero.run(
+      "node.setPlan",
+      { workItemId: id, nodeKey: "doing", start: "2026-11-01", end: "2026-11-04" },
+      admin.userId,
+    );
+    await services.zero.run(
+      "node.setPlan",
+      { workItemId: other, nodeKey: "doing", start: "2026-11-01", end: "2026-11-06" },
+      admin.userId,
+    );
+    const ruleId = randomUUID();
+    await services.zero.run(
+      "automation.create",
+      {
+        id: ruleId,
+        spaceId,
+        name: "节点到期前一天提醒",
+        trigger: { kind: "dateReached", typeId, date: "node:doing", when: "before", days: 1, hour: 9 },
+        condition: { kind: "equal", field: F.needPhaseOut, value: "是" },
+        actions: [{ type: "notify", to: ["creator"], text: "「{{name}}」明天到期" }],
+      },
+      admin.userId,
+    );
+    expect(await tickAutomations(services.database, nine)).toBe(1);
+    const [event] = await clockEvents(id, "dateReached");
+    expect(event?.payload).toEqual({ ruleId, slot: nine });
+    expect(await clockEvents(other, "dateReached")).toEqual([]);
+
+    // 执行前条件变了：没有分支可走，记为跳过
+    await services.zero.run("fieldValue.set", { workItemId: id, fieldKey: F.needPhaseOut, value: "否" }, admin.userId);
+    expect(await runRule(createMutatorRunner(services.database), ruleId, event?.id as number, "wf-due")).toBe(
+      "skipped",
+    );
+    const [run] = await services.database.db
+      .select()
+      .from(schema.automationRun)
+      .where(eq(schema.automationRun.ruleId, ruleId));
+    expect(run?.status).toBe("skipped");
   });
 });
 

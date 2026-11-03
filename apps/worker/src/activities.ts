@@ -9,6 +9,7 @@ import {
   matchWebhooks,
   notify,
   runRule,
+  tickAutomations,
   WebhookBlockedError,
 } from "@fp/server";
 import { ApplicationFailure, Context } from "@temporalio/activity";
@@ -61,6 +62,11 @@ export function createActivities(
     /** 重试用完仍然失败，记为失败。 */
     async failWebhook(webhookId: string, eventId: number): Promise<void> {
       await failWebhookDelivery(database, webhookId, eventId);
+    },
+
+    /** 时钟每个整点调一次：给到点的定时规则和动态时间规则写事件。可以安全重试。 */
+    async tickAutomations(slot: number): Promise<number> {
+      return tickAutomations(database, slot);
     },
 
     /** 执行一条规则。执行记录和动作在同一个事务里提交，重试时不会重复执行。 */

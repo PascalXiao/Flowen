@@ -1,5 +1,5 @@
 import { type Database, schema } from "@fp/db";
-import { type AutomationAction, renderTemplate, resolveRecipients, ruleApplies } from "@fp/engine";
+import { type AutomationAction, pickActions, renderTemplate, resolveRecipients, ruleApplies } from "@fp/engine";
 import { mustGetMutator } from "@rocicorp/zero";
 import { and, eq, inArray } from "drizzle-orm";
 import type { MutatorRunner } from "./index.ts";
@@ -26,7 +26,13 @@ export async function matchRules(database: Database, eventId: number): Promise<s
   return rules
     .filter((rule) =>
       ruleApplies(
-        { trigger: rule.trigger, condition: rule.conditions, actions: rule.actions },
+        {
+          id: rule.id,
+          trigger: rule.trigger,
+          condition: rule.conditions,
+          actions: rule.actions,
+          branches: rule.branches,
+        },
         { kind: event.kind, payload: event.payload },
         item.typeId,
         fields,
@@ -154,7 +160,7 @@ async function notifyAction(action: Extract<AutomationAction, { type: "notify" }
     .onConflictDoNothing();
 }
 
-export type RunStatus = "succeeded" | "failed";
+export type RunStatus = "succeeded" | "failed" | "skipped";
 
 /**
  * 执行一条规则：所有动作以规则创建人的身份、在同一个事务里执行，和执行记录一起提交。
@@ -171,7 +177,7 @@ export async function runRule(
   const done = await db.query.automationRun.findFirst({
     where: and(eq(schema.automationRun.ruleId, ruleId), eq(schema.automationRun.eventId, eventId)),
   });
-  if (done) return done.status === "succeeded" ? "succeeded" : "failed";
+  if (done) return done.status === "running" ? "failed" : done.status;
 
   const rule = await db.query.automationRule.findFirst({ where: eq(schema.automationRule.id, ruleId) });
   const event = await db.query.eventLog.findFirst({ where: eq(schema.eventLog.id, eventId) });
@@ -179,10 +185,23 @@ export async function runRule(
   const item = await db.query.workItem.findFirst({ where: eq(schema.workItem.id, event.workItemId) });
   if (!item) throw new Error(`工作项 ${event.workItemId} 不存在`);
   const ctx = { userID: rule.createdBy, causedBy: eventId };
+  // 按执行时的字段值选分支：同一事件上前面的规则改过的字段，这里能看到
+  const values = await db.query.fieldValue.findMany({ where: eq(schema.fieldValue.workItemId, item.id) });
+  const actions = pickActions(
+    { trigger: rule.trigger, condition: rule.conditions, actions: rule.actions, branches: rule.branches },
+    Object.fromEntries(values.map((v) => [v.fieldKey, v.value])),
+  );
+  if (!actions) {
+    await db
+      .insert(schema.automationRun)
+      .values({ ruleId, eventId, workflowId, status: "skipped", finishedAt: new Date() })
+      .onConflictDoNothing();
+    return "skipped";
+  }
 
   try {
     await runner.zqlDb.transaction(async (tx) => {
-      for (const [step, action] of rule.actions.entries())
+      for (const [step, action] of actions.entries())
         await perform(action, { tx, ctx, event: { id: eventId, actor: event.actor }, item, ruleId, step });
       await drizzleTx(tx)
         .insert(schema.automationRun)

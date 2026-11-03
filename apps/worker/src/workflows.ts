@@ -6,19 +6,21 @@ import {
   ParentClosePolicy,
   proxyActivities,
   setHandler,
+  sleep,
   startChild,
   workflowInfo,
 } from "@temporalio/workflow";
 import type { Activities } from "./activities.ts";
 import {
   EVENT_SIGNAL,
+  HOUR,
   type StreamEvent,
   type StreamWorkflowInput,
   type WebhookWorkflowInput,
   webhookWorkflowId,
 } from "./shared.ts";
 
-const { processEvent, runRule } = proxyActivities<Activities>({
+const { processEvent, runRule, tickAutomations } = proxyActivities<Activities>({
   startToCloseTimeout: "1 minute",
   retry: { initialInterval: "1 second", maximumInterval: "1 minute" },
 });
@@ -99,4 +101,21 @@ export async function webhookWorkflow({ webhookId, eventId }: WebhookWorkflowInp
   } catch {
     await failWebhook(webhookId, eventId);
   }
+}
+
+/** 跑这么多个整点后换一个新的运行，控制历史长度。 */
+const TICKS_PER_RUN = 24;
+
+/**
+ * 自动化时钟：睡到下一个整点，调 tickAutomations 给到点的规则写事件，如此往复。
+ * workflow 里的时间是确定性的，worker 重启后从历史恢复，不会漏掉或重复整点（重复也会被 automation_fire 挡住）。
+ */
+export async function automationClockWorkflow(): Promise<void> {
+  for (let i = 0; i < TICKS_PER_RUN; i++) {
+    const now = Date.now();
+    const next = (Math.floor(now / HOUR) + 1) * HOUR;
+    await sleep(next - now);
+    await tickAutomations(next);
+  }
+  await continueAsNew<typeof automationClockWorkflow>();
 }

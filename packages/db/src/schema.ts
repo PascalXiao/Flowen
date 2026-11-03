@@ -1,5 +1,6 @@
 import type {
   AutomationAction,
+  AutomationBranch,
   AutomationTrigger,
   CalendarConfig,
   Condition,
@@ -359,6 +360,8 @@ export const automationRule = pgTable("automation_rule", {
   /** 触发后按工作项字段求值的条件，为空表示不加条件。 */
   conditions: jsonb("conditions").$type<Condition | null>(),
   actions: jsonb("actions").$type<AutomationAction[]>().notNull(),
+  /** 条件分支：主条件不满足时按顺序找第一个满足的分支执行。 */
+  branches: jsonb("branches").$type<AutomationBranch[] | null>(),
   /** 规则以创建人的身份执行动作，权限和他手动操作一样。 */
   createdBy: text("created_by")
     .notNull()
@@ -799,6 +802,25 @@ export const eventLog = pgTable(
     at: timestamp("at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
   (t) => [index("event_log_work_item").on(t.workItemId, t.id)],
+);
+
+/**
+ * 按时间触发的规则在每个整点对每个工作项最多触发一次：时钟先占这一行，占到了才写事件，重试不会重复触发。
+ */
+export const automationFire = pgTable(
+  "automation_fire",
+  {
+    ruleId: text("rule_id")
+      .notNull()
+      .references(() => automationRule.id, { onDelete: "cascade" }),
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    /** 触发的整点（毫秒时间戳）。 */
+    slot: bigint("slot", { mode: "number" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.workItemId, t.slot] })],
 );
 
 export const automationRun = pgTable(
