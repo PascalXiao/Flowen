@@ -107,6 +107,7 @@ export function WorkItemList({
   display,
   onDisplay,
   toolbar,
+  onRows,
 }: {
   space: SpaceLike;
   filter: WorkItemFilterArgs;
@@ -114,6 +115,8 @@ export function WorkItemList({
   onDisplay: (display: ListDisplay) => void;
   /** 筛选栏（放在排序、分组前面）。 */
   toolbar: ReactNode;
+  /** 当前显示的行（排序、搜索之后）的工作项 id，抽屉里切上一条、下一条用。 */
+  onRows?: (ids: readonly string[]) => void;
 }) {
   const zero = useZero();
   const me = String(zero.userID);
@@ -177,6 +180,10 @@ export function WorkItemList({
     }
     return out;
   }, [items, search, display.sort, tab, byKey]);
+  const rowKey = rows.map((r) => r.id).join(",");
+  useEffect(() => {
+    onRows?.(rowKey ? rowKey.split(",") : []);
+  }, [rowKey, onRows]);
   const valuesOf = (i: ListItem) => Object.fromEntries(i.fieldValues.map((v) => [v.fieldKey, v.value]));
   const colorOf = (i: ListItem) =>
     display.colors?.find((c) => evaluate(c.when, { ...valuesOf(i), $stage: i.stage, $status: i.status }))?.color;
