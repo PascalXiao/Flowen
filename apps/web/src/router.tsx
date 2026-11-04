@@ -7,6 +7,7 @@ import { AdvancedConfigPage } from "@/pages/AdvancedConfigPage";
 import { ApiTokensPage } from "@/pages/ApiTokensPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { MetricsPage } from "@/pages/MetricsPage";
 import { MyWorkPage } from "@/pages/MyWorkPage";
 import { WorkItemHomePage } from "@/pages/SpacePage";
 import { SpaceSettingsPage } from "@/pages/SpaceSettingsPage";
@@ -62,6 +63,11 @@ const dashboardRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/spaces/$spaceId/overview",
   component: DashboardPage,
+});
+const metricsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/spaces/$spaceId/metrics",
+  component: MetricsPage,
 });
 const typeHomeRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -126,6 +132,7 @@ const routeTree = rootRoute.addChildren([
     apiTokensRoute,
     spaceIndexRoute,
     dashboardRoute,
+    metricsRoute,
     settingIndexRoute,
     advancedRoute,
     settingRoute,

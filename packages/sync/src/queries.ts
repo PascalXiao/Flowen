@@ -111,6 +111,7 @@ export const queries = defineQueries({
         .related("members", (m) => m.related("user"))
         .related("businessLines", (b) => b.orderBy("sort", "asc"))
         .related("views", (v) => v.orderBy("createdAt", "asc"))
+        .related("charts", (c) => c.orderBy("sort", "asc").orderBy("createdAt", "asc"))
         // 用户组和成员：权限配置要用，前端也按它算自己能看到哪些工作项类型
         .related("userGroups", (g) => g.related("members").orderBy("createdAt", "asc"))
         .related("workItemTypes", (t) =>
@@ -207,6 +208,10 @@ export const queries = defineQueries({
         .related("fieldValues", visibleFieldValues(ctx.userID))
         .related("roleMembers", (r) => r.related("user"))
         .orderBy("updatedAt", "desc"),
+    ),
+    /** 度量图表的数据源：命中筛选的工作项，带自己能看到的字段值和角色成员，在前端汇总。 */
+    forChart: defineQuery(spaceItemsArgs, ({ args, ctx }) =>
+      spaceItems(args, ctx.userID).related("fieldValues", visibleFieldValues(ctx.userID)).related("roleMembers"),
     ),
     /** 空间甘特图：工作项连同节点排期和流程定义。改排期的 mutator 在前端乐观执行时也要读这些。 */
     plansBySpace: defineQuery(spaceItemsArgs, ({ args, ctx }) =>

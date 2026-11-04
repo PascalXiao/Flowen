@@ -20,6 +20,16 @@ import {
   updateAutomationArgs,
 } from "./automations.ts";
 import {
+  createChart,
+  createChartArgs,
+  deleteChart,
+  deleteChartArgs,
+  reorderCharts,
+  reorderChartsArgs,
+  updateChart,
+  updateChartArgs,
+} from "./charts.ts";
+import {
   createComment,
   createCommentArgs,
   deleteComment,
@@ -271,6 +281,12 @@ export const mutators = defineMutators({
   },
   notification: {
     markRead: defineMutator(markReadArgs, ({ tx, args, ctx }) => markNotificationsRead(tx, args, ctx.userID)),
+  },
+  chart: {
+    create: defineMutator(createChartArgs, ({ tx, args, ctx }) => createChart(tx, args, ctx.userID)),
+    update: defineMutator(updateChartArgs, ({ tx, args, ctx }) => updateChart(tx, args, ctx.userID)),
+    delete: defineMutator(deleteChartArgs, ({ tx, args, ctx }) => deleteChart(tx, args, ctx.userID)),
+    reorder: defineMutator(reorderChartsArgs, ({ tx, args, ctx }) => reorderCharts(tx, args, ctx.userID)),
   },
   view: {
     create: defineMutator(createViewArgs, ({ tx, args, ctx }) => createView(tx, args, ctx.userID)),

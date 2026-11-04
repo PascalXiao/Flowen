@@ -1,7 +1,7 @@
 import { queries } from "@fp/sync";
 import { useQuery } from "@rocicorp/zero/react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChartColumn, ChevronsUpDown, House, Inbox, KeyRound, LogOut, Settings } from "lucide-react";
+import { ChartColumn, ChartPie, ChevronsUpDown, House, Inbox, KeyRound, LogOut, Settings } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { SearchDialog } from "@/components/SearchDialog";
@@ -122,6 +122,10 @@ function Sidebar({
             <Link to="/spaces/$spaceId/overview" params={{ spaceId: space.id }} className={navItem}>
               <ChartColumn />
               仪表盘
+            </Link>
+            <Link to="/spaces/$spaceId/metrics" params={{ spaceId: space.id }} className={navItem}>
+              <ChartPie />
+              度量
             </Link>
             <Link
               to="/spaces/$spaceId/setting/$tab"
