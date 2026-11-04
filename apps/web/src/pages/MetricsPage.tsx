@@ -21,7 +21,7 @@ import {
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useParams } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { LayoutDashboard, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { ChartView } from "@/components/ChartView";
@@ -30,7 +30,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
 import { Segmented } from "@/components/ui/tabs";
-import { newId } from "@/lib/utils";
+import { cn, newId } from "@/lib/utils";
 
 type Space = NonNullable<ReturnType<typeof useSpace>>;
 const useSpace = (spaceId: string) => useQuery(queries.spaces.byId({ id: spaceId }))[0];
@@ -41,6 +41,7 @@ interface ChartRow {
   filter: WorkItemFilterArgs;
   config: ChartConfig;
   createdBy: string;
+  onDashboard?: boolean | null;
 }
 
 /** 维度在下拉框里的值：type、status、stage、creator、createdAt、role:键、field:键。 */
@@ -208,19 +209,22 @@ function describe(space: Space, chart: { filter: WorkItemFilterArgs; config: Cha
   return `${types}${status} · ${metric}`;
 }
 
-function ChartCard({
+/** 一张保存的图表卡片，度量页和仪表盘共用；能改的人看得到编辑、删除、放到仪表盘。 */
+export function MetricChartCard({
   space,
   chart,
-  canEdit,
+  canEdit = false,
   onEdit,
   onDelete,
 }: {
   space: Space;
   chart: ChartRow;
-  canEdit: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
+  const zero = useZero();
+  const pinned = !!chart.onDashboard;
   const { data, drill } = useChart(space, chart.filter, chart.config);
   const [picked, setPicked] = useState<ChartDrill | null>(null);
   return (
@@ -235,20 +239,34 @@ function ChartCard({
         </div>
         {canEdit && (
           <div className="flex gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-            <Button size="icon" variant="ghost" aria-label={`编辑图表 ${chart.name}`} onClick={onEdit}>
-              <Pencil />
-            </Button>
-            <Popconfirm
-              title={`删除图表「${chart.name}」？`}
-              okText="删除"
-              cancelText="取消"
-              okType="danger"
-              onConfirm={onDelete}
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={`${pinned ? "移出仪表盘" : "放到仪表盘"} ${chart.name}`}
+              title={pinned ? "移出仪表盘" : "放到仪表盘"}
+              className={cn(pinned && "text-brand-500")}
+              onClick={() => zero.mutate(mutators.chart.update({ id: chart.id, onDashboard: !pinned }))}
             >
-              <Button size="icon" variant="ghost" aria-label={`删除图表 ${chart.name}`}>
-                <Trash2 />
+              <LayoutDashboard />
+            </Button>
+            {onEdit && (
+              <Button size="icon" variant="ghost" aria-label={`编辑图表 ${chart.name}`} onClick={onEdit}>
+                <Pencil />
               </Button>
-            </Popconfirm>
+            )}
+            {onDelete && (
+              <Popconfirm
+                title={`删除图表「${chart.name}」？`}
+                okText="删除"
+                cancelText="取消"
+                okType="danger"
+                onConfirm={onDelete}
+              >
+                <Button size="icon" variant="ghost" aria-label={`删除图表 ${chart.name}`}>
+                  <Trash2 />
+                </Button>
+              </Popconfirm>
+            )}
           </div>
         )}
       </div>
@@ -580,7 +598,7 @@ export function MetricsPage() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {charts.map((c) => (
-              <ChartCard
+              <MetricChartCard
                 key={c.id}
                 space={space}
                 chart={c}

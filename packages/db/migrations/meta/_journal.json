@@ -225,6 +225,13 @@
       "when": 1793794782097,
       "tag": "0031_metric_chart",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793796553531,
+      "tag": "0032_metric_chart_dashboard",
+      "breakpoints": true
     }
   ]
 }

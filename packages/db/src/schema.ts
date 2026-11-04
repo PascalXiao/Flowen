@@ -490,6 +490,8 @@ export const metricChart = pgTable("metric_chart", {
   config: jsonb("config").$type<ChartConfig>().notNull(),
   /** 在度量页上的顺序。 */
   sort: integer("sort").notNull().default(0),
+  /** 放到空间仪表盘上展示。 */
+  onDashboard: boolean("on_dashboard").notNull().default(false),
   createdBy: text("created_by")
     .notNull()
     .references(() => user.id),

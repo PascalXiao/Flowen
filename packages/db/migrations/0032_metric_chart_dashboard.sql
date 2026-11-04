@@ -1,0 +1,1 @@
+ALTER TABLE "metric_chart" ADD COLUMN "on_dashboard" boolean DEFAULT false NOT NULL;
