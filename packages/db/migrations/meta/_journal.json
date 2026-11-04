@@ -218,6 +218,13 @@
       "when": 1793680047476,
       "tag": "0030_vote_ballot",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793794782097,
+      "tag": "0031_metric_chart",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import type {
   AutomationBranch,
   AutomationTrigger,
   CalendarConfig,
+  ChartConfig,
   Condition,
   DetailLayout,
   FieldConfig,
@@ -475,6 +476,26 @@ export const savedView = pgTable("saved_view", {
   createdAt: createdAt(),
 });
 
+/**
+ * 度量图表：空间里保存的一张图。数据源是筛选条件（和视图同一套），config 是维度、指标和样式。
+ * 图表数据在前端用同步下来的工作项（已按权限过滤）计算，见 engine 的 computeChart。
+ */
+export const metricChart = pgTable("metric_chart", {
+  id: text("id").primaryKey(),
+  spaceId: text("space_id")
+    .notNull()
+    .references(() => space.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  filter: jsonb("filter").$type<WorkItemFilter>().notNull(),
+  config: jsonb("config").$type<ChartConfig>().notNull(),
+  /** 在度量页上的顺序。 */
+  sort: integer("sort").notNull().default(0),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => user.id),
+  createdAt: createdAt(),
+});
+
 // ───────────── 实例层 ─────────────
 
 export const workItem = pgTable(
@@ -922,6 +943,7 @@ export const spaceRelations = relations(space, ({ many }) => ({
   workItems: many(workItem),
   automationRules: many(automationRule),
   views: many(savedView),
+  charts: many(metricChart),
   webhooks: many(webhook),
   businessLines: many(businessLine),
   userGroups: many(userGroup),
@@ -1000,6 +1022,11 @@ export const flowVersionRelations = relations(flowVersion, ({ one }) => ({
 export const savedViewRelations = relations(savedView, ({ one }) => ({
   space: one(space, { fields: [savedView.spaceId], references: [space.id] }),
   creator: one(user, { fields: [savedView.createdBy], references: [user.id] }),
+}));
+
+export const metricChartRelations = relations(metricChart, ({ one }) => ({
+  space: one(space, { fields: [metricChart.spaceId], references: [space.id] }),
+  creator: one(user, { fields: [metricChart.createdBy], references: [user.id] }),
 }));
 
 export const automationRuleRelations = relations(automationRule, ({ one, many }) => ({

@@ -806,8 +806,9 @@ describe("timed automation and branches", () => {
   let admin: { cookie: string; userId: string };
   let typeId: string;
   const { F } = oemV289;
-  // 2026-11-03 09:00（上海）
-  const nine = Date.parse("2026-11-03T01:00:00Z");
+  // 2020-01-07 09:00（上海）。固定在过去：新建工作项的节点默认排期从今天算，
+  // 如果时钟用的日子贴近今天，别的工作项的默认计划完成日会碰巧命中到期规则。
+  const nine = Date.parse("2020-01-07T01:00:00Z");
 
   beforeAll(async () => {
     admin = await signUp(`timed-${spaceId}@example.com`);
@@ -904,12 +905,12 @@ describe("timed automation and branches", () => {
     const other = await createItem("新品 D");
     await services.zero.run(
       "node.setPlan",
-      { workItemId: id, nodeKey: "doing", start: "2026-11-01", end: "2026-11-04" },
+      { workItemId: id, nodeKey: "doing", start: "2020-01-05", end: "2020-01-08" },
       admin.userId,
     );
     await services.zero.run(
       "node.setPlan",
-      { workItemId: other, nodeKey: "doing", start: "2026-11-01", end: "2026-11-06" },
+      { workItemId: other, nodeKey: "doing", start: "2020-01-05", end: "2020-01-10" },
       admin.userId,
     );
     const ruleId = randomUUID();
@@ -2892,5 +2893,75 @@ describe("multi-person fields", () => {
       "只能由对应角色的人填写",
     );
     expect(await storedValue("评审")).toEqual([{ _user: dev.userId, 结论: "通过" }]);
+  });
+});
+
+describe("metric charts", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/task`;
+  let admin: { cookie: string; userId: string };
+  let member: { cookie: string; userId: string };
+  let guest: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const chartsOf = () =>
+    services.database.db
+      .select()
+      .from(schema.metricChart)
+      .where(eq(schema.metricChart.spaceId, spaceId))
+      .orderBy(schema.metricChart.sort);
+
+  beforeAll(async () => {
+    admin = await signUp(`chart-admin-${spaceId}@example.com`);
+    member = await signUp(`chart-member-${spaceId}@example.com`);
+    guest = await signUp(`chart-guest-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "度量" });
+    await services.database.db.insert(schema.spaceMember).values([
+      { spaceId, userId: member.userId },
+      { spaceId, userId: guest.userId, role: "guest" },
+    ]);
+    await run("workItemType.create", { id: typeId, spaceId, key: "task", name: "任务", flowMode: "state" });
+    await run("fieldDef.create", { id: `${typeId}/field/工时`, typeId, key: "工时", name: "工时", dataType: "number" });
+    await run("fieldDef.create", { id: `${typeId}/field/备注`, typeId, key: "备注", name: "备注", dataType: "text" });
+  });
+
+  it("saves charts for members, checks the config, and only the creator or an admin can change them", async () => {
+    const config = { kind: "column", dimension: { by: "status" }, metric: { agg: "sum", field: "工时" } };
+    await run(
+      "chart.create",
+      { id: "c1", spaceId, name: "工时", filter: { typeIds: [typeId] }, config },
+      member.userId,
+    );
+    await run(
+      "chart.create",
+      { id: "c2", spaceId, name: "数量", filter: {}, config: { kind: "indicator", metric: { agg: "count" } } },
+      admin.userId,
+    );
+    expect((await chartsOf()).map((c) => [c.id, c.sort, c.createdBy])).toEqual([
+      ["c1", 0, member.userId],
+      ["c2", 1, admin.userId],
+    ]);
+    await expect(
+      run("chart.create", {
+        id: "c3",
+        spaceId,
+        name: "x",
+        filter: {},
+        config: { kind: "column", metric: { agg: "sum", field: "备注" } },
+      }),
+    ).rejects.toThrow("不是数字字段");
+    await expect(
+      run("chart.create", { id: "c4", spaceId, name: "x", filter: {}, config }, guest.userId),
+    ).rejects.toThrow("访客");
+    // 成员不能改别人的图表；管理员可以
+    await expect(run("chart.update", { id: "c2", name: "改" }, member.userId)).rejects.toThrow("创建人或空间管理员");
+    await run("chart.update", { id: "c1", name: "工时汇总", config: { ...config, kind: "bar" } }, admin.userId);
+    await run("chart.reorder", { spaceId, ids: ["c2", "c1"] }, member.userId);
+    expect((await chartsOf()).map((c) => [c.id, c.name, c.config.kind])).toEqual([
+      ["c2", "数量", "indicator"],
+      ["c1", "工时汇总", "bar"],
+    ]);
+    await expect(run("chart.delete", { id: "c2" }, member.userId)).rejects.toThrow("创建人或空间管理员");
+    await run("chart.delete", { id: "c1" }, member.userId);
+    expect((await chartsOf()).map((c) => c.id)).toEqual(["c2"]);
   });
 });
