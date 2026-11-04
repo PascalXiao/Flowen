@@ -9,6 +9,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { MetricsPage } from "@/pages/MetricsPage";
 import { MyWorkPage } from "@/pages/MyWorkPage";
+import { SchedulePage } from "@/pages/SchedulePage";
 import { WorkItemHomePage } from "@/pages/SpacePage";
 import { SpaceSettingsPage } from "@/pages/SpaceSettingsPage";
 import { SpacesPage } from "@/pages/SpacesPage";
@@ -68,6 +69,11 @@ const metricsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/spaces/$spaceId/metrics",
   component: MetricsPage,
+});
+const scheduleRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/spaces/$spaceId/schedule",
+  component: SchedulePage,
 });
 const typeHomeRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -133,6 +139,7 @@ const routeTree = rootRoute.addChildren([
     spaceIndexRoute,
     dashboardRoute,
     metricsRoute,
+    scheduleRoute,
     settingIndexRoute,
     advancedRoute,
     settingRoute,
