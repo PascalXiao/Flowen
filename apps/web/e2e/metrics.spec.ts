@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { choose, createItem, oemSpace, openItems } from "./helpers";
 
-test("build metric charts: preview while editing, save, switch style, delete", async ({ page }) => {
+test("build metric charts: preview while editing, save, drill down, switch style, delete", async ({ page }) => {
   const suffix = `${Date.now()}`;
   await oemSpace(page, "Pascal", `metrics-${suffix}@example.com`, `度量 ${suffix}`);
   for (const name of ["面霜立项", "精华立项"]) {
@@ -28,6 +28,18 @@ test("build metric charts: preview while editing, save, switch style, delete", a
   await expect(
     card.getByRole("figure", { name: "项目阶段分布" }).getByRole("button", { name: /计数 2$/ }),
   ).toBeVisible();
+
+  // 钻取：点柱子看构成它的工作项
+  await card
+    .getByRole("figure", { name: "项目阶段分布" })
+    .getByRole("button", { name: /计数 2$/ })
+    .click();
+  const detail = page.getByRole("table", { name: "明细" });
+  await expect(detail.getByRole("link", { name: "面霜立项" })).toBeVisible();
+  await expect(detail.getByRole("link", { name: "精华立项" })).toBeVisible();
+  await expect(dialog.getByText("共 2 个工作项")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toBeHidden();
 
   // 指标卡
   await page.getByRole("button", { name: "新建图表" }).first().click();

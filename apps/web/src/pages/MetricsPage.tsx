@@ -4,12 +4,15 @@ import {
   CHART_KINDS,
   type ChartConfig,
   type ChartContext,
+  type ChartData,
   type ChartDimension,
+  type ChartDrill,
   type ChartFieldDef,
   type ChartItem,
   type ChartKind,
   checkChartConfig,
   computeChart,
+  drillChart,
   METRIC_AGG_LABEL,
   TIME_GRAIN_LABEL,
   TIME_GRAINS,
@@ -17,7 +20,7 @@ import {
 } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
-import { useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
@@ -82,6 +85,10 @@ const NO_GROUP_TYPES = [
 
 /** 图表数据：同步命中数据来源的工作项（服务端已按权限过滤），在前端按设置汇总。 */
 function useChartData(space: Space, filter: WorkItemFilterArgs, config: ChartConfig) {
+  return useChart(space, filter, config).data;
+}
+
+function useChart(space: Space, filter: WorkItemFilterArgs, config: ChartConfig) {
   const [rows] = useQuery(queries.workItems.forChart({ spaceId: space.id, filter }));
   return useMemo(() => {
     const items: ChartItem[] = rows.map((w) => {
@@ -104,8 +111,84 @@ function useChartData(space: Space, filter: WorkItemFilterArgs, config: ChartCon
       userName: (id) => space.members.find((m) => m.userId === id)?.user?.name ?? "—",
       timeZone: space.timezone ?? "Asia/Shanghai",
     };
-    return computeChart(items, config, ctx);
+    const byId = new Map(rows.map((w) => [w.id, w]));
+    return {
+      data: computeChart(items, config, ctx),
+      /** 钻取：点中的一格由哪些工作项构成。 */
+      drill: (d: ChartDrill) =>
+        drillChart(items, config, ctx, d).flatMap((i) => {
+          const w = byId.get(i.id);
+          return w ? [w] : [];
+        }),
+    };
   }, [rows, space, filter, config]);
+}
+
+type DrillRow = ReturnType<ReturnType<typeof useChart>["drill"]>[number];
+const STATUS_TEXT: Record<string, string> = { inProgress: "进行中", completed: "已完成", terminated: "已终止" };
+
+/** 钻取明细：点图上的一格，列出构成它的工作项，点名称打开详情。 */
+function DrillDialog({
+  space,
+  title,
+  rows,
+  onClose,
+}: {
+  space: Space;
+  title: string;
+  rows: readonly DrillRow[];
+  onClose: () => void;
+}) {
+  const typeName = (id: string) => space.workItemTypes.find((t) => t.id === id)?.name ?? "—";
+  const userName = (id: string) => space.members.find((m) => m.userId === id)?.user?.name ?? "—";
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={title} className="max-w-2xl">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-fg-subtle">共 {rows.length} 个工作项</span>
+          <div className="max-h-[60vh] overflow-auto">
+            <table aria-label="明细" className="w-full text-sm">
+              <thead className="sticky top-0 bg-surface text-left text-xs text-fg-muted">
+                <tr className="border-b border-line-subtle">
+                  <th className="h-8 font-normal">名称</th>
+                  <th className="font-normal">类型</th>
+                  <th className="font-normal">状态</th>
+                  <th className="font-normal">创建人</th>
+                  <th className="font-normal">创建时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((w) => (
+                  <tr key={w.id} className="border-b border-line-subtle last:border-0">
+                    <td className="h-9 max-w-64 truncate pr-3">
+                      <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-brand-500 hover:underline">
+                        {w.name}
+                      </Link>
+                    </td>
+                    <td className="pr-3 text-fg-muted">{typeName(w.typeId)}</td>
+                    <td className="pr-3 text-fg-muted">
+                      {w.status === "inProgress" && w.stage ? w.stage : (STATUS_TEXT[w.status ?? ""] ?? w.status)}
+                    </td>
+                    <td className="pr-3 text-fg-muted">{userName(w.createdBy)}</td>
+                    <td className="tabular-nums text-fg-muted">
+                      {w.createdAt ? new Date(w.createdAt).toLocaleDateString("zh-CN") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 钻取弹窗的标题：图表名 · 分组 · 系列。 */
+function drillTitle(chart: string, data: ChartData, d: ChartDrill) {
+  const group = data.groups.find((g) => g.key === d.group)?.label;
+  const series = data.series.length > 1 ? data.series.find((s) => s.key === d.series)?.label : undefined;
+  return [chart, group, series].filter(Boolean).join(" · ");
 }
 
 /** 一句话说明图表算的是什么：数据来源 · 指标。 */
@@ -138,7 +221,8 @@ function ChartCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const data = useChartData(space, chart.filter, chart.config);
+  const { data, drill } = useChart(space, chart.filter, chart.config);
+  const [picked, setPicked] = useState<ChartDrill | null>(null);
   return (
     <section
       aria-label={chart.name}
@@ -168,7 +252,15 @@ function ChartCard({
           </div>
         )}
       </div>
-      <ChartView data={data} kind={chart.config.kind} label={chart.name} />
+      <ChartView data={data} kind={chart.config.kind} label={chart.name} onPick={setPicked} />
+      {picked && (
+        <DrillDialog
+          space={space}
+          title={drillTitle(chart.name, data, picked)}
+          rows={drill(picked)}
+          onClose={() => setPicked(null)}
+        />
+      )}
     </section>
   );
 }
