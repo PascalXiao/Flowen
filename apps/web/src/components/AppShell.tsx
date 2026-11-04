@@ -11,6 +11,7 @@ import {
   KeyRound,
   LogOut,
   Settings,
+  Telescope,
 } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { NotificationsBell } from "@/components/NotificationsBell";
@@ -85,6 +86,10 @@ function Sidebar({
         <Link to="/my-work" className={navItem}>
           <Inbox />
           我的工作
+        </Link>
+        <Link to="/panorama" className={navItem}>
+          <Telescope />
+          全景视图
         </Link>
       </div>
 
