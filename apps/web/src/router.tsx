@@ -9,6 +9,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { MetricsPage } from "@/pages/MetricsPage";
 import { MyWorkPage } from "@/pages/MyWorkPage";
+import { PanoramaPage } from "@/pages/PanoramaPage";
 import { SchedulePage } from "@/pages/SchedulePage";
 import { WorkItemHomePage } from "@/pages/SpacePage";
 import { SpaceSettingsPage } from "@/pages/SpaceSettingsPage";
@@ -125,6 +126,14 @@ const templateRoute = createRoute({
   component: TemplateEditorPage,
 });
 const myWorkRoute = createRoute({ getParentRoute: () => appRoute, path: "/my-work", component: MyWorkPage });
+// ?types= 数据源（工作项类型 id 列表）；不带时是自己所在空间的全部类型
+const panoramaRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/panorama",
+  component: PanoramaPage,
+  validateSearch: (search: Record<string, unknown>): { types?: string[] } =>
+    Array.isArray(search.types) ? { types: search.types.filter((t): t is string => typeof t === "string") } : {},
+});
 const apiTokensRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings/api", component: ApiTokensPage });
 /** 只知道工作项 id 的链接（通知、搜索、旧地址）：查到所属空间和类型后跳到详情页。 */
 const itemByIdRoute = createRoute({ getParentRoute: () => appRoute, path: "/items/$itemId", component: ItemRedirect });
@@ -135,6 +144,7 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     spacesRoute,
     myWorkRoute,
+    panoramaRoute,
     apiTokensRoute,
     spaceIndexRoute,
     dashboardRoute,

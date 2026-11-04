@@ -104,6 +104,14 @@ export const queries = defineQueries({
     mine: defineQuery(({ ctx }) =>
       zql.space.whereExists("members", (m) => m.where("userId", ctx.userID)).orderBy("name", "asc"),
     ),
+    /** 全景视图选数据源用：自己所在的空间、空间里的工作项类型和成员名字。 */
+    panoramaSources: defineQuery(({ ctx }) =>
+      zql.space
+        .whereExists("members", (m) => m.where("userId", ctx.userID))
+        .related("workItemTypes", (t) => t.orderBy("sort", "asc"))
+        .related("members", (m) => m.related("user"))
+        .orderBy("name", "asc"),
+    ),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
       zql.space
         .where("id", args.id)
@@ -214,6 +222,13 @@ export const queries = defineQueries({
       spaceItems(args, ctx.userID).related("fieldValues", visibleFieldValues(ctx.userID)).related("roleMembers"),
     ),
     /** 空间甘特图：工作项连同节点排期和流程定义。改排期的 mutator 在前端乐观执行时也要读这些。 */
+    /**
+     * 全景视图：跨空间、跨工作项类型的工作项（数据源最多 200 个类型）。
+     * 每个工作项照常按所在空间和类型的可见范围过滤。
+     */
+    panorama: defineQuery(z.object({ typeIds: z.array(z.string()).max(200) }), ({ args, ctx }) =>
+      zql.workItem.where("typeId", "IN", args.typeIds).where(itemVisible(ctx.userID)).orderBy("createdAt", "desc"),
+    ),
     plansBySpace: defineQuery(spaceItemsArgs, ({ args, ctx }) =>
       spaceItems(args, ctx.userID)
         .related("flowVersion")
