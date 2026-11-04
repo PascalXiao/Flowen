@@ -324,6 +324,36 @@ export function computeChart(items: readonly ChartItem[], config: ChartConfig, c
   };
 }
 
+/** 钻取的目标：点中的分组（横轴上的一格），可再加一个系列（堆叠里的一段）。 */
+export interface ChartDrill {
+  group?: string | null;
+  series?: string | null;
+}
+
+/**
+ * 钻取：点中图上的一格，找出构成它的工作项（对照飞书度量的「查看明细」）。
+ * 「其他」是前 N 个分组之外的工作项；没有分组（指标卡）时是全部。
+ */
+export function drillChart(
+  items: readonly ChartItem[],
+  config: ChartConfig,
+  ctx: ChartContext,
+  drill: ChartDrill,
+): ChartItem[] {
+  const dim = config.kind === "indicator" ? null : (config.dimension ?? null);
+  let picked: readonly ChartItem[] = items;
+  if (dim && drill.group) {
+    if (drill.group === OTHER_GROUP) {
+      const shown = new Set(computeChart(items, config, ctx).groups.map((g) => g.key));
+      picked = items.filter((i) => groupsOf(i, dim, ctx).some((g) => !shown.has(g.key)));
+    } else picked = items.filter((i) => groupsOf(i, dim, ctx).some((g) => g.key === drill.group));
+  }
+  const series = config.series && config.kind !== "ring" ? config.series : null;
+  if (series && drill.series && drill.series !== SINGLE)
+    picked = picked.filter((i) => groupsOf(i, series, ctx).some((g) => g.key === drill.series));
+  return [...picked];
+}
+
 /** 检查图表设置能不能算：维度、指标引用的字段要存在，求和平均要用数字字段。 */
 export function checkChartConfig(config: ChartConfig, fields: readonly ChartFieldDef[]): string | null {
   const numeric = ["number", "formula"];

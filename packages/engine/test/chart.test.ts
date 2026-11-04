@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type ChartContext, type ChartItem, checkChartConfig, computeChart } from "../src/index.ts";
+import {
+  type ChartContext,
+  type ChartItem,
+  checkChartConfig,
+  computeChart,
+  drillChart,
+  OTHER_GROUP,
+} from "../src/index.ts";
 
 const fields = [
   {
@@ -136,5 +143,26 @@ describe("checkChartConfig", () => {
     );
     expect(checkChartConfig({ kind: "column", metric: { agg: "count" } }, fields)).toContain("分组维度");
     expect(checkChartConfig({ kind: "indicator", metric: { agg: "count" } }, fields)).toBeNull();
+  });
+});
+
+describe("drillChart", () => {
+  const byPriority = {
+    kind: "column" as const,
+    dimension: { by: "field" as const, key: "优先级" },
+    metric: { agg: "count" as const },
+  };
+  it("returns the items behind one group, including empty values", () => {
+    expect(drillChart(items, byPriority, ctx, { group: "P1" })).toEqual([items[0], items[2]]);
+    expect(drillChart(items, byPriority, ctx, { group: "__empty__" })).toEqual([items[3]]);
+  });
+  it("narrows by series and covers the merged 其他 group", () => {
+    const stacked = { ...byPriority, series: { by: "type" as const } };
+    expect(drillChart(items, stacked, ctx, { group: "P1", series: "bug" })).toEqual([items[2]]);
+    const top1 = { ...byPriority, limit: 1 };
+    expect(drillChart(items, top1, ctx, { group: OTHER_GROUP })).toEqual([items[1], items[3]]);
+  });
+  it("returns everything for an indicator card", () => {
+    expect(drillChart(items, { kind: "indicator", metric: { agg: "count" } }, ctx, {})).toHaveLength(4);
   });
 });

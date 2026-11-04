@@ -1,5 +1,5 @@
-import type { ChartData, ChartKind } from "@fp/engine";
-import { useState } from "react";
+import type { ChartData, ChartDrill, ChartKind } from "@fp/engine";
+import { createContext, useContext, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
 const MAX_SERIES = PALETTE.length;
 const SINGLE_COLOR = "var(--semi-color-primary)";
+
+/** 点图上的一格时回调（钻取看明细）；没有时图只能看不能点。 */
+const PickContext = createContext<((drill: ChartDrill) => void) | null>(null);
+const usePick = () => useContext(PickContext);
 
 const fmt = (n: number) => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 
@@ -83,6 +87,26 @@ export function ChartView({
   kind,
   label,
   className,
+  onPick,
+}: {
+  data: ChartData;
+  kind: ChartKind;
+  label: string;
+  className?: string;
+  onPick?: (drill: ChartDrill) => void;
+}) {
+  return (
+    <PickContext.Provider value={onPick ?? null}>
+      <ChartBody data={data} kind={kind} label={label} className={className} />
+    </PickContext.Provider>
+  );
+}
+
+function ChartBody({
+  data,
+  kind,
+  label,
+  className,
 }: {
   data: ChartData;
   kind: ChartKind;
@@ -112,9 +136,22 @@ export function ChartView({
 
 /** 指标卡：一个大数字，下面是参与计算的工作项数。 */
 function Indicator({ data, label }: { data: ChartData; label: string }) {
+  const pick = usePick();
+  const value = <span className="text-4xl font-semibold tabular-nums">{fmt(data.total)}</span>;
   return (
     <figure aria-label={label} className="flex flex-col items-start gap-1 py-4">
-      <span className="text-4xl font-semibold tabular-nums">{fmt(data.total)}</span>
+      {pick ? (
+        <button
+          type="button"
+          aria-label={`查看明细：${fmt(data.total)}`}
+          className="cursor-pointer rounded hover:text-brand-500"
+          onClick={() => pick({})}
+        >
+          {value}
+        </button>
+      ) : (
+        value
+      )}
       <figcaption className="text-xs text-fg-subtle">共 {data.count} 个工作项</figcaption>
     </figure>
   );
@@ -141,6 +178,7 @@ function Grid({ top }: { top: number }) {
 
 /** 柱状图（多个系列时堆叠），悬停整列显示提示。 */
 function Columns({ data, colors, label }: { data: ChartData; colors: string[]; label: string }) {
+  const pick = usePick();
   const [hover, setHover] = useState<number | null>(null);
   const totals = data.groups.map((_, i) => data.series.reduce((sum, s) => sum + Math.max(0, s.values[i] ?? 0), 0));
   const top = niceMax(Math.max(...totals));
@@ -153,7 +191,11 @@ function Columns({ data, colors, label }: { data: ChartData; colors: string[]; l
             type="button"
             key={g.key}
             aria-label={`${g.label}：${data.series.map((s) => `${s.label} ${fmt(s.values[i] ?? 0)}`).join("，")}`}
-            className="relative flex h-full min-w-0 flex-1 cursor-default flex-col justify-end outline-none"
+            className={cn(
+              "relative flex h-full min-w-0 flex-1 flex-col justify-end outline-none",
+              pick ? "cursor-pointer" : "cursor-default",
+            )}
+            onClick={() => pick?.({ group: g.key })}
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover(null)}
             onFocus={() => setHover(i)}
@@ -199,37 +241,47 @@ function Columns({ data, colors, label }: { data: ChartData; colors: string[]; l
 
 /** 条形图：横向，标签在左，多个系列时堆叠；单系列时条尾标数值。 */
 function Bars({ data, colors, label }: { data: ChartData; colors: string[]; label: string }) {
+  const pick = usePick();
   const [hover, setHover] = useState<number | null>(null);
   const totals = data.groups.map((_, i) => data.series.reduce((sum, s) => sum + Math.max(0, s.values[i] ?? 0), 0));
   const max = Math.max(1, ...totals);
   return (
     <ul aria-label={label} className="flex flex-col">
       {data.groups.map((g, i) => (
-        <li
-          key={g.key}
-          className="relative grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 rounded px-1 py-1 hover:bg-hover/50"
-          onMouseEnter={() => setHover(i)}
-          onMouseLeave={() => setHover(null)}
-        >
-          <span className="truncate text-sm text-fg-muted" title={g.label}>
-            {g.label}
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="flex h-4 gap-[2px]" style={{ width: `${((totals[i] ?? 0) / max) * 80}%`, minWidth: 2 }}>
-              {data.series.map((s, k) => {
-                const v = Math.max(0, s.values[i] ?? 0);
-                if (v === 0) return null;
-                return (
-                  <span
-                    key={s.key}
-                    className="h-full last:rounded-r-[4px]"
-                    style={{ flexGrow: v, flexBasis: 0, minWidth: 2, background: colors[k] }}
-                  />
-                );
-              })}
+        <li key={g.key} className="relative">
+          <button
+            type="button"
+            aria-label={`${g.label}：${data.series.map((s) => `${s.label} ${fmt(s.values[i] ?? 0)}`).join("，")}`}
+            className={cn(
+              "grid w-full grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 rounded px-1 py-1 text-left hover:bg-hover/50",
+              pick ? "cursor-pointer" : "cursor-default",
+            )}
+            onClick={() => pick?.({ group: g.key })}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+            onFocus={() => setHover(i)}
+            onBlur={() => setHover(null)}
+          >
+            <span className="truncate text-sm text-fg-muted" title={g.label}>
+              {g.label}
             </span>
-            <span className="text-sm tabular-nums">{fmt(totals[i] ?? 0)}</span>
-          </span>
+            <span className="flex items-center gap-2">
+              <span className="flex h-4 gap-[2px]" style={{ width: `${((totals[i] ?? 0) / max) * 80}%`, minWidth: 2 }}>
+                {data.series.map((s, k) => {
+                  const v = Math.max(0, s.values[i] ?? 0);
+                  if (v === 0) return null;
+                  return (
+                    <span
+                      key={s.key}
+                      className="h-full last:rounded-r-[4px]"
+                      style={{ flexGrow: v, flexBasis: 0, minWidth: 2, background: colors[k] }}
+                    />
+                  );
+                })}
+              </span>
+              <span className="text-sm tabular-nums">{fmt(totals[i] ?? 0)}</span>
+            </span>
+          </button>
           {hover === i && data.series.length > 1 && (
             <Tooltip
               title={g.label}
@@ -245,6 +297,7 @@ function Bars({ data, colors, label }: { data: ChartData; colors: string[]; labe
 
 /** 折线图、面积图：每个系列一条 2px 线，悬停显示竖线和这一点各系列的值。 */
 function Lines({ data, colors, label, area }: { data: ChartData; colors: string[]; label: string; area: boolean }) {
+  const pick = usePick();
   const [hover, setHover] = useState<number | null>(null);
   const top = niceMax(Math.max(...data.series.flatMap((s) => s.values)));
   const n = data.groups.length;
@@ -308,7 +361,8 @@ function Lines({ data, colors, label, area }: { data: ChartData; colors: string[
                 type="button"
                 key={g.key}
                 aria-label={`${g.label}：${data.series.map((s) => `${s.label} ${fmt(s.values[i] ?? 0)}`).join("，")}`}
-                className="h-full flex-1 cursor-default outline-none"
+                className={cn("h-full flex-1 outline-none", pick ? "cursor-pointer" : "cursor-default")}
+                onClick={() => pick?.({ group: g.key })}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
                 onFocus={() => setHover(i)}
@@ -354,6 +408,7 @@ function Lines({ data, colors, label, area }: { data: ChartData; colors: string[
 
 /** 环形图：单系列，每个分组一个扇区（分组多时由图表设置合并成「其他」），右侧图例带数值和占比。 */
 function Ring({ data, label }: { data: ChartData; label: string }) {
+  const pick = usePick();
   const [hover, setHover] = useState<number | null>(null);
   const values = (data.series[0]?.values ?? []).slice(0, MAX_SERIES);
   const groups = data.groups.slice(0, MAX_SERIES);
@@ -402,18 +457,27 @@ function Ring({ data, label }: { data: ChartData; label: string }) {
       </div>
       <ul aria-label="图例" className="flex min-w-40 flex-1 flex-col gap-1 text-sm">
         {groups.map((g, i) => (
-          <li
-            key={g.key}
-            className={cn("flex items-center gap-2 rounded px-1", hover === i && "bg-hover")}
-            onMouseEnter={() => setHover(i)}
-            onMouseLeave={() => setHover(null)}
-          >
-            <span className="size-2.5 shrink-0 rounded-sm" style={{ background: colors[i] }} />
-            <span className="min-w-0 flex-1 truncate text-fg-muted">{g.label}</span>
-            <span className="tabular-nums">{fmt(values[i] ?? 0)}</span>
-            <span className="w-12 text-right text-xs tabular-nums text-fg-subtle">
-              {Math.round(((values[i] ?? 0) / sum) * 100)}%
-            </span>
+          <li key={g.key}>
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded px-1 text-left",
+                hover === i && "bg-hover",
+                pick ? "cursor-pointer" : "cursor-default",
+              )}
+              onClick={() => pick?.({ group: g.key })}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(i)}
+              onBlur={() => setHover(null)}
+            >
+              <span className="size-2.5 shrink-0 rounded-sm" style={{ background: colors[i] }} />
+              <span className="min-w-0 flex-1 truncate text-fg-muted">{g.label}</span>
+              <span className="tabular-nums">{fmt(values[i] ?? 0)}</span>
+              <span className="w-12 text-right text-xs tabular-nums text-fg-subtle">
+                {Math.round(((values[i] ?? 0) / sum) * 100)}%
+              </span>
+            </button>
           </li>
         ))}
       </ul>
@@ -423,7 +487,21 @@ function Ring({ data, label }: { data: ChartData; label: string }) {
 
 /** 数据表：分组为行，系列为列（只有一个系列时就是一列值），最后一行合计。 */
 function DataTable({ data, label }: { data: ChartData; label: string }) {
+  const pick = usePick();
   const multi = data.series.length > 1;
+  const cell = (text: string, drill: ChartDrill, name: string) =>
+    pick ? (
+      <button
+        type="button"
+        aria-label={`查看明细：${name} ${text}`}
+        className="cursor-pointer tabular-nums hover:text-brand-500 hover:underline"
+        onClick={() => pick(drill)}
+      >
+        {text}
+      </button>
+    ) : (
+      text
+    );
   return (
     <div className="max-h-72 overflow-auto">
       <table aria-label={label} className="w-full text-sm">
@@ -444,12 +522,20 @@ function DataTable({ data, label }: { data: ChartData; label: string }) {
               <td className="h-8">{g.label}</td>
               {data.series.map((s) => (
                 <td key={s.key} className="text-right tabular-nums">
-                  {fmt(s.values[i] ?? 0)}
+                  {cell(
+                    fmt(s.values[i] ?? 0),
+                    { group: g.key, series: s.key },
+                    multi ? `${g.label} ${s.label}` : g.label,
+                  )}
                 </td>
               ))}
               {multi && (
                 <td className="text-right tabular-nums">
-                  {fmt(data.series.reduce((a, s) => a + (s.values[i] ?? 0), 0))}
+                  {cell(
+                    fmt(data.series.reduce((a, s) => a + (s.values[i] ?? 0), 0)),
+                    { group: g.key },
+                    `${g.label} 合计`,
+                  )}
                 </td>
               )}
             </tr>
