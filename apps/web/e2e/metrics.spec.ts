@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { choose, createItem, oemSpace, openItems } from "./helpers";
 
-test("build metric charts: preview while editing, save, drill down, switch style, delete", async ({ page }) => {
+test("build metric charts: preview while editing, save, drill down, pin to dashboard, switch style, delete", async ({
+  page,
+}) => {
   const suffix = `${Date.now()}`;
   await oemSpace(page, "Pascal", `metrics-${suffix}@example.com`, `度量 ${suffix}`);
   for (const name of ["面霜立项", "精华立项"]) {
@@ -40,6 +42,15 @@ test("build metric charts: preview while editing, save, drill down, switch style
   await expect(dialog.getByText("共 2 个工作项")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(detail).toBeHidden();
+
+  // 放到仪表盘：仪表盘上出现同一张图
+  await card.hover();
+  await card.getByRole("button", { name: "放到仪表盘 项目阶段分布" }).click();
+  await expect(card.getByRole("button", { name: "移出仪表盘 项目阶段分布" })).toBeVisible();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "仪表盘" }).click();
+  const pinned = page.getByRole("region", { name: "度量图表" }).getByRole("region", { name: "项目阶段分布" });
+  await expect(pinned.getByRole("button", { name: /计数 2$/ })).toBeVisible();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "度量" }).click();
 
   // 指标卡
   await page.getByRole("button", { name: "新建图表" }).first().click();

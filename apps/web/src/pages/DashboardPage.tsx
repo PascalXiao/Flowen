@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { MetricChartCard } from "@/pages/MetricsPage";
 import { ImportOem } from "@/pages/SpacePage";
 
 /** 和 apps/api/src/dashboard.ts 的返回值一致。 */
@@ -37,7 +38,8 @@ interface Dashboard {
 }
 
 /** 新建、完成两个系列的颜色（已用配色校验脚本检查过色盲区分度和对比度）。 */
-const SERIES = { created: "var(--color-brand-500)", completed: "var(--color-teal-600)" } as const;
+// 和度量图表同一套分类色（主题变量在内联样式里不一定生成，直接用色值）
+const SERIES = { created: "#2a78d6", completed: "#eb6834" } as const;
 
 /**
  * 空间仪表盘：进行中和完成的数量、阶段和类型分布、每周新建和完成趋势、延期节点和每个人的负载。
@@ -121,6 +123,16 @@ export function DashboardPage() {
         {error && <ErrorBanner>{error}</ErrorBanner>}
         {!data && !error && <p className="text-sm text-fg-subtle">加载中…</p>}
         {data && <DashboardBody data={data} />}
+        {space?.charts.some((c) => c.onDashboard) && (
+          // 度量页里「放到仪表盘」的图表，和度量页一样实时更新、可以钻取
+          <section aria-label="度量图表" className="mt-4 grid gap-4 lg:grid-cols-2">
+            {space.charts
+              .filter((c) => c.onDashboard)
+              .map((c) => (
+                <MetricChartCard key={c.id} space={space} chart={c} canEdit={isAdmin || c.createdBy === zero.userID} />
+              ))}
+          </section>
+        )}
       </PageBody>
     </>
   );

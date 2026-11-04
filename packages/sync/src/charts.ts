@@ -37,6 +37,8 @@ export const updateChartArgs = z.object({
   name: z.string().trim().min(1).max(50).optional(),
   filter: workItemFilter.optional(),
   config: chartConfig.optional(),
+  /** 放到 / 移出空间仪表盘。 */
+  onDashboard: z.boolean().optional(),
 });
 export const deleteChartArgs = z.object({ id: z.string() });
 /** 调整度量页上图表的顺序：按给定的 id 顺序重排。 */
@@ -94,6 +96,7 @@ export async function updateChart(tx: Transaction, args: z.output<typeof updateC
     ...(args.name !== undefined && { name: args.name }),
     ...(args.filter && { filter }),
     ...(args.config && { config }),
+    ...(args.onDashboard !== undefined && { onDashboard: args.onDashboard }),
   });
 }
 

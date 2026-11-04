@@ -2960,6 +2960,12 @@ describe("metric charts", () => {
       ["c2", "数量", "indicator"],
       ["c1", "工时汇总", "bar"],
     ]);
+    // 放到仪表盘：同样只有创建人或管理员
+    await expect(run("chart.update", { id: "c2", onDashboard: true }, member.userId)).rejects.toThrow(
+      "创建人或空间管理员",
+    );
+    await run("chart.update", { id: "c2", onDashboard: true }, admin.userId);
+    expect((await chartsOf()).find((c) => c.id === "c2")?.onDashboard).toBe(true);
     await expect(run("chart.delete", { id: "c2" }, member.userId)).rejects.toThrow("创建人或空间管理员");
     await run("chart.delete", { id: "c1" }, member.userId);
     expect((await chartsOf()).map((c) => c.id)).toEqual(["c2"]);
