@@ -806,8 +806,9 @@ describe("timed automation and branches", () => {
   let admin: { cookie: string; userId: string };
   let typeId: string;
   const { F } = oemV289;
-  // 2026-11-03 09:00（上海）
-  const nine = Date.parse("2026-11-03T01:00:00Z");
+  // 2020-01-07 09:00（上海）。固定在过去：新建工作项的节点默认排期从今天算，
+  // 如果时钟用的日子贴近今天，别的工作项的默认计划完成日会碰巧命中到期规则。
+  const nine = Date.parse("2020-01-07T01:00:00Z");
 
   beforeAll(async () => {
     admin = await signUp(`timed-${spaceId}@example.com`);
@@ -904,12 +905,12 @@ describe("timed automation and branches", () => {
     const other = await createItem("新品 D");
     await services.zero.run(
       "node.setPlan",
-      { workItemId: id, nodeKey: "doing", start: "2026-11-01", end: "2026-11-04" },
+      { workItemId: id, nodeKey: "doing", start: "2020-01-05", end: "2020-01-08" },
       admin.userId,
     );
     await services.zero.run(
       "node.setPlan",
-      { workItemId: other, nodeKey: "doing", start: "2026-11-01", end: "2026-11-06" },
+      { workItemId: other, nodeKey: "doing", start: "2020-01-05", end: "2020-01-10" },
       admin.userId,
     );
     const ruleId = randomUUID();
