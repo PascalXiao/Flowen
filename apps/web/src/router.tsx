@@ -44,7 +44,7 @@ function AppLayout() {
 const spacesRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: SpacesPage });
 
 /*
- * 空间里的页面按飞书项目的结构：
+ * 空间里的页面按这样的结构：
  *   /spaces/:space/overview                         仪表盘（空间首页）
  *   /spaces/:space/:type                            工作项主页（工作项列表 / 视图列表），?item= 在抽屉里打开一条
  *   /spaces/:space/:type/detail/:item               一条工作项的完整详情页

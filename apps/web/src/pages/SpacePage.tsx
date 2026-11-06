@@ -43,7 +43,7 @@ type Space = NonNullable<QueryResultType<ReturnType<typeof queries.spaces.byId>>
 type ItemType = Space["workItemTypes"][number];
 
 /**
- * 工作项主页（飞书项目左侧导航里的一个工作项，如「项目」「缺陷」）：
+ * 工作项主页（左侧导航里的一个工作项，如「项目」「缺陷」）：
  * 「工作项列表」页签是这种类型的列表和统计，「视图列表」页签是这种类型保存过的视图。
  */
 export function WorkItemHomePage() {
@@ -102,7 +102,7 @@ export function WorkItemHomePage() {
         <SideSheet
           visible
           width="72%"
-          // 挂在内容区里（左侧导航不被盖住），和飞书项目的抽屉一样
+          // 挂在内容区里（左侧导航不被盖住）
           getPopupContainer={() => document.querySelector("main") ?? document.body}
           bodyStyle={{ padding: 0 }}
           title={

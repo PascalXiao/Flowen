@@ -17,7 +17,7 @@ const usePanorama = (typeIds: string[]) => useQuery(queries.workItems.panorama({
 type Sources = ReturnType<typeof useSources>;
 type Item = ReturnType<typeof usePanorama>[number];
 
-/** 聚合字段：跨空间、跨类型都有的系统字段，表格分组和度量都按它们来（对照飞书全景视图的默认聚合字段）。 */
+/** 聚合字段：跨空间、跨类型都有的系统字段，表格分组和度量都按它们来。 */
 const AGGREGATES = [
   ["space", "所属空间"],
   ["type", "工作项类型"],
@@ -33,7 +33,7 @@ const SPACE_KEY = "__space";
 const MAX_ROWS = 500;
 
 /**
- * 全景视图（对照飞书项目的全景视图）：把多个空间、多种工作项放在一起看。
+ * 全景视图：把多个空间、多种工作项放在一起看。
  * 数据源是勾选的工作项类型（存在地址栏里，方便分享），可以切表格和度量两种模式。
  */
 export function PanoramaPage() {

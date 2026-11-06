@@ -9,7 +9,7 @@ const yesNo = [
 
 /**
  * 把 OEM v289 导入一个空间：工作项类型「项目」、流程用到的字段和角色、已发布的流程模板。
- * 字段键直接用飞书里的字段名，和引擎样例里的条件一致。返回新建的类型 id 和模板 id。
+ * 字段键直接用模板里的字段名，和引擎样例里的条件一致。返回新建的类型 id 和模板 id。
  */
 export async function importOemTemplate(db: Db, spaceId: string): Promise<{ typeId: string; templateId: string }> {
   const { oemFlow, F } = oemV289;

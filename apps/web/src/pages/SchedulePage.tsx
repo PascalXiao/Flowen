@@ -24,7 +24,7 @@ const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
 const fmt = (n: number) => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 
 /**
- * 人员排期（对照飞书项目的人员排期视图）：人 × 时间。每人一组，组里是他负责的节点排期条，
+ * 人员排期：人 × 时间。每人一组，组里是他负责的节点排期条，
  * 左边一张表看每人的已排期项、总估分和未排期的节点。能改排期的人可以直接拖动横条。
  */
 export function SchedulePage() {

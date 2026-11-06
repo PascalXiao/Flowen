@@ -1,6 +1,6 @@
-# 飞书项目复刻
+# Flowen
 
-Flowen 复刻飞书项目（Meego）的核心能力：工作项、节点流程、排期、自动化、公式字段和权限。设计文档见 Claude Docs「飞书项目复刻：数据模型与流程引擎设计」。
+Flowen 是一个项目管理平台：工作项、节点流程、排期、自动化、公式字段、权限、度量和全景视图。
 
 全栈 TypeScript monorepo。流程引擎只有一份代码，服务端用它做权威计算，浏览器用同一份代码做实时校验和预览。
 
@@ -18,7 +18,7 @@ Flowen 复刻飞书项目（Meego）的核心能力：工作项、节点流程�
 
 ## 界面
 
-视觉参照飞书项目。设计 token 都在 `apps/web/src/index.css` 的 `@theme` 里：品牌蓝 `brand-*`，文字 `fg` / `fg-muted` / `fg-subtle`，
+设计 token 都在 `apps/web/src/index.css` 的 `@theme` 里：品牌蓝 `brand-*`，文字 `fg` / `fg-muted` / `fg-subtle`，
 线 `line` / `line-subtle`，底色 `canvas` / `surface`，状态色 `success` / `warning` / `danger`。页面里只用这些语义类，不直接写 slate、sky 这类颜色。
 字号 12/14/16/20，控件高 32px，圆角 6px。
 

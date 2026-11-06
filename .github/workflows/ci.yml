@@ -21,7 +21,7 @@ jobs:
       - run: pnpm test
       - name: Production compose config and web image
         env:
-          DOMAIN: feishu.example.com
+          DOMAIN: flowen.example.com
           BETTER_AUTH_SECRET: ci
           POSTGRES_PASSWORD: ci
           ZERO_ADMIN_PASSWORD: ci

@@ -3,7 +3,7 @@ import { type FlowDefinition, FlowGraph } from "./definition.ts";
 export interface ValidationResult {
   /** 阻止发布的问题。 */
   errors: string[];
-  /** 只提示、不阻止发布的问题（飞书里允许的写法照样允许）。 */
+  /** 只提示、不阻止发布的问题。 */
   warnings: string[];
 }
 

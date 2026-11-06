@@ -47,7 +47,7 @@ export type FieldDataType =
   | "relation"
   | "formula";
 
-/** 界面上能新建的字段类型，按飞书项目字段类型的分组排序（关联走关联定义，公式由公式引擎计算）。 */
+/** 界面上能新建的字段类型，按字段类型分组排序（关联走关联定义，公式由公式引擎计算）。 */
 export const EDITABLE_FIELD_TYPES = [
   "text",
   "textarea",
@@ -145,7 +145,7 @@ export interface FieldOption {
 }
 
 /**
- * 投票字段的设置（对照飞书项目的投票字段）：表态（赞成 / 反对 / 弃权）、单选、多选；
+ * 投票字段的设置：表态（赞成 / 反对 / 弃权）、单选、多选；
  * 备注不需要 / 可填 / 必填；盲投时放榜前只看得到自己的票，放榜的是空间管理员和 revealRoles 里的角色。
  */
 export interface VoteConfig {
@@ -195,7 +195,7 @@ export interface FieldSpec {
   } | null;
 }
 
-/** 字段组的一列：一个小字段（对照飞书项目的字段组 / 复合字段）。 */
+/** 字段组的一列：一个小字段。 */
 export interface FieldGroupColumn {
   key: string;
   name: string;
@@ -219,7 +219,7 @@ export const FIELD_GROUP_COLUMN_TYPES = [
 export type FieldGroupColumnType = (typeof FIELD_GROUP_COLUMN_TYPES)[number];
 
 /**
- * 多人复合字段的填写人（对照飞书项目的多人复合字段）：role 设了就是这个角色上的人各填一组，
+ * 多人复合字段的填写人：role 设了就是这个角色上的人各填一组，
  * 没设就是自行添加（每人把自己加进来填）。
  */
 export interface MultiPersonConfig {
@@ -713,7 +713,7 @@ export const PASTEABLE_FIELD_TYPES: readonly FieldDataType[] = [
 ];
 
 /**
- * 把复制来的文本（列表单元格、Excel、飞书表格）转成字段值，对照 formatFieldValue 的反方向：
+ * 把复制来的文本（列表单元格、Excel、在线表格）转成字段值，对照 formatFieldValue 的反方向：
  * 选项按显示名（级联按「上级 / 下级」或末级名）找，人员按名字找，多值用顿号、逗号或分号隔开。
  * 空文本是清空（null）；对不上的返回 { error }。最终的校验和整理仍由 normalizeFieldValue 做。
  */

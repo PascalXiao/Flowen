@@ -5,7 +5,7 @@ import { requireAdmin, spaceMemberOf } from "./access.ts";
 import { type Schema, zql } from "./schema.gen.ts";
 
 /*
- * 用户组和工作项类型权限（对照飞书项目「权限管理」）：
+ * 用户组和工作项类型权限：
  * - 用户组是空间里的一组人，本身没有权限，在类型的「权限」里授权给它。
  * - 查看：每个授权对象（空间成员、用户组）一个范围，取最大；空间管理员看全部，
  *   工作项上担任角色的人、创建者、关注人总能看到自己参与的。

@@ -317,7 +317,7 @@ export function relationColumn(rel: ListRelation): ListColumn {
 }
 
 /**
- * 关联字段列：关联着的工作项的某个字段（飞书项目视图里的「关联字段」，如「关联项目 · 优先级」）。
+ * 关联字段列：关联着的工作项的某个字段（如「关联项目 · 优先级」）。
  * 关联了多个时每个的值都列出来。键是 relf:out|in:关联定义 id:字段键；字段键 $stage 是对方的阶段。
  */
 export function relatedFieldColumn(rel: ListRelation, field: ListField | "stage", ctx: ListContext): ListColumn {
@@ -561,7 +561,7 @@ export function fieldColumn(field: ListField, ctx: ListContext): ListColumn {
   };
 }
 
-/** 没保存过列设置时默认显示的列，对照飞书项目的默认列。 */
+/** 没保存过列设置时默认显示的列。 */
 export function defaultColumnKeys(fields: ReadonlyMap<string, ListField>): string[] {
   const line = [...fields.values()].find((f) => f.dataType === "businessLine");
   const priority = [...fields.values()].find((f) => f.name.includes("优先级"));

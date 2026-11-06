@@ -32,7 +32,7 @@ export function tally(options: readonly FieldOption[], ballots: readonly Ballot[
 }
 
 /**
- * 投票字段（对照飞书项目的投票字段）：表态 / 单选 / 多选，可带备注；
+ * 投票字段：表态 / 单选 / 多选，可带备注；
  * 盲投时没放榜前只看得到自己的票，管理员和放榜角色可以公布或收起结果。
  */
 export function VoteField({

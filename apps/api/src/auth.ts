@@ -11,7 +11,7 @@ export interface AuthOptions {
 }
 
 /**
- * 登录。第一期用邮箱 + 密码；飞书、企微、OIDC 单点登录以后作为 social provider / 插件接入。
+ * 登录。第一期用邮箱 + 密码；企业 IM、OIDC 单点登录以后作为 social provider / 插件接入。
  * 用户表在 public（前端要显示名字），会话和凭据在 infra，不会同步到浏览器。
  */
 export function createAuth(database: Database, options: AuthOptions) {
