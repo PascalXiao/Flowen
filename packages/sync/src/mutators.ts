@@ -61,6 +61,8 @@ import {
   upgradeWorkItem,
 } from "./flow.ts";
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
+import { handover } from "./handover.ts";
+import { handoverArgs } from "./handover-args.ts";
 import {
   assertNotFrozen,
   deleteWorkItem,
@@ -252,6 +254,9 @@ export const mutators = defineMutators({
     setBusinessLines: defineMutator(setBusinessLinesArgs, ({ tx, args, ctx }) =>
       setBusinessLines(tx, args, ctx.userID),
     ),
+    handover: defineMutator(handoverArgs, async ({ tx, args, ctx }) => {
+      await handover(tx, args, ctx.userID);
+    }),
   },
   automation: {
     create: defineMutator(createAutomationArgs, ({ tx, args, ctx }) => createAutomation(tx, args, ctx.userID)),

@@ -26,6 +26,8 @@ import {
   deleteTask,
   deleteTaskArgs,
   deleteWorkItem,
+  handover,
+  handoverArgs,
   mutators,
   nodeActionArgs,
   nudgeArgs,
@@ -195,6 +197,26 @@ export const serverMutators = defineMutators(mutators, {
       const { from, to } = await setSpaceCalendar(tx, args, ctx.userID);
       await append(tx, ctx, [
         { spaceId: args.spaceId, kind: "calendarChanged", payload: { from, to }, actor: ctx.userID },
+      ]);
+    }),
+    handover: defineMutator(handoverArgs, async ({ tx, args, ctx }) => {
+      const changes = await handover(tx, args, ctx.userID);
+      const { spaceId, fromUserId: from, toUserId: to } = args;
+      const actor = ctx.userID;
+      await append(tx, ctx, [
+        ...changes.flatMap((c): NewEvent[] => {
+          // 每项改动按原来的事件种类记（角色、字段、节点负责人、子任务），字段改动带上引起的流程变化
+          const { workItemId, kind, ...rest } = c;
+          const { events = [], ...payload } = rest as typeof rest & { events?: (FlowEvent | StatusEvent)[] };
+          return [{ spaceId, workItemId, kind, payload, actor }, ...flowEvents(spaceId, workItemId, events)];
+        }),
+        // 空间级的一条汇总，审计用
+        {
+          spaceId,
+          kind: "workHandover",
+          payload: { from, to, items: new Set(changes.map((c) => c.workItemId)).size, changes: changes.length },
+          actor,
+        },
       ]);
     }),
   },
