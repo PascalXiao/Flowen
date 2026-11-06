@@ -25,14 +25,17 @@ import {
   deleteCommentArgs,
   deleteTask,
   deleteTaskArgs,
+  deleteWorkItem,
   mutators,
   nodeActionArgs,
   nudgeArgs,
   nudgeNode,
   pressButton,
   pressButtonArgs,
+  purgeWorkItem,
   removeRelation,
   removeRelationArgs,
+  restoreDeletedWorkItem,
   restoreWorkItem,
   revealVote,
   revealVoteArgs,
@@ -284,6 +287,31 @@ export const serverMutators = defineMutators(mutators, {
           workItemId: args.workItemId,
           kind: args.frozen ? "workItemFrozen" : "workItemUnfrozen",
           payload: {},
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+    delete: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, name } = await deleteWorkItem(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        { spaceId, workItemId: args.workItemId, kind: "workItemDeleted", payload: { name }, actor: ctx.userID },
+      ]);
+    }),
+    recover: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, name } = await restoreDeletedWorkItem(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        { spaceId, workItemId: args.workItemId, kind: "workItemRecovered", payload: { name }, actor: ctx.userID },
+      ]);
+    }),
+    purge: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, name } = await purgeWorkItem(tx, args, ctx.userID);
+      // 工作项已经没了：流水不指向它，记下 id 和名称备查
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: null,
+          kind: "workItemPurged",
+          payload: { id: args.workItemId, name },
           actor: ctx.userID,
         },
       ]);

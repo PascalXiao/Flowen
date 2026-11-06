@@ -197,7 +197,7 @@ export const userGroupMember = pgTable(
 /** 查看工作项的范围：全部、仅自己参与的（创建、担任角色、关注）、不可见。 */
 export type ViewLevel = "all" | "involved" | "none";
 /** 按类型授权的操作。 */
-export type PermissionOp = "create" | "terminate" | "freeze" | "upgrade";
+export type PermissionOp = "create" | "terminate" | "freeze" | "upgrade" | "delete";
 /** 授权对象：空间成员（兜底）、用户组、工作项上的角色。 */
 export type Grantee = "members" | `group:${string}` | `role:${string}`;
 
@@ -524,13 +524,20 @@ export const workItem = pgTable(
     frozen: boolean("frozen").notNull().default(false),
     /** 用户手动加上、删掉的角色（之后不再跟着角色的出现规则变）。 */
     roleOverrides: jsonb("role_overrides").$type<RoleOverrides>(),
+    /** 删除：放进回收站（各处都看不到了），可以恢复；彻底删除才真的删掉这一行。 */
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    deletedBy: text("deleted_by").references(() => user.id),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("work_item_space_type").on(t.spaceId, t.typeId), index("work_item_status").on(t.status)],
+  (t) => [
+    index("work_item_space_type").on(t.spaceId, t.typeId),
+    index("work_item_status").on(t.status),
+    index("work_item_deleted").on(t.spaceId, t.deletedAt),
+  ],
 );
 
 export const fieldValue = pgTable(
@@ -824,7 +831,8 @@ export const eventLog = pgTable(
     spaceId: text("space_id")
       .notNull()
       .references(() => space.id),
-    workItemId: text("work_item_id").references(() => workItem.id),
+    // 彻底删除工作项后流水留着做审计，只是不再指向它
+    workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     /** fieldChanged 事件改的字段：动态按它对上字段值的可见范围，受限字段的改动只给能看的人。 */
@@ -1079,6 +1087,7 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
   space: one(space, { fields: [workItem.spaceId], references: [space.id] }),
   type: one(workItemType, { fields: [workItem.typeId], references: [workItemType.id] }),
   flowVersion: one(flowVersion, { fields: [workItem.flowVersionId], references: [flowVersion.id] }),
+  deleter: one(user, { fields: [workItem.deletedBy], references: [user.id] }),
   attachments: many(attachment),
   fieldValues: many(fieldValue),
   roleMembers: many(roleMember),

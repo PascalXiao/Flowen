@@ -184,6 +184,9 @@ export async function createWorkItem(
     flowStatus: statusFlow?.initial.key ?? null,
     status: flow?.state.status ?? (statusFlow && isFinal(statusFlow.initial.category) ? "completed" : "inProgress"),
     roleOverrides: overrides,
+    // 显式写空：浏览器乐观执行时本地行没有这一列，「未删除」的条件会对不上
+    deletedAt: null,
+    deletedBy: null,
     createdBy: userID,
     createdAt: now,
     updatedAt: now,

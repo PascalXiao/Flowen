@@ -391,6 +391,38 @@ describe("workItem.create with OEM v289", () => {
     const skipped = now.events.slice(changed + 1).map((e) => [e.kind, (e.payload as { node: string }).node]);
     expect(skipped).toContainEqual(["nodeSkipped", "state_53"]);
   });
+  it("deletes into the recycle bin, recovers, and purges with cascade while keeping the event log", async () => {
+    const { db } = services.database;
+    const { id } = await create(fields);
+    const row = async () => (await db.select().from(schema.workItem).where(eq(schema.workItem.id, id)))[0];
+    // 开发既不是创建者也不是负责人：默认不能删
+    await expect(services.zero.run("workItem.delete", { workItemId: id }, dev.userId)).rejects.toThrow(/没有权限删除/);
+    await services.zero.run("workItem.delete", { workItemId: id }, npd.userId);
+    expect((await row())?.deletedBy).toBe(npd.userId);
+    expect((await row())?.deletedAt).toBeInstanceOf(Date);
+    // 删除后其他操作都找不到它
+    await expect(services.zero.run("workItem.terminate", { workItemId: id }, npd.userId)).rejects.toThrow(/不存在/);
+    // 只有删除的人和管理员能恢复（npd 是空间创建者，也是管理员）
+    await expect(services.zero.run("workItem.recover", { workItemId: id }, dev.userId)).rejects.toThrow(/删除它的人/);
+    await services.zero.run("workItem.recover", { workItemId: id }, npd.userId);
+    expect((await row())?.deletedAt).toBeNull();
+    await expect(services.zero.run("workItem.purge", { workItemId: id }, npd.userId)).rejects.toThrow(/回收站里没有/);
+
+    await services.zero.run("workItem.delete", { workItemId: id }, npd.userId);
+    await services.zero.run("workItem.purge", { workItemId: id }, npd.userId);
+    expect(await row()).toBeUndefined();
+    expect(await db.select().from(schema.nodeInstance).where(eq(schema.nodeInstance.workItemId, id))).toEqual([]);
+    expect(await db.select().from(schema.fieldValue).where(eq(schema.fieldValue.workItemId, id))).toEqual([]);
+    const purged = await db
+      .select()
+      .from(schema.eventLog)
+      .where(and(eq(schema.eventLog.spaceId, spaceId), eq(schema.eventLog.kind, "workItemPurged")));
+    expect(purged.map((e) => e.payload)).toContainEqual({ id, name: "新品 A" });
+    const kinds = (
+      await db.select({ kind: schema.eventLog.kind }).from(schema.eventLog).where(eq(schema.eventLog.spaceId, spaceId))
+    ).map((e) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["workItemCreated", "workItemDeleted", "workItemRecovered"]));
+  });
 });
 
 describe("POST /api/spaces/:spaceId/members", () => {

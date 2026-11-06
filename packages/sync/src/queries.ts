@@ -217,6 +217,26 @@ export const queries = defineQueries({
         .related("roleMembers", (r) => r.related("user"))
         .orderBy("updatedAt", "desc"),
     ),
+    /**
+     * 回收站：空间里删除了的工作项。空间管理员看全部，其他成员只看自己删的。
+     */
+    recycleBin: defineQuery(z.object({ spaceId: z.string() }), ({ args, ctx }) =>
+      zql.workItem
+        .where("spaceId", args.spaceId)
+        .where("deletedAt", "IS NOT", null)
+        .where(({ or, cmp, exists }) =>
+          or(
+            cmp("deletedBy", ctx.userID),
+            exists("space", (s) =>
+              s.whereExists("members", (m) => m.where("userId", ctx.userID).where("role", "admin")),
+            ),
+          ),
+        )
+        .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .related("type")
+        .related("deleter")
+        .orderBy("deletedAt", "desc"),
+    ),
     /** 度量图表的数据源：命中筛选的工作项，带自己能看到的字段值和角色成员，在前端汇总。 */
     forChart: defineQuery(spaceItemsArgs, ({ args, ctx }) =>
       spaceItems(args, ctx.userID).related("fieldValues", visibleFieldValues(ctx.userID)).related("roleMembers"),

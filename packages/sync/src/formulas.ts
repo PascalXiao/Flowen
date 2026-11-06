@@ -177,6 +177,7 @@ async function crossScope(tx: Transaction, workItemId: string, children: SubItem
       .related("def")
       .related("to", (w) =>
         w
+          .where("deletedAt", "IS", null)
           .related("fieldValues")
           .related("type", (t) => t.related("fields"))
           .related("nodes")
@@ -190,6 +191,7 @@ async function crossScope(tx: Transaction, workItemId: string, children: SubItem
       .related("def")
       .related("from", (w) =>
         w
+          .where("deletedAt", "IS", null)
           .related("fieldValues")
           .related("type", (t) => t.related("fields"))
           .related("nodes")
@@ -283,7 +285,12 @@ async function subItemsOf(tx: Transaction, workItemId: string): Promise<SubItem[
     zql.relation
       .where("fromId", workItemId)
       .where("parentNodeKey", "IS NOT", null)
-      .related("to", (w) => w.related("fieldValues").related("type", (t) => t.related("fields"))),
+      .related("to", (w) =>
+        w
+          .where("deletedAt", "IS", null)
+          .related("fieldValues")
+          .related("type", (t) => t.related("fields")),
+      ),
   );
   return edges.flatMap((e) =>
     e.to

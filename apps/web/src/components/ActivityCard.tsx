@@ -63,6 +63,10 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       return p.reason ? `终止了工作项，原因：${str(p.reason)}` : "终止了工作项";
     case "workItemRestored":
       return "恢复了工作项";
+    case "workItemDeleted":
+      return "删除了工作项（放进回收站）";
+    case "workItemRecovered":
+      return "从回收站恢复了工作项";
     case "workItemFrozen":
       return "冻结了工作项";
     case "workItemUnfrozen":

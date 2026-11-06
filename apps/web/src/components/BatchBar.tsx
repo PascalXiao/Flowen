@@ -17,7 +17,7 @@ interface BatchItem {
 }
 
 /**
- * 表格勾选后的批量操作栏：批量修改字段、关注、收藏、终止、恢复。
+ * 表格勾选后的批量操作栏：批量修改字段、关注、收藏、终止、恢复、删除。
  * 逐条执行，权限由服务端判断；有失败的条目时提示第一条原因。
  */
 export function BatchBar({
@@ -175,6 +175,21 @@ export function BatchBar({
           恢复
         </Button>
       )}
+      <Popconfirm
+        title={`删除 ${items.length} 个工作项？`}
+        content="删除后放进回收站，删除的人和空间管理员可以在「空间配置 → 回收站」里恢复。"
+        okText="删除"
+        okType="danger"
+        cancelText="取消"
+        onConfirm={async () => {
+          await each(items, "删除", (i) => mutators.workItem.delete({ workItemId: i.id }));
+          onClear();
+        }}
+      >
+        <Button size="sm" variant="ghost">
+          删除
+        </Button>
+      </Popconfirm>
       <Button size="sm" variant="ghost" onClick={onClear}>
         取消选择
       </Button>
