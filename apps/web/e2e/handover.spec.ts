@@ -15,10 +15,6 @@ test("an admin hands over a member's work to someone else", async ({ page }) => 
   await expect(grid.getByRole("row").filter({ hasText: "面霜立项" })).toContainText("Pascal");
 
   await openSettings(page, "权限");
-  const card = page
-    .locator("div")
-    .filter({ has: page.getByText("工作移交", { exact: true }) })
-    .last();
   await choose(page.getByLabel("移交人"), { label: "Pascal" });
   await expect(page.getByText("Pascal 在 2 个进行中的工作项里担任角色")).toBeVisible();
   await choose(page.getByLabel("接手人"), { label: "Lin" });
