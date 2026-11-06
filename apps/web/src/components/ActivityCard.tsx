@@ -88,6 +88,10 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       const show = (v: unknown) => formatFieldValue(field, v, ctx.userName) || "空";
       return `把「${field.name}」从 ${show(p.from)} 改为 ${show(p.to)}`;
     }
+    case "nodeOwnerChanged":
+      return `把节点「${ctx.nodeName(str(p.nodeKey))}」的负责人从 ${list(p.from).map(ctx.userName).join("、") || "无"} 移交给 ${list(p.to).map(ctx.userName).join("、") || "无"}`;
+    case "taskAssigned":
+      return `把子任务从 ${ctx.userName(str(p.from))} 移交给 ${ctx.userName(str(p.to))}`;
     case "roleChanged": {
       const role = ctx.roles.find((r) => r.key === p.roleKey)?.name ?? str(p.roleKey);
       const from = list(p.from);

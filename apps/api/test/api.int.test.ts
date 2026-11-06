@@ -423,6 +423,44 @@ describe("workItem.create with OEM v289", () => {
     ).map((e) => e.kind);
     expect(kinds).toEqual(expect.arrayContaining(["workItemCreated", "workItemDeleted", "workItemRecovered"]));
   });
+  it("hands over a member's roles, open nodes and tasks to someone else", async () => {
+    const { db } = services.database;
+    const { id } = await create(fields);
+    const devNodes = async () =>
+      (await db.select().from(schema.nodeInstance).where(eq(schema.nodeInstance.workItemId, id))).filter(
+        (n) => (n.state === "notStarted" || n.state === "inProgress") && n.owners.includes(dev.userId),
+      );
+    expect((await devNodes()).length).toBeGreaterThan(0);
+    const [open] = await devNodes();
+    await db.insert(schema.nodeTask).values({
+      id: randomUUID(),
+      workItemId: id,
+      nodeKey: open?.nodeKey as string,
+      name: "打样",
+      assigneeId: dev.userId,
+    });
+
+    const args = { spaceId, fromUserId: dev.userId, toUserId: finance.userId };
+    await expect(services.zero.run("space.handover", args, dev.userId)).rejects.toThrow(/只有空间管理员/);
+    await services.zero.run("space.handover", args, npd.userId);
+
+    expect(await devNodes()).toEqual([]);
+    const members = await db.select().from(schema.roleMember).where(eq(schema.roleMember.workItemId, id));
+    expect(members.filter((m) => m.roleKey === "开发").map((m) => m.userId)).toEqual([finance.userId]);
+    const tasks = await db.select().from(schema.nodeTask).where(eq(schema.nodeTask.workItemId, id));
+    expect(tasks.map((t) => t.assigneeId)).toEqual([finance.userId]);
+    const kinds = (
+      await db.select({ kind: schema.eventLog.kind }).from(schema.eventLog).where(eq(schema.eventLog.workItemId, id))
+    ).map((e) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["roleChanged", "taskAssigned"]));
+    const [summary] = await db
+      .select()
+      .from(schema.eventLog)
+      .where(and(eq(schema.eventLog.spaceId, spaceId), eq(schema.eventLog.kind, "workHandover")))
+      .orderBy(desc(schema.eventLog.id))
+      .limit(1);
+    expect(summary?.payload).toMatchObject({ from: dev.userId, to: finance.userId });
+  });
 });
 
 describe("POST /api/spaces/:spaceId/members", () => {
