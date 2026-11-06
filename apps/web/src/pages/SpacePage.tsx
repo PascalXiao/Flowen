@@ -23,6 +23,7 @@ import { useActiveSpace } from "@/components/AppShell";
 import { Board } from "@/components/Board";
 import { FieldInput, type FieldInputValue, FieldLabel } from "@/components/FieldInput";
 import { FilterBar } from "@/components/FilterBar";
+import { ImportDialog } from "@/components/ImportDialog";
 import { type PickerMember, RolePicker, toggled } from "@/components/RolePicker";
 import { SpaceGantt } from "@/components/SpaceGantt";
 import { TreeView } from "@/components/TreeView";
@@ -77,13 +78,16 @@ export function WorkItemHomePage() {
         actions={
           published &&
           myRole !== "guest" && (
-            <CreateWorkItem
-              types={[type]}
-              members={members.filter((m) => space.members.find((x) => x.userId === m.userId)?.role !== "guest")}
-              lines={space.businessLines}
-              label="新建"
-              title={`新建${type.name}`}
-            />
+            <div className="flex items-center gap-2">
+              <ImportDialog type={type} lines={space.businessLines} members={members} spaceName={space.name} />
+              <CreateWorkItem
+                types={[type]}
+                members={members.filter((m) => space.members.find((x) => x.userId === m.userId)?.role !== "guest")}
+                lines={space.businessLines}
+                label="新建"
+                title={`新建${type.name}`}
+              />
+            </div>
           )
         }
         tabs={

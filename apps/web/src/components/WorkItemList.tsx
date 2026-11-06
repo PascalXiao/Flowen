@@ -3,13 +3,14 @@ import { type Condition, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from 
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
-import { ArrowDownUp, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
+import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BatchBar } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
+import { exportListXlsx } from "@/lib/export-xlsx";
 import { withLineOptions } from "@/lib/fields";
 import {
   allColumns,
@@ -453,6 +454,27 @@ export function WorkItemList({
             value={rowHeight}
             onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
           />
+          <button
+            type="button"
+            disabled={rows.length === 0}
+            title="按当前的列、筛选、排序导出"
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm text-fg hover:bg-hover disabled:cursor-not-allowed disabled:text-fg-disabled"
+            onClick={() => {
+              const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
+              const day = new Date().toLocaleDateString("sv-SE");
+              exportListXlsx(
+                `${space.name}-${typeName}-${day}`,
+                shown.map((c) => byKey.get(c.key) as ListColumn),
+                rows,
+              ).then(
+                () => Toast.success({ content: `已导出 ${rows.length} 条`, duration: 2 }),
+                (e: unknown) => Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` }),
+              );
+            }}
+          >
+            <Download className="size-4" />
+            导出
+          </button>
           <SemiInput
             aria-label="搜索工作项"
             prefix={<Search className="ml-2 size-4 text-fg-subtle" />}
