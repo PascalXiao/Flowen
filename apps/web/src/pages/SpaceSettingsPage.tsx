@@ -24,7 +24,7 @@ const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
 
 type Space = NonNullable<QueryResultType<ReturnType<typeof queries.spaces.byId>>>;
 
-/** 空间配置的页签，和飞书项目一致。 */
+/** 空间配置的页签。 */
 const SETTING_TABS = [
   ["basicInfo", "空间信息"],
   ["workObjectSetting", "工作项"],

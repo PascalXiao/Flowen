@@ -73,7 +73,7 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 }
 
 /**
- * 节点的高级配置，对照飞书项目节点配置：里程碑、限制节点、相对排期、完成结论、自定义按钮、节点字段、
+ * 节点的高级配置：里程碑、限制节点、相对排期、完成结论、自定义按钮、节点字段、
  * 到达 / 完成事件。
  */
 export function NodeAdvancedEditor({

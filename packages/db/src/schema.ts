@@ -169,7 +169,7 @@ export const spaceMember = pgTable(
 );
 
 /**
- * 空间的自定义用户组（对照飞书项目「权限管理 → 用户组」）：一组人，本身没有权限，
+ * 空间的自定义用户组：一组人，本身没有权限，
  * 在工作项类型的「权限」里授权给它。
  */
 export const userGroup = pgTable("user_group", {
@@ -202,7 +202,7 @@ export type PermissionOp = "create" | "terminate" | "freeze" | "upgrade";
 export type Grantee = "members" | `group:${string}` | `role:${string}`;
 
 /**
- * 工作项类型的权限（对照飞书项目「工作项角色与用户组权限配置」）。
+ * 工作项类型的权限。
  * view：每个授权对象能看到的范围，取最大；空间管理员和工作项上担任角色的人总能看到。
  * ops：每种操作对每个授权对象「允许」或「禁止」；禁止优先，其次允许，都没有就不能做；
  * 某种操作一条都没配时按默认（新建：所有成员；终止、冻结、升级模板：工作项负责人）。
@@ -212,7 +212,7 @@ export interface TypePermissions {
   ops?: Partial<Record<PermissionOp, Partial<Record<Grantee, "allow" | "deny">>>>;
 }
 
-/** 工作项类型的设置（对照飞书项目工作项类型的「基础设置」）。 */
+/** 工作项类型的设置。 */
 export interface TypeSettings {
   /** 复制工作项时不带过去的字段（字段键或关联名）。 */
   copyExcludeFields?: string[];

@@ -1,7 +1,7 @@
 import { Tag as SemiTag } from "@douyinfe/semi-ui";
 import type * as React from "react";
 
-/** 标签颜色；brand 是飞书蓝，其余用 Semi 的调色板。 */
+/** 标签颜色；brand 是品牌蓝，其余用 Semi 的调色板。 */
 const TONES = {
   neutral: "grey",
   brand: "blue",

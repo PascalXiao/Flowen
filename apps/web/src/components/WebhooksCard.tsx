@@ -73,7 +73,7 @@ export function WebhooksCard({ spaceId }: { spaceId: string }) {
         <form aria-label="添加 Webhook" className="flex flex-col gap-2 rounded-lg bg-canvas p-3" onSubmit={add}>
           <div className="flex flex-wrap items-center gap-2">
             <Input name="name" aria-label="Webhook 名称" placeholder="名称，例如：同步到 ERP" className="w-48" />
-            <Input name="url" aria-label="推送地址" placeholder="https://example.com/hooks/feishu" className="flex-1" />
+            <Input name="url" aria-label="推送地址" placeholder="https://example.com/hooks/flowen" className="flex-1" />
           </div>
           <EventPicker value={events} onChange={setEvents} />
           <div>

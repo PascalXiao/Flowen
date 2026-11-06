@@ -1,5 +1,5 @@
 /*
- * 详情页和新建页的布局，对照飞书项目的「页面布局」：
+ * 详情页和新建页的布局：
  *
  * - 详情页由页签组成：自定义页签（里面分组，组里放字段和控件）和系统页签（节点详情、评论、动态），
  *   页签可以排序、删除系统页签、设显示条件。
@@ -44,22 +44,22 @@ export type LayoutItem =
   /** 一种关联的关联工作项列表。 */
   | { kind: "relation"; relationDefId: string; title?: string }
   /**
-   * 关联信息：沿一种关联，只读显示关联工作项上的一个字段（对照飞书项目的「关联信息」控件）。
+   * 关联信息：沿一种关联，只读显示关联工作项上的一个字段。
    * field 是对端类型的字段名或字段键；关联了多个时值用「、」连起来。
    */
   | { kind: "relatedField"; relationDefId: string; field: string; label?: string }
   /**
-   * 节点信息：显示某个节点的负责人、排期（可改）、完成结论（对照飞书项目的「节点信息」控件）。
+   * 节点信息：显示某个节点的负责人、排期（可改）、完成结论。
    * node 是节点键或节点名；工作项的流程里没有这个节点时不显示。
    */
   | { kind: "nodeInfo"; node: string; info?: NodeInfoPart[]; label?: string }
   /**
    * 关联工作项视图：一种关联的工作项排成表格，列是对端的字段（字段名或键，「名称」「状态」是工作项自带的），
-   * 字段单元格可以直接改（对照飞书项目的「关联工作项视图」控件）。
+   * 字段单元格可以直接改。
    */
   | { kind: "relationTable"; relationDefId: string; columns: string[]; title?: string }
   /**
-   * 多节点视图：几个节点排成表格，看各自的负责人、状态、结论和意见（对照飞书项目的「多节点视图」）。
+   * 多节点视图：几个节点排成表格，看各自的负责人、状态、结论和意见。
    * nodes 是节点键或名；template 填了时只在用这个流程类型的工作项上显示。
    */
   | { kind: "nodeTable"; nodes: string[]; template?: string; title?: string }

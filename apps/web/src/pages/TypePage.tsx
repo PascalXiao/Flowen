@@ -28,7 +28,7 @@ import { withLineOptions } from "@/lib/fields";
 import { columnSources } from "@/lib/list-columns";
 import { newId } from "@/lib/utils";
 
-/** 新建字段时可选的类型，按飞书项目的字段类型分组。 */
+/** 新建字段时可选的类型，按字段类型分组。 */
 const TYPE_GROUPS = [
   ["文本", ["text", "textarea", "richText"]],
   ["选项", ["select", "multiSelect", "cascadeSelect", "cascadeMulti", "radio", "businessLine"]],
@@ -88,7 +88,7 @@ export function displayFormula(source: string, fields: readonly { key: string; n
   });
 }
 
-/** 工作项配置的页签，和飞书项目一致：基本信息、字段、页面布局、流程、角色。 */
+/** 工作项配置的页签：基本信息、字段、页面布局、流程、角色。 */
 export const TYPE_MENU_TABS = ["baseInfo", "field", "layout", "workflow", "role", "columns", "permission"] as const;
 export type TypeMenuTab = (typeof TYPE_MENU_TABS)[number];
 const TYPE_MENU_LABEL: Record<TypeMenuTab, string> = {
@@ -787,7 +787,7 @@ function FieldRow({
   );
 }
 
-/** 复制工作项时不带过去的字段、关联和角色（对照飞书项目工作项类型的「复制配置」）。 */
+/** 复制工作项时不带过去的字段、关联和角色。 */
 function CopySettings({
   fields,
   relations,

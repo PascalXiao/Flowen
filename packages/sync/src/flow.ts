@@ -627,7 +627,7 @@ export async function completeBySubItems(tx: Transaction, args: NodeActionArgs, 
 export const setRolePresenceArgs = z.object({ workItemId: z.string(), roleKey: z.string(), present: z.boolean() });
 
 /**
- * 在工作项上手动加上或删掉一个角色（对应飞书的「添加角色」和删除角色）。之后这个角色不再跟着出现规则变。
+ * 在工作项上手动加上或删掉一个角色。之后这个角色不再跟着出现规则变。
  * 加上时按分配方式带默认成员，删掉时清空成员；不允许删除的角色只有空间管理员能删。
  */
 export async function setRolePresence(

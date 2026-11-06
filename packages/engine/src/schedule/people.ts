@@ -14,7 +14,7 @@ export interface ScheduleNode {
   points: number | null;
 }
 
-/** 一个人名下的一条排期项：估分按负责人平分（对照飞书「动态计算」：节点估分在负责人间平均分配）。 */
+/** 一个人名下的一条排期项：估分按负责人平分（「动态计算」：节点估分在负责人间平均分配）。 */
 export interface PersonScheduleEntry extends ScheduleNode {
   share: number | null;
 }
@@ -32,7 +32,7 @@ export interface PersonSchedule {
 const round = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * 人员排期（对照飞书项目的人员排期视图）：把节点按负责人摊开，每人一组。
+ * 人员排期：把节点按负责人摊开，每人一组。
  * 跳过的节点不算；完成的节点按 includeCompleted 决定；按总估分从高到低排，同分按已排期项数。
  */
 export function peopleSchedule(

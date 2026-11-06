@@ -457,7 +457,7 @@ export function FieldInput({
 }
 
 /**
- * 字段组：一张小表，每行按列填（对照飞书项目的字段组）。每改一格就把整张表交出去，
+ * 字段组：一张小表，每行按列填。每改一格就把整张表交出去，
  * 空行由 mutator 去掉；还没填的新行先留在本地。
  */
 function FieldGroupInput({

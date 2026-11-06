@@ -3,9 +3,9 @@ import { cond } from "../flow/condition.ts";
 import type { CompletionMode, FlowDefinition, NodeDefinition } from "../flow/definition.ts";
 
 /**
- * 飞书项目 oemtest 空间「项目 → OEM v289」流程模板，2026-10-20 只读提取。
- * 节点键与飞书一致（例如「需求评审」的键是 end，「需求立项提案」是 doing），按键对应，不按名称。
- * 没有卡点的自动节点（相容性测试、产品成本确认、安评送检）在飞书里由外部条件推动，这里按“到达即完成”处理。
+ * OEM v289 示例流程模板（项目类工作项）。
+ * 节点键与原模板一致（例如「需求评审」的键是 end，「需求立项提案」是 doing），按键对应，不按名称。
+ * 没有卡点的自动节点（相容性测试、产品成本确认、安评送检）在原模板里由外部条件推动，这里按“到达即完成”处理。
  */
 export const F = {
   needPhaseOut: "是否需要迭代老品下市物料风险评估",

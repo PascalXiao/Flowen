@@ -7,7 +7,7 @@ import { nodeInstanceId } from "./work-items.ts";
 export const nudgeArgs = z.object({ workItemId: z.string(), nodeKey: z.string() });
 
 /**
- * 催一催（对照飞书项目节点卡片上的「催一催」）：提醒进行中节点的负责人尽快处理。
+ * 催一催：提醒进行中节点的负责人尽快处理。
  * 只改通知，不改工作项；能看到工作项的人都能催，负责人不用催自己。返回要提醒的人，服务端据此写事件、发通知。
  */
 export async function nudgeNode(tx: Transaction, args: z.output<typeof nudgeArgs>, userID: string) {

@@ -254,7 +254,7 @@ function cleanOverrides(
 export const copyWorkItemArgs = z.object({ sourceId: z.string(), id: z.string(), name: z.string().trim().min(1) });
 
 /**
- * 复制工作项（对照飞书项目的「复制」）：同一类型、同一流程模板，字段值、角色成员、自定义关联带过去，
+ * 复制工作项：同一类型、同一流程模板，字段值、角色成员、自定义关联带过去，
  * 类型设置里「复制时排除」的字段（字段键或关联名）和角色不带；公式字段重新算。新工作项从流程开头开始。
  */
 export async function copyWorkItem(

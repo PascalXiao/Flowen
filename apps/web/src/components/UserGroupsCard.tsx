@@ -12,7 +12,7 @@ import { newId } from "@/lib/utils";
 type Group = { id: string; name: string; members: readonly { userId: string }[] };
 
 /**
- * 空间配置「权限」页签里的用户组（对照飞书项目「权限管理 → 用户组」）：
+ * 空间配置「权限」页签里的用户组：
  * 管理员建组、改名、选成员、删组。用户组本身没有权限，在工作项类型的「权限」页签里授权。
  */
 export function UserGroupsCard({

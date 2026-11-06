@@ -95,16 +95,16 @@ export interface NodeDefinition {
   tasks?: string[];
   /**
    * 节点上只读显示的关联信息：沿关联（本端看到的关联名）取对端工作项的一个字段，
-   * 给负责人确认时参考（对照飞书节点表单里的「关联信息」）。
+   * 给负责人确认时参考。
    */
   relatedInfo?: { relation: string; field: string }[];
   /**
-   * 节点上的估分、实际工时（对照飞书节点的「默认显示字段」：估分、实际工时），
+   * 节点上的估分、实际工时，
    * 以及确认完成时是否必须填好实际工时、排期。
    */
   effort?: { points?: boolean; hours?: "show" | "required"; scheduleRequired?: boolean; ownersRequired?: boolean };
   /**
-   * 节点下的子工作项（对照飞书节点的「子工作项」）：在节点上新建 type 类型的工作项，自动经 relation（本端看到的关联名）关联上；
+   * 节点下的子工作项：在节点上新建 type 类型的工作项，自动经 relation（本端看到的关联名）关联上；
    * scheduleLinked 时节点排期可以按这些工作项的排期范围更新。和「子工作项驱动」不同，不决定节点什么时候完成。
    */
   subItems?: { type: string; relation: string; scheduleLinked?: boolean };

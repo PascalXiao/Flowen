@@ -72,7 +72,7 @@ function compact(config: FieldRules): FieldRules | null {
 }
 
 /**
- * 字段配置抽屉，对照飞书项目的字段配置：基础信息、选项、数据规则（有效性、显示、必填、默认值）和高级设置。
+ * 字段配置抽屉：基础信息、选项、数据规则（有效性、显示、必填、默认值）和高级设置。
  * 改完点保存一次提交。
  */
 export function FieldConfigSheet({

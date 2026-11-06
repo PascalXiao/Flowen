@@ -23,7 +23,7 @@ type AssignMode = RoleAssign["mode"];
 type EditorsMode = RoleEditors["mode"];
 
 /**
- * 角色配置抽屉，对照飞书项目的角色管理：出现方式、成员分配、负责人、单人、谁能改成员。
+ * 角色配置抽屉：出现方式、成员分配、负责人、单人、谁能改成员。
  */
 export function RoleConfigSheet({
   role,
