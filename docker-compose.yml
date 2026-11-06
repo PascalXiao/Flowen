@@ -32,12 +32,14 @@ services:
       POSTGRES_USER: feishu
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feishu}
       POSTGRES_DB: postgres
-    # Zero 依赖逻辑复制
+    # Zero 依赖逻辑复制。连接数：Temporal 四个服务各有连接池，加上 zero-cache、API、worker、
+    # 中继，默认的 100 不够用（zero-cache 连不上会反复重启），放到 300。
     command: >
       postgres
       -c wal_level=logical
       -c max_wal_senders=10
       -c max_replication_slots=10
+      -c max_connections=300
     ports:
       - "5432:5432"
     volumes:
@@ -85,6 +87,9 @@ services:
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: postgres
       BIND_ON_IP: 0.0.0.0
+      # 每个服务、每个库的连接池上限（默认 20，四个服务两个库最多吃掉 160 个连接）
+      SQL_MAX_CONNS: "8"
+      SQL_MAX_IDLE_CONNS: "4"
       DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     ports:
       - "7233:7233"
