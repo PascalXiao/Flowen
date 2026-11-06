@@ -1,4 +1,4 @@
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Popconfirm, Toast, Tooltip } from "@douyinfe/semi-ui";
 import {
   availableOptions,
   canEditRoleMembers,
@@ -872,6 +872,32 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                 {frozen ? "解冻" : "冻结"}
               </Button>
             </span>
+          )}
+          {canWrite && (canManageItem || item.createdBy === me) && (
+            <Popconfirm
+              title="删除这个工作项？"
+              content="删除后放进回收站，删除的人和空间管理员可以在「空间配置 → 回收站」里恢复。"
+              okText="删除"
+              okType="danger"
+              cancelText="取消"
+              onConfirm={async () => {
+                setError(null);
+                const { client, server } = zero.mutate(mutators.workItem.delete({ workItemId: item.id }));
+                const outcome = await client;
+                if (outcome.type === "error") return setError(outcome.error.message);
+                Toast.success({ content: `已删除「${item.name}」，可以在回收站里恢复`, duration: 3 });
+                server.then((o) => o.type === "error" && Toast.error({ content: o.error.message }));
+                if (item.type)
+                  await navigate({
+                    to: "/spaces/$spaceId/$typeKey",
+                    params: { spaceId: item.spaceId, typeKey: item.type.key },
+                  });
+              }}
+            >
+              <Button size="sm" variant="ghost">
+                删除
+              </Button>
+            </Popconfirm>
           )}
           {canUpgrade && canWrite && (
             <Button size="sm" variant="outline" onClick={() => run(mutators.node.upgrade({ workItemId: item.id }))}>

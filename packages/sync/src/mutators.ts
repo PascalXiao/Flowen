@@ -63,6 +63,9 @@ import {
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
 import {
   assertNotFrozen,
+  deleteWorkItem,
+  purgeWorkItem,
+  restoreDeletedWorkItem,
   restoreWorkItem,
   setFrozenArgs,
   setWorkItemFrozen,
@@ -362,6 +365,15 @@ export const mutators = defineMutators({
     }),
     setFrozen: defineMutator(setFrozenArgs, async ({ tx, args, ctx }) => {
       await setWorkItemFrozen(tx, args, ctx.userID);
+    }),
+    delete: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      await deleteWorkItem(tx, args, ctx.userID);
+    }),
+    recover: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      await restoreDeletedWorkItem(tx, args, ctx.userID);
+    }),
+    purge: defineMutator(workItemIdArgs, async ({ tx, args, ctx }) => {
+      await purgeWorkItem(tx, args, ctx.userID);
     }),
   },
   node: {

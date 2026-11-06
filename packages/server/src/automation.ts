@@ -15,7 +15,8 @@ export async function matchRules(database: Database, eventId: number): Promise<s
   if (!event) throw new Error(`event_log 里没有事件 ${eventId}`);
   if (!event.workItemId || event.causedBy != null) return [];
   const item = await db.query.workItem.findFirst({ where: eq(schema.workItem.id, event.workItemId) });
-  if (!item) return [];
+  // 回收站里的工作项不触发自动化
+  if (!item || item.deletedAt) return [];
   const rules = await db.query.automationRule.findMany({
     where: and(eq(schema.automationRule.spaceId, event.spaceId), eq(schema.automationRule.enabled, true)),
     orderBy: schema.automationRule.createdAt,

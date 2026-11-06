@@ -1,6 +1,6 @@
 import { type Database, schema } from "@fp/db";
 import { dayInTimeZone, dayToIso, dayToTimestamp, nodeFlowOf } from "@fp/engine";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 
 /** 趋势图看最近几周。 */
@@ -55,7 +55,7 @@ export async function spaceDashboard(database: Database, spaceId: string, typeId
   const today = dayInTimeZone(Date.now(), tz);
   const firstWeek = today - weekday(today) - (WEEKS - 1) * 7;
   const item = schema.workItem;
-  const inSpace = and(eq(item.spaceId, spaceId), typeId ? eq(item.typeId, typeId) : undefined);
+  const inSpace = and(eq(item.spaceId, spaceId), isNull(item.deletedAt), typeId ? eq(item.typeId, typeId) : undefined);
   /** 时间点在空间时区里是哪一天（Day）。 */
   const localDay = (column: unknown) => sql<number>`((${column} at time zone ${tz})::date - date '1970-01-01')::int`;
 

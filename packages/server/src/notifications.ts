@@ -17,7 +17,7 @@ export async function notify(database: Database, eventId: number): Promise<numbe
   const event = await db.query.eventLog.findFirst({ where: eq(schema.eventLog.id, eventId) });
   if (!event?.workItemId) return 0;
   const item = await db.query.workItem.findFirst({ where: eq(schema.workItem.id, event.workItemId) });
-  if (!item) return 0;
+  if (!item || item.deletedAt) return 0;
   const payload = event.payload as Record<string, unknown>;
 
   const notifications: NewNotification[] = [];

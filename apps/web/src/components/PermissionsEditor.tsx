@@ -18,6 +18,7 @@ const OP_DEFAULT: Record<PermissionOp, string> = {
   terminate: "工作项负责人",
   freeze: "工作项负责人",
   upgrade: "工作项负责人",
+  delete: "创建者和工作项负责人",
 };
 
 /**

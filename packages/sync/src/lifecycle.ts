@@ -3,6 +3,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { myRoles, requireWriter } from "./access.ts";
 import { recomputeFlow } from "./flow.ts";
+import { recomputeParentFormulas } from "./formulas.ts";
 import { itemVisible, requireOp } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 
@@ -90,4 +91,58 @@ export async function setWorkItemFrozen(tx: Transaction, args: z.output<typeof s
   if (!!item.frozen === args.frozen) throw new Error(args.frozen ? "工作项已经冻结了。" : "工作项没有冻结。");
   await tx.mutate.workItem.update({ id: item.id, frozen: args.frozen, updatedAt: Date.now() });
   return { spaceId: item.spaceId };
+}
+
+/*
+ * 删除和回收站：
+ * - 删除：放进回收站，各处（列表、视图、搜索、公式、度量）都不再出现，可以恢复。
+ *   有「删除」权限的人能删；没配这项权限时，创建者、工作项负责人和空间管理员可以。
+ * - 恢复：删除它的人或空间管理员。
+ * - 彻底删除：只有空间管理员，连同字段值、节点、评论、附件记录一起删掉；动态流水保留。
+ */
+export async function deleteWorkItem(tx: Transaction, args: z.output<typeof workItemIdArgs>, userID: string) {
+  const item = await tx.run(zql.workItem.where("id", args.workItemId).where(itemVisible(userID)).one());
+  if (!item) throw new Error("工作项不存在或没有权限。");
+  await requireWriter(tx, item.spaceId, userID);
+  const mine = await myRoles(tx, item.id, userID);
+  await requireOp(
+    tx,
+    { spaceId: item.spaceId, typeId: item.typeId, itemRoles: mine },
+    userID,
+    "delete",
+    async () => {
+      if (item.createdBy === userID) return true;
+      const ownerRoles = (await tx.run(zql.roleDef.where("typeId", item.typeId)))
+        .filter((r) => r.config?.isOwner)
+        .map((r) => r.key);
+      return ownerRoles.some((r) => mine.includes(r));
+    },
+    "你没有权限删除这个工作项（默认只有创建者、工作项负责人和空间管理员可以）。",
+  );
+  await tx.mutate.workItem.update({ id: item.id, deletedAt: Date.now(), deletedBy: userID, updatedAt: Date.now() });
+  await recomputeParentFormulas(tx, item.id);
+  return { spaceId: item.spaceId, name: item.name };
+}
+
+async function deletedItem(tx: Transaction, workItemId: string, userID: string) {
+  const item = await tx.run(zql.workItem.where("id", workItemId).where("deletedAt", "IS NOT", null).one());
+  if (!item) throw new Error("回收站里没有这个工作项。");
+  const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
+  return { item, isAdmin };
+}
+
+export async function restoreDeletedWorkItem(tx: Transaction, args: z.output<typeof workItemIdArgs>, userID: string) {
+  const { item, isAdmin } = await deletedItem(tx, args.workItemId, userID);
+  if (!isAdmin && item.deletedBy !== userID) throw new Error("只有删除它的人和空间管理员可以恢复。");
+  await tx.mutate.workItem.update({ id: item.id, deletedAt: null, deletedBy: null, updatedAt: Date.now() });
+  await recomputeParentFormulas(tx, item.id);
+  return { spaceId: item.spaceId, name: item.name };
+}
+
+export async function purgeWorkItem(tx: Transaction, args: z.output<typeof workItemIdArgs>, userID: string) {
+  const { item, isAdmin } = await deletedItem(tx, args.workItemId, userID);
+  if (!isAdmin) throw new Error("只有空间管理员可以彻底删除。");
+  // 关联、字段值、节点、评论等在数据库里随工作项级联删除
+  await tx.mutate.workItem.delete({ id: item.id });
+  return { spaceId: item.spaceId, name: item.name };
 }

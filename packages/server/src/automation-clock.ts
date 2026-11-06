@@ -8,7 +8,7 @@ import {
   type ScheduleTrigger,
   scheduleDue,
 } from "@fp/engine";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 
 export const HOUR_MS = 3_600_000;
 
@@ -45,6 +45,7 @@ export async function tickAutomations(database: Database, slot: number): Promise
             eq(schema.workItem.spaceId, rule.spaceId),
             eq(schema.workItem.typeId, trigger.typeId),
             ne(schema.workItem.status, "terminated"),
+            isNull(schema.workItem.deletedAt),
           ),
         })
       ).map((i) => i.id);
@@ -81,6 +82,7 @@ async function dueItems(database: Database, spaceId: string, trigger: DateTrigge
       eq(schema.workItem.spaceId, spaceId),
       eq(schema.workItem.typeId, trigger.typeId as string),
       eq(schema.workItem.status, "inProgress"),
+      isNull(schema.workItem.deletedAt),
     ),
   });
   if (items.length === 0) return [];

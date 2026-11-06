@@ -9,19 +9,26 @@ import { type Schema, zql } from "./schema.gen.ts";
  * - 用户组是空间里的一组人，本身没有权限，在类型的「权限」里授权给它。
  * - 查看：每个授权对象（空间成员、用户组）一个范围，取最大；空间管理员看全部，
  *   工作项上担任角色的人、创建者、关注人总能看到自己参与的。
- * - 操作（新建、终止/恢复、冻结/解冻、升级模板）：禁止优先，其次允许，都没有就不能做；
+ * - 操作（新建、终止/恢复、冻结/解冻、升级模板、删除）：禁止优先，其次允许，都没有就不能做；
  *   某种操作一条都没配时按原来的默认规则。空间管理员不受限制。
  */
 
 export type { Grantee, PermissionOp, TypePermissions, ViewLevel };
 export const VIEW_LEVELS = ["all", "involved", "none"] as const satisfies readonly ViewLevel[];
-export const PERMISSION_OPS = ["create", "terminate", "freeze", "upgrade"] as const satisfies readonly PermissionOp[];
+export const PERMISSION_OPS = [
+  "create",
+  "terminate",
+  "freeze",
+  "upgrade",
+  "delete",
+] as const satisfies readonly PermissionOp[];
 export const VIEW_LEVEL_LABEL: Record<ViewLevel, string> = { all: "全部", involved: "仅参与的", none: "不可见" };
 export const PERMISSION_OP_LABEL: Record<PermissionOp, string> = {
   create: "新建",
   terminate: "终止 / 恢复",
   freeze: "冻结 / 解冻",
   upgrade: "升级模板",
+  delete: "删除",
 };
 const RANK: Record<ViewLevel, number> = { none: 0, involved: 1, all: 2 };
 
@@ -48,6 +55,8 @@ export const setGroupMembersArgs = z.object({ id: z.string(), userIds: z.array(z
 export function itemVisible(userID: string) {
   return ({ or, and, cmp, exists }: ExpressionBuilder<"workItem", Schema>) =>
     and(
+      // 删除的工作项在回收站里，其他地方都看不到
+      cmp("deletedAt", "IS", null),
       exists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID))),
       or(
         exists("space", (s) => s.whereExists("members", (m) => m.where("userId", userID).where("role", "admin"))),
