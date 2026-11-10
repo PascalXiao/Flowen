@@ -47,7 +47,7 @@ function Slip({ days }: { days: number | null }) {
 }
 
 /**
- * 计划表：甘特图加排期明细。
+ * 工作项甘特图：甘特图加排期明细。
  * - 拖动横条或改日期会把节点设成「手动」，后续节点自动顺延；
  * - 关键路径：没完成、没有余量的节点标红，任何一个延期整个计划都会推迟；
  * - 基线：把当前计划存成快照，之后选一条基线对比每个节点和整体晚了几天。
@@ -132,7 +132,7 @@ export function PlanTable({
     <div className="flex h-full flex-col bg-surface">
       <div
         role="toolbar"
-        aria-label="计划表工具栏"
+        aria-label="甘特图工具栏"
         className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line-subtle px-4 py-2 text-sm"
       >
         <span className="text-fg-muted">

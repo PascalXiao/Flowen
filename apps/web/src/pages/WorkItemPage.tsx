@@ -1012,7 +1012,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             onChange={setView}
             items={[
               ["flow", "节点流程"],
-              ["gantt", "计划表"],
+              ["gantt", "甘特图"],
             ]}
           />
         )}
