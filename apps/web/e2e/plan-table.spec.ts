@@ -7,8 +7,8 @@ test("plan table: critical path, save a baseline, see the slip after a delay, de
   await oemSpace(page, "Pascal", `plan-${suffix}@example.com`, `计划表 ${suffix}`);
   await createItem(page, "新品 P");
 
-  await page.getByRole("region", { name: "流程" }).getByRole("tab", { name: "计划表" }).click();
-  const toolbar = page.getByRole("toolbar", { name: "计划表工具栏" });
+  await page.getByRole("region", { name: "流程" }).getByRole("tab", { name: "甘特图" }).click();
+  const toolbar = page.getByRole("toolbar", { name: "甘特图工具栏" });
   const row = (name: string) => page.getByRole("row", { name, exact: true });
 
   // 关键路径默认打开：至少有一个节点标「关键」，它的余量是 0 天

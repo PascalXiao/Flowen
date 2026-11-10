@@ -11,7 +11,7 @@ test("flow diagram shows delays on hover and you can nudge a node's other owners
 
   // 把进行中的需求立项提案排到过去，流程图上就显示延期
   const flow = page.getByRole("region", { name: "流程" });
-  await flow.getByRole("tab", { name: "计划表" }).click();
+  await flow.getByRole("tab", { name: "甘特图" }).click();
   const row = page.getByRole("row", { name: "需求立项提案", exact: true });
   await row.getByLabel("计划开始").fill("2026-10-19");
   await row.getByLabel("计划结束").fill("2026-10-20");
