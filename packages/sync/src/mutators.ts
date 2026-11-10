@@ -19,6 +19,7 @@ import {
   updateAutomation,
   updateAutomationArgs,
 } from "./automations.ts";
+import { deleteBaseline, deleteBaselineArgs, saveBaseline, saveBaselineArgs } from "./baselines.ts";
 import {
   createChart,
   createChartArgs,
@@ -419,6 +420,14 @@ export const mutators = defineMutators({
     }),
     delete: defineMutator(deleteTaskArgs, async ({ tx, args, ctx }) => {
       await deleteTask(tx, args, ctx.userID);
+    }),
+  },
+  baseline: {
+    save: defineMutator(saveBaselineArgs, async ({ tx, args, ctx }) => {
+      await saveBaseline(tx, args, ctx.userID);
+    }),
+    delete: defineMutator(deleteBaselineArgs, async ({ tx, args, ctx }) => {
+      await deleteBaseline(tx, args, ctx.userID);
     }),
   },
   role: {

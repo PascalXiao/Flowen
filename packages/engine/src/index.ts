@@ -13,6 +13,7 @@ export * from "./metrics/chart.ts";
 export * from "./roles/role-rules.ts";
 export * as oemV289 from "./samples/oem-v289.ts";
 export * from "./schedule/calendar.ts";
+export * from "./schedule/critical.ts";
 export * from "./schedule/people.ts";
 export * from "./schedule/schedule.ts";
 export * from "./status/status-flow.ts";

@@ -323,6 +323,8 @@ export const queries = defineQueries({
         .related("attachments", (a) => a.related("uploader").orderBy("createdAt", "asc"))
         // 节点子任务；确认节点时乐观执行也要数没完成的子任务
         .related("tasks", (t) => t.orderBy("createdAt", "asc").orderBy("id", "asc"))
+        // 计划基线：甘特图和排期明细里对比
+        .related("baselines", (b) => b.related("creator").orderBy("createdAt", "asc"))
         .related("marks", (m) => m.where("userId", ctx.userID))
         // 子工作项、上级工作项和自定义关联（两个方向）
         // 关联工作项带上字段值和字段定义：布局里的「关联信息」要显示它们的字段
