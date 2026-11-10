@@ -1,7 +1,7 @@
 import type { FlowGraph } from "../flow/definition.ts";
 import type { NodeState } from "../flow/state.ts";
 import type { Day, WorkCalendar } from "./calendar.ts";
-import type { Span } from "./schedule.ts";
+import { linkOrder, type ScheduleLink, type Span, scheduleLinks } from "./schedule.ts";
 
 /** 从 a 到 b 差几个工作日：b 在 a 之后为正，之前为负，同一天或中间没有工作日为 0。 */
 export function workdayDelta(calendar: WorkCalendar, a: Day, b: Day): number {
@@ -37,6 +37,7 @@ export interface FloatResult {
  * 和当前计划的结束日比，差出来的工作日就是浮动。
  * 和排期一样的口径：有工期的后续节点在前序结束后的下一个工作日开始；里程碑落在前序结束那天。
  * 已完成、跳过的节点不占时间，只把约束往前传。
+ * 依赖和排期规则也算进来：「开始后 N 天开始」约束开始日，「要等它完成才能完成」约束结束日。
  */
 export function criticalPath(graph: FlowGraph, calendar: WorkCalendar, input: FloatInput): FloatResult {
   const live = (key: string) => {
@@ -52,21 +53,43 @@ export function criticalPath(graph: FlowGraph, calendar: WorkCalendar, input: Fl
   if (end == null) return { end, float, critical };
   const finish = input.deadline ?? end;
 
-  /** 节点的前序最晚什么时候必须结束。 */
+  const links = scheduleLinks(graph);
+  const outgoing = new Map<string, ScheduleLink[]>();
+  for (const l of links) outgoing.set(l.from, [...(outgoing.get(l.from) ?? []), l]);
+  /** 节点的「完成后开始」前序最晚什么时候必须结束。 */
   const latestReady = new Map<string, Day>();
-  for (const key of graph.topologicalOrder().reverse()) {
-    const succ = graph.successors(key).filter((s) => latestReady.has(s));
-    const lf = succ.length > 0 ? Math.min(...succ.map((s) => latestReady.get(s) as Day)) : finish;
+  /** 活动节点最晚的开始、结束日。 */
+  const latest = new Map<string, Span>();
+  const shift = (day: Day, n: number) => (n === 0 ? day : calendar.offsetWorkdays(day, n));
+
+  for (const key of linkOrder(graph, links).reverse()) {
+    const endLimits: Day[] = [finish];
+    const startLimits: Day[] = [];
+    for (const l of outgoing.get(key) ?? []) {
+      if (l.type === "FS") {
+        const r = latestReady.get(l.to);
+        if (r !== undefined) endLimits.push(shift(r, -l.lag));
+      } else {
+        const s = latest.get(l.to);
+        if (!s) continue;
+        if (l.type === "SS") startLimits.push(shift(s.start, -l.lag));
+        else endLimits.push(s.end);
+      }
+    }
     const span = input.spans[key];
     if (!live(key) || !span) {
       float[key] = null;
-      latestReady.set(key, lf);
+      latestReady.set(key, Math.min(...endLimits));
       continue;
     }
-    const slack = workdayDelta(calendar, span.end, calendar.onOrBefore(lf));
+    const slack = Math.min(
+      ...endLimits.map((d) => workdayDelta(calendar, span.end, calendar.onOrBefore(d))),
+      ...startLimits.map((d) => workdayDelta(calendar, span.start, calendar.onOrBefore(d))),
+    );
     float[key] = slack;
     if (slack <= 0) critical.add(key);
-    const ls = slack === 0 ? span.start : calendar.offsetWorkdays(span.start, slack);
+    const ls = shift(span.start, slack);
+    latest.set(key, { start: ls, end: shift(span.end, slack) });
     latestReady.set(key, input.milestones?.has(key) ? ls : calendar.onOrBefore(ls - 1));
   }
   return { end, float, critical };

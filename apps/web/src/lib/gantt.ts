@@ -1,4 +1,12 @@
-import { dayFromDate, dayInTimeZone, durationOf, type FlowGraph, type NodeState } from "@fp/engine";
+import {
+  dayFromDate,
+  dayInTimeZone,
+  durationOf,
+  type FlowGraph,
+  linkOrder,
+  type NodeState,
+  scheduleLinks,
+} from "@fp/engine";
 import type { GanttRow } from "@/components/GanttChart";
 
 /** 节点实例里甘特图要用的字段。 */
@@ -26,7 +34,7 @@ export function nodeGanttRows(
   const byKey = new Map(nodes.map((n) => [n.nodeKey, n]));
   const localDay = (ms: number | null | undefined) => (ms == null ? null : dayInTimeZone(ms, options.timeZone));
   const rows: GanttRow[] = [];
-  for (const key of graph.topologicalOrder()) {
+  for (const key of linkOrder(graph, scheduleLinks(graph))) {
     const n = byKey.get(key);
     if (!n || n.state === "skipped" || n.plannedStart == null || n.plannedEnd == null) continue;
     rows.push({
@@ -44,8 +52,15 @@ export function nodeGanttRows(
     });
   }
   const shown = new Set(rows.map((r) => r.key));
-  const deps = graph.definition.edges
+  // 连线加上依赖和排期规则
+  const seen = new Set<string>();
+  const deps = scheduleLinks(graph)
     .map((e) => ({ from: prefix + e.from, to: prefix + e.to }))
-    .filter((e) => shown.has(e.from) && shown.has(e.to));
+    .filter((e) => {
+      const id = `${e.from}>${e.to}`;
+      if (seen.has(id) || !shown.has(e.from) || !shown.has(e.to)) return false;
+      seen.add(id);
+      return true;
+    });
   return { rows, deps };
 }

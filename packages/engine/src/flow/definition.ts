@@ -78,6 +78,22 @@ export interface RelativeSchedule {
   offset: number;
 }
 
+/**
+ * 依赖：本节点要等另一个节点完成，才能开始（start）或才能完成（complete）。
+ * 和连线不同，依赖不决定流程走向，只多加一道等待；排期上 start 相当于「完成后开始」，complete 相当于「同时或之后完成」。
+ */
+export interface NodeDependency {
+  node: string;
+  allow: "start" | "complete";
+}
+
+/** 排期规则：本节点在某节点开始（start）或结束（end）后再过 offset 个工作日开始。0 表示紧接着开始。 */
+export interface ScheduleRule {
+  node: string;
+  edge: "start" | "end";
+  offset: number;
+}
+
 export interface NodeDefinition {
   key: string;
   name: string;
@@ -126,6 +142,9 @@ export interface NodeDefinition {
   /** 节点完成时触发。 */
   onComplete?: NodeEventAction[];
   schedule?: RelativeSchedule;
+  dependsOn?: NodeDependency[];
+  /** 排期规则：有多条时取算出来最晚的开始日。 */
+  scheduleRules?: ScheduleRule[];
   /** 编辑器里的画布坐标。引擎不使用；没有时按层级自动布局。 */
   position?: { x: number; y: number };
 }

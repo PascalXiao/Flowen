@@ -1,3 +1,4 @@
+import { cyclicNodes, scheduleLinks } from "../schedule/schedule.ts";
 import { type FlowDefinition, FlowGraph } from "./definition.ts";
 
 export interface ValidationResult {
@@ -39,6 +40,26 @@ export function validateFlow(definition: FlowDefinition): ValidationResult {
     const formFields = (node.form ?? []).map((f) => f.field);
     if (new Set(formFields).size !== formFields.length) errors.push(`节点「${node.name}」的完成表单里有重复的字段。`);
     if ((node.tasks ?? []).some((t) => t.trim() === "")) errors.push(`节点「${node.name}」有名称为空的预置子任务。`);
+  }
+
+  // 依赖和排期规则：指向的节点要存在，不能是自己或后面的节点（后面的节点要等它，再反过来等后面的就卡死了）
+  for (const node of graph.nodes) {
+    const refs = [
+      ...(node.dependsOn ?? []).map((d) => ({ key: d.node, what: "依赖" })),
+      ...(node.scheduleRules ?? []).map((r) => ({ key: r.node, what: "排期规则" })),
+    ];
+    const after = order.length === graph.nodes.length ? graph.descendants(node.key) : new Set<string>();
+    for (const { key, what } of refs) {
+      if (!graph.has(key)) errors.push(`节点「${node.name}」的${what}指向不存在的节点：${key}`);
+      else if (key === node.key) errors.push(`节点「${node.name}」的${what}不能指向自己。`);
+      else if (after.has(key))
+        errors.push(`节点「${node.name}」的${what}指向它后面的节点「${graph.node(key).name}」，流程会卡住。`);
+    }
+  }
+  if (errors.length === 0) {
+    const stuck = cyclicNodes(graph, scheduleLinks(graph));
+    if (stuck.length > 0)
+      errors.push(`这些节点的依赖或排期规则互相等待：${stuck.map((k) => graph.node(k).name).join("、")}。`);
   }
 
   if (errors.length === 0) warnings.push(...stageRegressions(graph, order));

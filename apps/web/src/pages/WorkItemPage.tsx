@@ -226,16 +226,36 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   const assignable = members.filter((m) => space?.members.find((x) => x.userId === m.userId)?.role !== "guest");
   const nameOf = (userId: string) => members.find((m) => m.userId === userId)?.name ?? users.get(userId) ?? userId;
   const today = dayInTimeZone(Date.now(), item.space?.timezone ?? "Asia/Shanghai");
+  /** 节点在等的依赖：没开始的看「才能开始」，进行中的看「才能完成」。 */
+  const waitingNote = (nodeKey: string) => {
+    if (!graph?.has(nodeKey)) return null;
+    const state = states.get(nodeKey)?.state;
+    const allow = state === "notStarted" ? "start" : state === "inProgress" ? "complete" : null;
+    if (!allow) return null;
+    const waiting = (graph.node(nodeKey).dependsOn ?? [])
+      .filter((d) => d.allow === allow && graph.has(d.node))
+      .filter((d) => !["completed", "skipped"].includes(states.get(d.node)?.state ?? "notStarted"))
+      .map((d) => `「${graph.node(d.node).name}」`);
+    if (waiting.length === 0) return null;
+    return (
+      <p role="note" className="rounded bg-warning-50 px-2 py-1 text-xs text-warning-600">
+        要等{waiting.join("、")}完成才能{allow === "start" ? "开始" : "完成"}
+      </p>
+    );
+  };
   const nodeTasks = (nodeKey: string, nodeName: string, readOnly: boolean) => (
-    <NodeTasks
-      workItemId={item.id}
-      nodeKey={nodeKey}
-      nodeName={nodeName}
-      tasks={item.tasks.filter((t) => t.nodeKey === nodeKey)}
-      members={members}
-      today={today}
-      readOnly={readOnly}
-    />
+    <>
+      {waitingNote(nodeKey)}
+      <NodeTasks
+        workItemId={item.id}
+        nodeKey={nodeKey}
+        nodeName={nodeName}
+        tasks={item.tasks.filter((t) => t.nodeKey === nodeKey)}
+        members={members}
+        today={today}
+        readOnly={readOnly}
+      />
+    </>
   );
   const completingNode = completing ? graph?.nodes.find((n) => n.key === completing) : undefined;
   const typeName = space?.workItemTypes.find((t) => t.id === item.typeId)?.name;

@@ -145,6 +145,9 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
     const key = `n_${newId().slice(0, 8)}`;
     const anchor = selectedNode ?? nodes[nodes.length - 1];
     const position = anchor ? { x: anchor.position.x + 240, y: anchor.position.y } : { x: 0, y: 0 };
+    // 同一个节点后面再加一个（并行分支）时往下错开，不叠在一起
+    while (nodes.some((n) => Math.abs(n.position.x - position.x) < 120 && Math.abs(n.position.y - position.y) < 60))
+      position.y += 90;
     setNodes(
       edit((prev) => [
         ...prev.map((n) => ({ ...n, selected: false })),
@@ -297,6 +300,9 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
               key={selectedNode.id}
               data={selectedNode.data}
               type={type}
+              otherNodes={nodes
+                .filter((n) => n.id !== selectedNode.id)
+                .map((n) => ({ key: n.data.key, name: n.data.name }))}
               readOnly={!isAdmin}
               onChange={(patch) => updateNode(selectedNode.id, patch)}
               onDelete={() => {
@@ -398,12 +404,14 @@ function NodeLabel({ data, type }: { data: NodeData; type: TypeConfig }) {
 function NodePanel({
   data,
   type,
+  otherNodes,
   readOnly,
   onChange,
   onDelete,
 }: {
   data: NodeData;
   type: TypeConfig;
+  otherNodes: { key: string; name: string }[];
   readOnly: boolean;
   onChange: (patch: Partial<NodeData>) => void;
   onDelete: () => void;
@@ -508,7 +516,13 @@ function NodePanel({
           <FormEditor value={data.form ?? []} fields={type.fields} onChange={(form) => onChange({ form })} />
           <TasksEditor value={data.tasks ?? []} onChange={(tasks) => onChange({ tasks })} />
           <RelatedInfoEditor value={data.relatedInfo ?? []} onChange={(relatedInfo) => onChange({ relatedInfo })} />
-          <NodeAdvancedEditor data={data} fields={type.fields} roles={type.roles} onChange={onChange} />
+          <NodeAdvancedEditor
+            data={data}
+            fields={type.fields}
+            roles={type.roles}
+            nodes={otherNodes}
+            onChange={onChange}
+          />
           <div className="flex items-center justify-between">
             <span className="text-xs text-fg-subtle">键：{data.key}</span>
             <Button variant="ghost" size="sm" className="text-danger-600" onClick={onDelete}>
