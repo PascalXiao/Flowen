@@ -80,11 +80,14 @@ export function NodeAdvancedEditor({
   data,
   fields,
   roles,
+  nodes = [],
   onChange,
 }: {
   data: NodeData;
   fields: readonly TypeField[];
   roles: readonly { key: string; name: string }[];
+  /** 流程里的其他节点：依赖和排期规则选它们。 */
+  nodes?: readonly { key: string; name: string }[];
   onChange: (patch: Partial<NodeData>) => void;
 }) {
   const dateFields = fields.filter((f) => f.dataType === "date" || f.dataType === "dateRange");
@@ -223,6 +226,8 @@ export function NodeAdvancedEditor({
           )}
         </div>
       </Section>
+
+      <DependenciesSection data={data} nodes={nodes} onChange={onChange} />
 
       <Section
         title={`完成结论${conclusion ? `（${conclusion.options.length} 个选项）` : ""}`}
@@ -859,5 +864,129 @@ export function StageRulesEditor({
         </Button>
       )}
     </fieldset>
+  );
+}
+
+/** 依赖（等别的节点完成才能开始 / 完成）和排期规则（某节点开始或结束后 N 个工作日开始）。 */
+function DependenciesSection({
+  data,
+  nodes,
+  onChange,
+}: {
+  data: NodeData;
+  nodes: readonly { key: string; name: string }[];
+  onChange: (patch: Partial<NodeData>) => void;
+}) {
+  const deps = data.dependsOn ?? [];
+  const rules = data.scheduleRules ?? [];
+  const first = nodes[0]?.key ?? "";
+  const nodeSelect = (label: string, value: string, set: (key: string) => void) => (
+    <Select aria-label={label} className="w-40" value={value} onChange={(e) => set(e.target.value)}>
+      {nodes.map((n) => (
+        <option key={n.key} value={n.key}>
+          {n.name}
+        </option>
+      ))}
+    </Select>
+  );
+  const remove = (label: string, run: () => void) => (
+    <Button variant="ghost" size="sm" aria-label={label} onClick={run}>
+      <Trash2 />
+    </Button>
+  );
+  return (
+    <Section
+      title={`依赖和排期规则${deps.length + rules.length > 0 ? `（${deps.length + rules.length}）` : ""}`}
+      hint="依赖：不在连线上、但要等它完成的节点。排期规则：按别的节点推算本节点什么时候开始，上游改期时自动跟着变。只能选它前面或并行的节点。"
+    >
+      <fieldset aria-label="依赖" className="flex flex-col gap-1.5 text-sm">
+        {deps.map((d, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 行没有自己的 id，按位置编辑
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            要等
+            {nodeSelect("依赖的节点", d.node, (node) =>
+              onChange({ dependsOn: deps.map((x, j) => (j === i ? { ...x, node } : x)) }),
+            )}
+            完成，本节点才能
+            <Select
+              aria-label="依赖类型"
+              className="w-24"
+              value={d.allow}
+              onChange={(e) =>
+                onChange({
+                  dependsOn: deps.map((x, j) =>
+                    j === i ? { ...x, allow: e.target.value as "start" | "complete" } : x,
+                  ),
+                })
+              }
+            >
+              <option value="start">开始</option>
+              <option value="complete">完成</option>
+            </Select>
+            {remove("删除依赖", () => onChange({ dependsOn: deps.filter((_, j) => j !== i) }))}
+          </div>
+        ))}
+        {nodes.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={() => onChange({ dependsOn: [...deps, { node: first, allow: "start" }] })}
+          >
+            <Plus />
+            添加依赖
+          </Button>
+        )}
+      </fieldset>
+      <fieldset aria-label="排期规则" className="flex flex-col gap-1.5 text-sm">
+        {rules.map((r, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 行没有自己的 id，按位置编辑
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            在
+            {nodeSelect("排期规则的节点", r.node, (node) =>
+              onChange({ scheduleRules: rules.map((x, j) => (j === i ? { ...x, node } : x)) }),
+            )}
+            <Select
+              aria-label="排期规则的基准"
+              className="w-20"
+              value={r.edge}
+              onChange={(e) =>
+                onChange({
+                  scheduleRules: rules.map((x, j) => (j === i ? { ...x, edge: e.target.value as "start" | "end" } : x)),
+                })
+              }
+            >
+              <option value="end">结束</option>
+              <option value="start">开始</option>
+            </Select>
+            后
+            <Input
+              aria-label="排期规则间隔的工作日"
+              type="number"
+              className="h-8 w-20"
+              value={String(r.offset)}
+              onChange={(e) =>
+                onChange({
+                  scheduleRules: rules.map((x, j) => (j === i ? { ...x, offset: Number(e.target.value) || 0 } : x)),
+                })
+              }
+            />
+            个工作日开始
+            {remove("删除排期规则", () => onChange({ scheduleRules: rules.filter((_, j) => j !== i) }))}
+          </div>
+        ))}
+        {nodes.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={() => onChange({ scheduleRules: [...rules, { node: first, edge: "end", offset: 0 }] })}
+          >
+            <Plus />
+            添加排期规则
+          </Button>
+        )}
+      </fieldset>
+    </Section>
   );
 }

@@ -57,6 +57,23 @@ describe("FlowEngine", () => {
     expect(state.nodes.d?.state).toBe("inProgress");
   });
 
+  it("dependencies: wait to start, wait to complete", () => {
+    // a 后面并行 b、c；c 要等 b 完成才能开始，b 要等 d 完成才能完成；d 也在 a 后面
+    const f = flow(["a", []], ["b", ["a"]], ["c", ["a"]], ["d", ["a"]]);
+    (f.nodes[2] as NodeDefinition).dependsOn = [{ node: "b", allow: "start" }];
+    (f.nodes[1] as NodeDefinition).dependsOn = [{ node: "d", allow: "complete" }];
+    expect(validateFlow(f).errors).toEqual([]);
+    const engine = new FlowEngine(f);
+    const { state } = engine.start(noFields, ownersOf(f));
+    engine.confirm(state, "a", u1, noFields);
+    expect(state.nodes.b?.state).toBe("inProgress");
+    expect(state.nodes.c?.state).toBe("notStarted");
+    expect(() => engine.confirm(state, "b", u1, noFields)).toThrow("要等「d」完成才能完成");
+    engine.confirm(state, "d", u1, noFields);
+    engine.confirm(state, "b", u1, noFields);
+    expect(state.nodes.c?.state).toBe("inProgress");
+  });
+
   it("does not let a skipped node in a chain start its successor early", () => {
     const f = flow(["a", []], ["b", ["a"], "singleConfirm", cond.equal("x", "是")], ["c", ["b"]]);
     const engine = new FlowEngine(f);

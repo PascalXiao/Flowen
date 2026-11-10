@@ -23,6 +23,64 @@ export interface ScheduleInput {
   nodes: Readonly<Record<string, ScheduleNodeInput>>;
 }
 
+/**
+ * 排期上的先后约束：FS 前一个结束后再过 lag 个工作日开始（连线和「完成后开始」都是 lag 0），
+ * SS 前一个开始后再过 lag 个工作日开始，FF 不早于前一个结束。
+ */
+export interface ScheduleLink {
+  from: string;
+  to: string;
+  type: "FS" | "SS" | "FF";
+  lag: number;
+}
+
+/** 连线、依赖和排期规则合在一起的排期约束。指向不存在节点的跳过。 */
+export function scheduleLinks(graph: FlowGraph): ScheduleLink[] {
+  const links: ScheduleLink[] = graph.definition.edges.map((e) => ({ from: e.from, to: e.to, type: "FS", lag: 0 }));
+  for (const node of graph.nodes) {
+    for (const d of node.dependsOn ?? [])
+      if (graph.has(d.node) && d.node !== node.key)
+        links.push({ from: d.node, to: node.key, type: d.allow === "start" ? "FS" : "FF", lag: 0 });
+    for (const r of node.scheduleRules ?? [])
+      if (graph.has(r.node) && r.node !== node.key)
+        links.push({ from: r.node, to: node.key, type: r.edge === "end" ? "FS" : "SS", lag: Math.trunc(r.offset) });
+  }
+  return links;
+}
+
+/** 按约束排的先后顺序。有环时环上的节点按定义顺序排在最后（发布前的校验会拦住环）。 */
+export function linkOrder(graph: FlowGraph, links: readonly ScheduleLink[]): string[] {
+  const { order, cyclic } = sortLinks(graph, links);
+  return [...order, ...cyclic];
+}
+
+/** 互相等待、排不出先后的节点（依赖或排期规则绕成了环）。 */
+export function cyclicNodes(graph: FlowGraph, links: readonly ScheduleLink[]): string[] {
+  return sortLinks(graph, links).cyclic;
+}
+
+function sortLinks(graph: FlowGraph, links: readonly ScheduleLink[]): { order: string[]; cyclic: string[] } {
+  const inDegree = new Map(graph.nodes.map((n) => [n.key, 0]));
+  const out = new Map<string, string[]>();
+  for (const l of links) {
+    inDegree.set(l.to, (inDegree.get(l.to) ?? 0) + 1);
+    out.set(l.from, [...(out.get(l.from) ?? []), l.to]);
+  }
+  const queue = graph.nodes.filter((n) => inDegree.get(n.key) === 0).map((n) => n.key);
+  const order: string[] = [];
+  while (queue.length > 0) {
+    const key = queue.shift() as string;
+    order.push(key);
+    for (const next of out.get(key) ?? []) {
+      const left = (inDegree.get(next) ?? 0) - 1;
+      inDegree.set(next, left);
+      if (left === 0) queue.push(next);
+    }
+  }
+  const placed = new Set(order);
+  return { order, cyclic: graph.nodes.map((n) => n.key).filter((k) => !placed.has(k)) };
+}
+
 /** 节点的预估工期（工作日）。没有配置时，需要人处理的节点按 1 天，自动节点是 0 天的里程碑。 */
 export function durationOf(node: NodeDefinition): number {
   if (node.milestone) return 0;
@@ -41,13 +99,31 @@ export function schedule(graph: FlowGraph, calendar: WorkCalendar, input: Schedu
   const result: Record<string, Span | null> = {};
   /** 节点对后续节点而言的结束日；没有前序的节点以 start 的前一天作为“前序结束”。 */
   const finish = new Map<string, Day>();
+  const links = scheduleLinks(graph);
+  const incoming = new Map<string, ScheduleLink[]>();
+  for (const l of links) incoming.set(l.to, [...(incoming.get(l.to) ?? []), l]);
 
-  for (const key of graph.topologicalOrder()) {
+  for (const key of linkOrder(graph, links)) {
     const node = graph.node(key);
     const info = input.nodes[key];
-    const preds = graph.predecessors(key);
-    const ready =
-      preds.length === 0 ? input.start - 1 : Math.max(...preds.map((p) => finish.get(p) ?? input.start - 1));
+    let ready = input.start - 1;
+    /** SS 约束给出的最早开始日。 */
+    let minStart: Day | null = null;
+    /** FF 约束给出的最早结束日。 */
+    let minEnd: Day | null = null;
+    for (const l of incoming.get(key) ?? []) {
+      if (l.type === "FS") {
+        const f = finish.get(l.from);
+        if (f !== undefined) ready = Math.max(ready, l.lag === 0 ? f : calendar.offsetWorkdays(f, l.lag));
+      } else {
+        const span = result[l.from];
+        if (!span) continue;
+        if (l.type === "SS") {
+          const s = calendar.offsetWorkdays(span.start, l.lag);
+          minStart = minStart === null ? s : Math.max(minStart, s);
+        } else minEnd = minEnd === null ? span.end : Math.max(minEnd, span.end);
+      }
+    }
 
     if (info?.state === "skipped") {
       result[key] = null;
@@ -57,8 +133,8 @@ export function schedule(graph: FlowGraph, calendar: WorkCalendar, input: Schedu
 
     const duration = durationOf(node);
     let span: Span;
-    // 里程碑不占工期：后续节点照常从前序结束后的下一个工作日开始
-    let end = ready;
+    /** 对后续节点而言的结束日。 */
+    let end: Day;
     if (info?.pinned) {
       span = info.pinned;
       end = span.end;
@@ -68,12 +144,19 @@ export function schedule(graph: FlowGraph, calendar: WorkCalendar, input: Schedu
       span = { start: duration === 0 ? anchor : calendar.offsetWorkdays(anchor, -(duration - 1)), end: anchor };
       end = anchor;
     } else if (duration === 0) {
-      const day = Math.max(ready, input.start);
+      // 里程碑不占工期：后续节点照常从前序结束后的下一个工作日开始
+      const day = Math.max(ready, input.start, minStart ?? ready, minEnd ?? ready);
       span = { start: day, end: day };
+      end = Math.max(ready, minStart === null ? ready : minStart - 1, minEnd ?? ready);
     } else {
-      const start = calendar.onOrAfter(ready + 1);
-      span = { start, end: calendar.addWorkdays(start, duration - 1) };
-      end = span.end;
+      let start = calendar.onOrAfter(Math.max(ready + 1, minStart ?? ready + 1));
+      end = calendar.addWorkdays(start, duration - 1);
+      if (minEnd !== null && end < minEnd) {
+        // 要等依赖的节点完成才能完成：整体往后挪，工期不变
+        end = calendar.onOrAfter(minEnd);
+        start = calendar.offsetWorkdays(end, -(duration - 1));
+      }
+      span = { start, end };
     }
     result[key] = span;
     // 已完成的节点：完成当天后续节点就可以开始，所以“结束”记为完成日的前一天

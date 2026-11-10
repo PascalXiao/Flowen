@@ -92,6 +92,11 @@ export class FlowEngine {
       throw new FlowError(`节点「${node.name}」的完成表单还有必填项没填。`);
     if (node.gate && !manualOverride && !evaluate(node.gate, withNodes(fields, state)))
       throw new FlowError(`节点「${node.name}」的流转条件还没满足。`);
+    const waiting = manualOverride ? [] : this.waitingFor(state, node, "complete");
+    if (waiting.length > 0)
+      throw new FlowError(
+        `节点「${node.name}」要等${waiting.map((k) => `「${this.graph.node(k).name}」`).join("、")}完成才能完成。`,
+      );
 
     // 节点字段和完成结论
     if (input.nodeFields) runtime.fields = { ...(runtime.fields ?? {}), ...input.nodeFields };
@@ -257,6 +262,7 @@ export class FlowEngine {
       const runtime = this.runtime(state, node.key);
       if (runtime.state !== "notStarted") continue;
       if (!this.graph.predecessors(node.key).every((p) => this.isPassed(state, p, memo))) continue;
+      if (this.waitingFor(state, node, "start").length > 0) continue;
 
       runtime.state = "inProgress";
       events.push({ type: "nodeStarted", node: node.key });
@@ -272,6 +278,17 @@ export class FlowEngine {
     if (stage === undefined || stage === state.stage) return;
     events.push({ type: "stageChanged", node: node.key, from: state.stage, to: stage });
     state.stage = stage;
+  }
+
+  /** 节点的依赖里还没完成的那些（被裁剪的依赖不用等）。 */
+  waitingFor(state: WorkItemState, node: NodeDefinition, allow: "start" | "complete"): string[] {
+    return (node.dependsOn ?? [])
+      .filter((d) => d.allow === allow && this.graph.has(d.node))
+      .map((d) => d.node)
+      .filter((key) => {
+        const s = this.runtime(state, key).state;
+        return s !== "completed" && s !== "skipped";
+      });
   }
 
   /**
@@ -296,6 +313,7 @@ export class FlowEngine {
       if (this.runtime(state, node.key).state !== "inProgress") continue;
       if (node.gate && !evaluate(node.gate, withNodes(fields, state))) continue;
       if (missingFormFields(node, fields).length > 0) continue;
+      if (this.waitingFor(state, node, "complete").length > 0) continue;
       this.complete(state, node.key, null, events);
       changed = true;
     }

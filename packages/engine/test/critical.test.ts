@@ -3,11 +3,13 @@ import {
   baselineSlip,
   criticalPath,
   dayFromIso,
+  dayToIso,
   type FlowDefinition,
   FlowGraph,
   type NodeState,
   type ScheduleNodeInput,
   schedule,
+  validateFlow,
   WorkCalendar,
   workdayDelta,
 } from "../src/index.ts";
@@ -98,5 +100,80 @@ describe("baseline", () => {
     expect(workdayDelta(calendar, d("2026-10-23"), d("2026-10-27"))).toBe(2);
     expect(baselineSlip(calendar, { start: 0, end: d("2026-10-22") }, { start: 0, end: d("2026-10-27") })).toBe(-3);
     expect(baselineSlip(calendar, null, { start: 0, end: 0 })).toBeNull();
+  });
+});
+
+describe("dependencies and schedule rules", () => {
+  // a(2) → b(1) → end(0)，c(3) 从 start 并行出来，也连到 end
+  function withLinks(extra: (g: FlowDefinition) => void) {
+    const definition: FlowDefinition = {
+      key: "t",
+      version: 1,
+      nodes: [
+        { key: "start", name: "start", completion: "auto", ownerRoles: [], duration: 0 },
+        { key: "a", name: "a", completion: "singleConfirm", ownerRoles: [], duration: 2 },
+        { key: "b", name: "b", completion: "singleConfirm", ownerRoles: [], duration: 1 },
+        { key: "c", name: "c", completion: "singleConfirm", ownerRoles: [], duration: 3 },
+        { key: "end", name: "end", completion: "auto", ownerRoles: [], duration: 0 },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "b" },
+        { from: "start", to: "c" },
+        { from: "b", to: "end" },
+        { from: "c", to: "end" },
+      ],
+    };
+    extra(definition);
+    return new FlowGraph(definition);
+  }
+  const node = (g: FlowDefinition, key: string) =>
+    g.nodes.find((n) => n.key === key) as FlowDefinition["nodes"][number];
+  const iso = (span: { start: number; end: number } | null | undefined) =>
+    span ? `${dayToIso(span.start)}..${dayToIso(span.end)}` : null;
+  const all = fresh("start", "a", "b", "c", "end");
+
+  it("start-after-finish waits for the dependency, with a lag in workdays", () => {
+    // c 要等 a 完成后再过 1 个工作日开始：a 10-21..22 → c 10-26 开始（跨周末）
+    const graph = withLinks((g) => {
+      node(g, "c").scheduleRules = [{ node: "a", edge: "end", offset: 1 }];
+    });
+    const spans = schedule(graph, calendar, { start: d("2026-10-21"), nodes: all });
+    expect(iso(spans.c)).toBe("2026-10-26..2026-10-28");
+    const r = plan(graph, all);
+    expect(r.critical.has("a")).toBe(true);
+    expect(r.critical.has("c")).toBe(true);
+    expect(r.float.b).toBe(3);
+  });
+
+  it("start-after-start overlaps with the other node", () => {
+    const graph = withLinks((g) => {
+      node(g, "c").scheduleRules = [{ node: "a", edge: "start", offset: 1 }];
+    });
+    const spans = schedule(graph, calendar, { start: d("2026-10-21"), nodes: all });
+    expect(iso(spans.c)).toBe("2026-10-22..2026-10-26");
+  });
+
+  it("finish-after-finish pushes the node so it ends no earlier than the dependency", () => {
+    // b 要等 c 完成才能完成：c 10-21..23，b 本来 10-23 结束 → 推到 10-23 不变；把 c 拉长到 5 天看推迟
+    const graph = withLinks((g) => {
+      node(g, "c").duration = 5;
+      node(g, "b").dependsOn = [{ node: "c", allow: "complete" }];
+    });
+    const spans = schedule(graph, calendar, { start: d("2026-10-21"), nodes: all });
+    expect(iso(spans.c)).toBe("2026-10-21..2026-10-27");
+    expect(iso(spans.b)).toBe("2026-10-27..2026-10-27");
+  });
+
+  it("validation rejects a dependency on a later node and a waiting loop", () => {
+    const later = withLinks((g) => {
+      node(g, "a").dependsOn = [{ node: "b", allow: "start" }];
+    });
+    expect(validateFlow(later.definition).errors.join()).toContain("后面的节点「b」");
+    const loop = withLinks((g) => {
+      node(g, "a").scheduleRules = [{ node: "c", edge: "start", offset: 0 }];
+      node(g, "c").scheduleRules = [{ node: "a", edge: "start", offset: 0 }];
+    });
+    expect(validateFlow(loop.definition).errors.join()).toContain("互相等待");
   });
 });

@@ -374,6 +374,20 @@ export const flowDefinitionSchema = z.object({
       onArrive: z.array(nodeEventAction).max(20).optional(),
       onComplete: z.array(nodeEventAction).max(20).optional(),
       schedule: z.object({ field: z.string(), offset: z.number().int().min(-999).max(999) }).optional(),
+      dependsOn: z
+        .array(z.object({ node: z.string(), allow: z.enum(["start", "complete"]) }))
+        .max(50)
+        .optional(),
+      scheduleRules: z
+        .array(
+          z.object({
+            node: z.string(),
+            edge: z.enum(["start", "end"]),
+            offset: z.number().int().min(-999).max(999),
+          }),
+        )
+        .max(50)
+        .optional(),
     }),
   ),
   edges: z.array(z.object({ from: z.string(), to: z.string() })),
