@@ -6,6 +6,7 @@ import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { BusinessLinesCard } from "@/components/BusinessLinesCard";
 import { CalendarCard } from "@/components/CalendarCard";
+import { HandoverCard } from "@/components/HandoverCard";
 import { RecycleBinCard } from "@/components/RecycleBinCard";
 import { UserGroupsCard } from "@/components/UserGroupsCard";
 import { Avatar } from "@/components/ui/avatar";
@@ -89,6 +90,13 @@ export function SpaceSettingsPage() {
               members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
               canManage={isAdmin}
             />
+            {isAdmin && (
+              <HandoverCard
+                spaceId={spaceId}
+                members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId, role: m.role }))}
+                types={space.workItemTypes}
+              />
+            )}
           </>
         )}
         {tab === "automation" && (

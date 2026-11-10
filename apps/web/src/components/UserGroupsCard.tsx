@@ -59,7 +59,7 @@ export function UserGroupsCard({
       <CardHeader>
         <CardTitle>用户组</CardTitle>
         <CardDescription>
-          把人编成组，再到工作项配置的「权限」页签里给组授权：能看到哪些工作项、能不能新建、终止、冻结、升级模板。
+          把人编成组，再到工作项配置的「权限」页签里给组授权：能看到哪些工作项、能不能新建、终止、冻结、升级模板、删除。
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
