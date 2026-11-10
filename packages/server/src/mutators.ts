@@ -21,6 +21,8 @@ import {
   createTaskArgs,
   createWorkItem,
   createWorkItemArgs,
+  deleteBaseline,
+  deleteBaselineArgs,
   deleteComment,
   deleteCommentArgs,
   deleteTask,
@@ -42,6 +44,8 @@ import {
   revealVote,
   revealVoteArgs,
   rollbackNode,
+  saveBaseline,
+  saveBaselineArgs,
   setCalendarArgs,
   setEffortArgs,
   setFieldArgs,
@@ -490,6 +494,32 @@ export const serverMutators = defineMutators(mutators, {
           workItemId: task.workItemId,
           kind: "taskDeleted",
           payload: { taskId: args.id, node: task.nodeKey, name: task.name },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+  },
+  baseline: {
+    save: defineMutator(saveBaselineArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, nodes } = await saveBaseline(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "baselineSaved",
+          payload: { baselineId: args.id, name: args.name, nodes },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+    delete: defineMutator(deleteBaselineArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, baseline } = await deleteBaseline(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: baseline.workItemId,
+          kind: "baselineDeleted",
+          payload: { baselineId: args.id, name: baseline.name },
           actor: ctx.userID,
         },
       ]);

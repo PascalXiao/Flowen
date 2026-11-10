@@ -461,6 +461,30 @@ describe("workItem.create with OEM v289", () => {
       .limit(1);
     expect(summary?.payload).toMatchObject({ from: dev.userId, to: finance.userId });
   });
+
+  it("saves plan baselines; only the saver or an admin can delete one", async () => {
+    const { db } = services.database;
+    const { id } = await create(fields);
+    const baselineId = randomUUID();
+    await services.zero.run("baseline.save", { id: baselineId, workItemId: id, name: "立项" }, dev.userId);
+    const [saved] = await db.select().from(schema.planBaseline).where(eq(schema.planBaseline.workItemId, id));
+    const planned = (await db.select().from(schema.nodeInstance).where(eq(schema.nodeInstance.workItemId, id))).filter(
+      (n) => n.state !== "skipped" && n.plannedStart && n.plannedEnd,
+    );
+    expect(saved?.name).toBe("立项");
+    expect(Object.keys(saved?.nodes ?? {}).sort()).toEqual(planned.map((n) => n.nodeKey).sort());
+    expect(Object.values(saved?.nodes ?? {})[0]).toMatchObject({ start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+
+    await expect(services.zero.run("baseline.delete", { id: baselineId }, finance.userId)).rejects.toThrow(
+      /只有存基线的人或空间管理员/,
+    );
+    await services.zero.run("baseline.delete", { id: baselineId }, npd.userId);
+    expect(await db.select().from(schema.planBaseline).where(eq(schema.planBaseline.workItemId, id))).toEqual([]);
+    const kinds = (
+      await db.select({ kind: schema.eventLog.kind }).from(schema.eventLog).where(eq(schema.eventLog.workItemId, id))
+    ).map((e) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["baselineSaved", "baselineDeleted"]));
+  });
 });
 
 describe("POST /api/spaces/:spaceId/members", () => {

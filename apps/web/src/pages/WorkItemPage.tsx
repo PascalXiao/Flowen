@@ -40,9 +40,9 @@ import { AttachmentsCard } from "@/components/AttachmentsCard";
 import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
-import { GanttChart } from "@/components/GanttChart";
 import { MultiPersonField } from "@/components/MultiPersonField";
 import { NodeTasks } from "@/components/NodeTasks";
+import { PlanTable } from "@/components/PlanTable";
 import { RelationsCard } from "@/components/RelationsCard";
 import { RolePicker, toggled } from "@/components/RolePicker";
 import { CATEGORY_LABEL, StatusDiagram } from "@/components/StatusDiagram";
@@ -1012,7 +1012,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             onChange={setView}
             items={[
               ["flow", "节点流程"],
-              ["gantt", "甘特图"],
+              ["gantt", "计划表"],
             ]}
           />
         )}
@@ -1033,10 +1033,15 @@ export function WorkItemView({ itemId }: { itemId: string }) {
           </div>
         )}
         {graph && view === "gantt" && (
-          <div className="h-[460px]">
-            <Schedule
+          <div className="h-[540px]">
+            <PlanTable
+              workItemId={item.id}
               graph={graph}
               nodes={item.nodes}
+              baselines={item.baselines}
+              me={me}
+              isAdmin={isAdmin}
+              canWrite={canWrite}
               timeZone={item.space?.timezone ?? "Asia/Shanghai"}
               calendar={calendar}
               canPlan={canPlan}
@@ -1415,91 +1420,6 @@ function NodeStateTag({ state }: { state: NodeState }) {
 }
 
 type NodeRow = Item["nodes"][number];
-
-/** 甘特图加排期明细表。拖动横条或改表里的日期都会把节点设成“手动”，后续节点自动顺延。 */
-function Schedule({
-  graph,
-  nodes,
-  timeZone,
-  calendar,
-  canPlan,
-  onPlan,
-}: {
-  graph: FlowGraph;
-  nodes: readonly NodeRow[];
-  timeZone: string;
-  calendar: WorkCalendar;
-  canPlan: (nodeKey: string) => boolean;
-  onPlan: (nodeKey: string, start?: Day, end?: Day) => void;
-}) {
-  const today = dayInTimeZone(Date.now(), timeZone);
-  const { rows, deps } = nodeGanttRows(graph, nodes, { timeZone, canPlan: (n) => canPlan(n.nodeKey) });
-
-  return (
-    <div className="flex h-full flex-col bg-surface">
-      <div className="min-h-0 flex-[3]">
-        <GanttChart rows={rows} deps={deps} calendar={calendar} today={today} onChange={onPlan} />
-      </div>
-      <details open className="min-h-0 flex-[2] overflow-auto border-t border-line-subtle">
-        <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold select-none">排期明细</summary>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-y border-line-subtle bg-canvas/60 text-left text-xs text-fg-muted">
-              <th className="h-8 px-4 font-normal">节点</th>
-              <th className="font-normal">计划开始</th>
-              <th className="font-normal">计划结束</th>
-              <th className="font-normal">实际</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key} aria-label={row.label} className="border-b border-line-subtle hover:bg-hover/50">
-                <td className="h-10 px-4">
-                  {row.label}
-                  {row.pinned && (
-                    <Tag tone="warning" className="ml-2">
-                      手动
-                    </Tag>
-                  )}
-                </td>
-                {(["start", "end"] as const).map((side) => (
-                  <td key={side}>
-                    <Input
-                      type="date"
-                      aria-label={side === "start" ? "计划开始" : "计划结束"}
-                      className="h-7 w-36 disabled:border-transparent disabled:bg-transparent disabled:text-fg"
-                      value={dayToIso(row[side])}
-                      disabled={!row.editable}
-                      onChange={(e) => {
-                        if (!e.target.value) return;
-                        const day = dayFromIso(e.target.value);
-                        // 改开始日期时整体平移、工期不变；改结束日期时只改结束
-                        if (side === "start") onPlan(row.key, day, day + (row.end - row.start));
-                        else onPlan(row.key, row.start, Math.max(row.start, day));
-                      }}
-                    />
-                  </td>
-                ))}
-                <td className="text-fg-muted tabular-nums">
-                  {row.actualStart !== null ? dayToIso(row.actualStart) : ""}
-                  {row.actualEnd !== null ? ` → ${dayToIso(row.actualEnd)}` : ""}
-                </td>
-                <td className="pr-4 text-right">
-                  {row.pinned && row.editable && (
-                    <Button variant="ghost" size="sm" onClick={() => onPlan(row.key)}>
-                      恢复自动
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
-    </div>
-  );
-}
 
 type Item = NonNullable<QueryResultType<ReturnType<typeof queries.workItems.byId>>>;
 

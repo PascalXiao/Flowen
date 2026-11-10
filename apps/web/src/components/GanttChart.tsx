@@ -21,6 +21,10 @@ export interface GanttRow {
   /** 汇总行（工作项）：画成两端带角的细条，可以展开收起。 */
   summary?: boolean;
   expanded?: boolean;
+  /** 关键路径上的节点：横条画成红色。 */
+  critical?: boolean;
+  /** 对比的基线日期：横条上方画一条灰色细条。 */
+  baseline?: { start: Day; end: Day } | null;
 }
 
 const ROW = 30;
@@ -48,6 +52,8 @@ function themeColors() {
       skipped: v("--semi-color-fill-1", "#eff0f1"),
     } as Record<NodeState, string>,
     pinned: v("--semi-color-text-0", "#1f2329"),
+    critical: v("--semi-color-danger", "#f54a45"),
+    baseline: v("--semi-color-text-3", "#c9cdd4"),
   };
 }
 
@@ -81,7 +87,12 @@ export function GanttChart({
   const [cursor, setCursor] = useState("default");
 
   const range = useMemo(() => {
-    const days = rows.flatMap((r) => [r.start, r.end, r.actualEnd ?? r.start]);
+    const days = rows.flatMap((r) => [
+      r.start,
+      r.end,
+      r.actualEnd ?? r.start,
+      ...(r.baseline ? [r.baseline.start, r.baseline.end] : []),
+    ]);
     const first = Math.min(today, ...days) - 3;
     const last = Math.max(today, ...days) + 14;
     return { first, count: last - first + 1 };
@@ -158,12 +169,13 @@ export function GanttChart({
     }
 
     const index = new Map(rows.map((r, i) => [r.key, i]));
-    // 依赖线：前序横条的末端 → 后续横条的开头
-    ctx.strokeStyle = COLORS.dep;
+    // 依赖线：前序横条的末端 → 后续横条的开头；两头都在关键路径上的画红色
     for (const { from, to } of deps) {
       const a = index.get(from);
       const b = index.get(to);
       if (a === undefined || b === undefined) continue;
+      const hot = rows[a]?.critical && rows[b]?.critical;
+      ctx.strokeStyle = hot ? COLORS.critical : COLORS.dep;
       const sa = spanOf(rows[a] as GanttRow);
       const sb = spanOf(rows[b] as GanttRow);
       const x1 = x(sa.end + 1);
@@ -181,14 +193,18 @@ export function GanttChart({
       ctx.moveTo(x2, y2);
       ctx.lineTo(x2 - 4, y2 - 3);
       ctx.lineTo(x2 - 4, y2 + 3);
-      ctx.fillStyle = COLORS.dep;
+      ctx.fillStyle = hot ? COLORS.critical : COLORS.dep;
       ctx.fill();
     }
 
     rows.forEach((row, i) => {
       const { start, end } = spanOf(row);
       const y = i * ROW;
-      ctx.fillStyle = COLORS.bar[row.state];
+      if (row.baseline) {
+        ctx.fillStyle = COLORS.baseline;
+        ctx.fillRect(x(row.baseline.start) + 1, y + 2, (row.baseline.end - row.baseline.start + 1) * DAY_WIDTH - 2, 3);
+      }
+      ctx.fillStyle = row.critical && row.state !== "completed" ? COLORS.critical : COLORS.bar[row.state];
       if (row.summary) {
         // 汇总条：上方细条加两端向下的角
         const bx = x(start) + 1;

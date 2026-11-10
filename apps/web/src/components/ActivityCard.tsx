@@ -120,6 +120,10 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       return `上传了附件「${str(p.name)}」`;
     case "attachmentRemoved":
       return `删除了附件「${str(p.name)}」`;
+    case "baselineSaved":
+      return `存了计划基线「${str(p.name)}」`;
+    case "baselineDeleted":
+      return `删除了计划基线「${str(p.name)}」`;
     case "taskCreated":
       return `在${node()}添加了子任务「${str(p.name)}」`;
     case "taskUpdated":

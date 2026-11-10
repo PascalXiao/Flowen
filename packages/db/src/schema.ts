@@ -751,6 +751,23 @@ export const nodeTask = pgTable(
   (t) => [index("node_task_work_item").on(t.workItemId, t.nodeKey), index("node_task_assignee").on(t.assigneeId)],
 );
 
+/** 计划基线：某一刻所有节点计划日期的快照，用来和当前计划对比偏差。 */
+export const planBaseline = pgTable(
+  "plan_baseline",
+  {
+    id: text("id").primaryKey(),
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** 节点键 → 计划开始和结束（YYYY-MM-DD）。 */
+    nodes: jsonb("nodes").$type<Record<string, { start: string; end: string }>>().notNull(),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("plan_baseline_work_item").on(t.workItemId)],
+);
+
 /** 工作项下的评论。提及的人会收到通知（由事件流里的通知 activity 生成）。 */
 export const comment = pgTable(
   "comment",
@@ -1092,6 +1109,7 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
   fieldValues: many(fieldValue),
   roleMembers: many(roleMember),
   nodes: many(nodeInstance),
+  baselines: many(planBaseline),
   outgoing: many(relation, { relationName: "from" }),
   incoming: many(relation, { relationName: "to" }),
   events: many(eventLog),
@@ -1102,6 +1120,11 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
 export const nodeTaskRelations = relations(nodeTask, ({ one }) => ({
   workItem: one(workItem, { fields: [nodeTask.workItemId], references: [workItem.id] }),
   assignee: one(user, { fields: [nodeTask.assigneeId], references: [user.id] }),
+}));
+
+export const planBaselineRelations = relations(planBaseline, ({ one }) => ({
+  workItem: one(workItem, { fields: [planBaseline.workItemId], references: [workItem.id] }),
+  creator: one(user, { fields: [planBaseline.createdBy], references: [user.id] }),
 }));
 
 export const attachmentRelations = relations(attachment, ({ one }) => ({
