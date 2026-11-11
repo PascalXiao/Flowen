@@ -253,6 +253,13 @@
       "when": 1794366270001,
       "tag": "0035_node_dependency",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794385994592,
+      "tag": "0036_hierarchy",
+      "breakpoints": true
     }
   ]
 }

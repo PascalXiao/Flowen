@@ -2,6 +2,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { requireWriter } from "./access.ts";
 import { recomputeFormulas } from "./formulas.ts";
+import { hierarchiesUsing } from "./hierarchies.ts";
 import { itemVisible } from "./permissions.ts";
 import { zql } from "./schema.gen.ts";
 import { assertAdmin } from "./templates.ts";
@@ -63,6 +64,9 @@ export async function deleteRelationDef(tx: Transaction, args: z.output<typeof d
   const def = await tx.run(zql.relationDef.where("id", args.id).one());
   if (!def) throw new Error("关联不存在。");
   await assertAdmin(tx, def.spaceId, userID);
+  const used = await hierarchiesUsing(tx, def.spaceId, args.id);
+  if (used.length > 0)
+    throw new Error(`层级${used.map((n) => `「${n}」`).join("、")}用到了这条关系，先在层级管理里改掉。`);
   for (const r of await tx.run(zql.relation.where("relationDefId", args.id)))
     await tx.mutate.relation.delete({ id: r.id });
   await tx.mutate.relationDef.delete({ id: args.id });
