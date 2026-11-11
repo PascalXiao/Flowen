@@ -389,6 +389,8 @@ function WorkItems({
               toType: space.workItemTypes.find((x) => x.id === d.toTypeId)?.name ?? "?",
             })),
           )}
+          hierarchies={space.hierarchies}
+          typeId={type.id}
         />
       ) : view === "board" ? (
         <Board

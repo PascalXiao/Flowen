@@ -11,6 +11,7 @@ export * from "./flow.ts";
 export * from "./formulas.ts";
 // 放在 mutators.ts 后面：handover.ts 用到 mutators.ts 里的 setFieldValue，mutators.ts 又注册了移交的 mutator
 export * from "./handover.ts";
+export * from "./hierarchies.ts";
 export * from "./lifecycle.ts";
 export * from "./marks.ts";
 export * from "./mutators.ts";

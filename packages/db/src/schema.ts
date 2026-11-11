@@ -796,6 +796,39 @@ export const planBaseline = pgTable(
   (t) => [index("plan_baseline_work_item").on(t.workItemId)],
 );
 
+/**
+ * 层级的一层：从上一层的工作项沿一条关系往下找这一层的工作项。
+ * relationDefId 为空表示子工作项关系；reverse 表示沿关系的反方向（上一层在关系的 to 一端）。
+ * repeat：同类型的关系可以一层套一层（层级循环），如「需求 → 子需求 → 子需求」。
+ */
+export interface HierarchyLayer {
+  typeId: string;
+  relationDefId: string | null;
+  reverse?: boolean;
+  repeat?: boolean;
+}
+
+/** 层级管理：按关系把工作项排成一棵多层的树，树形视图按它展开。 */
+export const hierarchy = pgTable(
+  "hierarchy",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => space.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** 第一层（树根）的工作项类型。 */
+    rootTypeId: text("root_type_id")
+      .notNull()
+      .references(() => workItemType.id),
+    /** 第二层起的每一层。 */
+    layers: jsonb("layers").$type<HierarchyLayer[]>().notNull(),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("hierarchy_space").on(t.spaceId)],
+);
+
 /** 工作项下的评论。提及的人会收到通知（由事件流里的通知 activity 生成）。 */
 export const comment = pgTable(
   "comment",
@@ -1002,6 +1035,12 @@ export const spaceRelations = relations(space, ({ many }) => ({
   webhooks: many(webhook),
   businessLines: many(businessLine),
   userGroups: many(userGroup),
+  hierarchies: many(hierarchy),
+}));
+
+export const hierarchyRelations = relations(hierarchy, ({ one }) => ({
+  space: one(space, { fields: [hierarchy.spaceId], references: [space.id] }),
+  rootType: one(workItemType, { fields: [hierarchy.rootTypeId], references: [workItemType.id] }),
 }));
 
 export const userGroupRelations = relations(userGroup, ({ one, many }) => ({

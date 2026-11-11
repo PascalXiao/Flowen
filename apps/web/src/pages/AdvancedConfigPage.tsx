@@ -4,6 +4,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
+import { HierarchyConfig } from "@/components/HierarchyConfig";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -13,8 +14,9 @@ import { newId } from "@/lib/utils";
 
 /**
  * 空间配置 → 工作项 → 高级设置：全屏页。
- * 现在有「关系管理」：工作项之间的关联，一条关系两端各有一个关联字段。
- * 层级管理、跨空间授权、组合字段还没有对应的功能。
+ * 「关系管理」：工作项之间的关联，一条关系两端各有一个关联字段。
+ * 「层级管理」：按关系把工作项排成多层的树，给树形视图用。
+ * 跨空间授权、组合字段还没有对应的功能。
  */
 export function AdvancedConfigPage() {
   const { spaceId } = useParams({ from: "/app/spaces/$spaceId/setting/advanced" });
@@ -23,6 +25,7 @@ export function AdvancedConfigPage() {
   useActiveSpace(spaceId);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [tab, setTab] = useState<"relation" | "hierarchy">("relation");
 
   if (!space)
     return (
@@ -49,9 +52,12 @@ export function AdvancedConfigPage() {
         <Tabs
           label="高级设置"
           className="mx-auto"
-          value="relation"
-          onChange={() => {}}
-          items={[["relation", "关系管理"]]}
+          value={tab}
+          onChange={setTab}
+          items={[
+            ["relation", "关系管理"],
+            ["hierarchy", "层级管理"],
+          ]}
         />
         <Link
           to="/spaces/$spaceId/setting/$tab"
@@ -63,75 +69,87 @@ export function AdvancedConfigPage() {
         </Link>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto bg-canvas">
-        <div className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
-          {error && <ErrorBanner>{error}</ErrorBanner>}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <h2 className="text-lg font-semibold">关系管理</h2>
-              <p className="text-sm text-fg-muted">
-                管理工作项之间怎么关联。一条关系的两端各有一个关联字段，可以在详情页里添加和取消。
-              </p>
-            </div>
-            <Input
-              aria-label="按名称搜索关系"
-              placeholder="按名称搜索"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="w-56"
+        {tab === "hierarchy" ? (
+          <div className="mx-auto max-w-5xl p-6">
+            <HierarchyConfig
+              spaceId={spaceId}
+              types={space.workItemTypes}
+              defs={defs}
+              hierarchies={space.hierarchies}
+              isAdmin={isAdmin}
             />
-            {isAdmin && <CreateRelation space={space} onError={setError} />}
           </div>
-          <div className="rounded-lg border border-line-subtle bg-surface shadow-card">
-            <table aria-label="关系列表" className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line-subtle text-left text-xs text-fg-muted">
-                  <th className="px-4 py-2 font-normal">名称</th>
-                  <th className="px-4 py-2 font-normal">关系</th>
-                  <th className="px-4 py-2 font-normal">关系类型</th>
-                  <th className="px-4 py-2 font-normal">使用中的字段</th>
-                  <th className="w-16" />
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((d) => (
-                  <tr key={d.id} className="border-b border-line-subtle last:border-0 hover:bg-hover/50">
-                    <td className="px-4 py-2">
-                      {typeName(d.fromTypeId)}-{typeName(d.toTypeId)}关联
-                    </td>
-                    <td className="px-4 py-2">
-                      {typeName(d.fromTypeId)} ↔ {typeName(d.toTypeId)}
-                    </td>
-                    <td className="px-4 py-2 text-fg-muted">{d.reverseName ? "互相关联" : "单向关联"}</td>
-                    <td className="px-4 py-2">{[d.name, d.reverseName].filter(Boolean).join("；")}</td>
-                    <td className="px-4 py-2 text-right">
-                      {isAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`删除关系 ${d.name}`}
-                          onClick={async () => {
-                            setError(null);
-                            const outcome = await zero.mutate(mutators.relationDef.delete({ id: d.id })).client;
-                            if (outcome.type === "error") setError(outcome.error.message);
-                          }}
-                        >
-                          删除
-                        </Button>
-                      )}
-                    </td>
+        ) : (
+          <div className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
+            {error && <ErrorBanner>{error}</ErrorBanner>}
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold">关系管理</h2>
+                <p className="text-sm text-fg-muted">
+                  管理工作项之间怎么关联。一条关系的两端各有一个关联字段，可以在详情页里添加和取消。
+                </p>
+              </div>
+              <Input
+                aria-label="按名称搜索关系"
+                placeholder="按名称搜索"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="w-56"
+              />
+              {isAdmin && <CreateRelation space={space} onError={setError} />}
+            </div>
+            <div className="rounded-lg border border-line-subtle bg-surface shadow-card">
+              <table aria-label="关系列表" className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line-subtle text-left text-xs text-fg-muted">
+                    <th className="px-4 py-2 font-normal">名称</th>
+                    <th className="px-4 py-2 font-normal">关系</th>
+                    <th className="px-4 py-2 font-normal">关系类型</th>
+                    <th className="px-4 py-2 font-normal">使用中的字段</th>
+                    <th className="w-16" />
                   </tr>
-                ))}
-                {shown.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-fg-muted">
-                      还没有关系。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {shown.map((d) => (
+                    <tr key={d.id} className="border-b border-line-subtle last:border-0 hover:bg-hover/50">
+                      <td className="px-4 py-2">
+                        {typeName(d.fromTypeId)}-{typeName(d.toTypeId)}关联
+                      </td>
+                      <td className="px-4 py-2">
+                        {typeName(d.fromTypeId)} ↔ {typeName(d.toTypeId)}
+                      </td>
+                      <td className="px-4 py-2 text-fg-muted">{d.reverseName ? "互相关联" : "单向关联"}</td>
+                      <td className="px-4 py-2">{[d.name, d.reverseName].filter(Boolean).join("；")}</td>
+                      <td className="px-4 py-2 text-right">
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`删除关系 ${d.name}`}
+                            onClick={async () => {
+                              setError(null);
+                              const outcome = await zero.mutate(mutators.relationDef.delete({ id: d.id })).client;
+                              if (outcome.type === "error") setError(outcome.error.message);
+                            }}
+                          >
+                            删除
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {shown.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-fg-muted">
+                        还没有关系。
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
