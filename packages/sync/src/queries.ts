@@ -99,6 +99,33 @@ function hierarchyEdges({ relationDefId }: z.output<typeof hierarchyArgs>) {
     relationDefId === null ? cmp("parentNodeKey", "IS NOT", null) : cmp("relationDefId", relationDefId);
 }
 
+/** 层级里往下走一层：沿哪条关系（null 为子工作项关系）、哪个方向、到哪个类型。 */
+const stepArgs = z.object({ typeId: z.string(), relationDefId: z.string().nullable(), reverse: z.boolean() });
+type Step = z.output<typeof stepArgs>;
+
+const layerArgs = z.object({ id: z.string(), step: stepArgs, next: z.array(stepArgs).max(2) });
+
+/** 一步用的是哪条关系。 */
+function stepEdge(step: Step) {
+  return ({ cmp }: ExpressionBuilder<"relation", Schema>) =>
+    step.relationDefId === null ? cmp("parentNodeKey", "IS NOT", null) : cmp("relationDefId", step.relationDefId);
+}
+
+/** 沿这些步（只看某个方向的）能走到的关系行，用来数一个工作项在层级里有几个下级。 */
+function stepEdges(steps: readonly Step[], reverse: boolean) {
+  return ({ or, and, cmp, exists }: ExpressionBuilder<"relation", Schema>) => {
+    const conds = steps
+      .filter((s) => s.reverse === reverse)
+      .map((s) =>
+        and(
+          s.relationDefId === null ? cmp("parentNodeKey", "IS NOT", null) : cmp("relationDefId", s.relationDefId),
+          exists(reverse ? "from" : "to", (w) => w.where("typeId", s.typeId)),
+        ),
+      );
+    return conds.length > 0 ? or(...conds) : cmp("id", "IS", null);
+  };
+}
+
 export const queries = defineQueries({
   spaces: {
     mine: defineQuery(({ ctx }) =>
@@ -122,6 +149,7 @@ export const queries = defineQueries({
         .related("charts", (c) => c.orderBy("sort", "asc").orderBy("createdAt", "asc"))
         // 用户组和成员：权限配置要用，前端也按它算自己能看到哪些工作项类型
         .related("userGroups", (g) => g.related("members").orderBy("createdAt", "asc"))
+        .related("hierarchies", (h) => h.orderBy("createdAt", "asc"))
         .related("workItemTypes", (t) =>
           t
             .orderBy("sort", "asc")
@@ -377,6 +405,46 @@ export const queries = defineQueries({
         .related("incoming", (r) => r.where(hierarchyEdges(args.hierarchy)))
         .related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy)))
         .orderBy("createdAt", "desc"),
+    ),
+    /** 按层级管理的树形视图：第一层的工作项，带上沿下一层的关系能找到的下级。 */
+    layerRoots: defineQuery(
+      spaceItemsArgs.extend({ rootTypeId: z.string(), next: z.array(stepArgs).max(2) }),
+      ({ args, ctx }) =>
+        spaceItems({ spaceId: args.spaceId, filter: { ...args.filter, typeIds: [args.rootTypeId] } }, ctx.userID)
+          .related("type")
+          .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
+          .related("incoming", (r) => r.where(stepEdges(args.next, true)))
+          .orderBy("createdAt", "desc"),
+    ),
+    /**
+     * 按层级展开一个工作项：沿 step 找到的下级，以及每个下级沿 next 的下级数量。
+     * 正方向下级在关系的 to 一端（layerDown），反方向在 from 一端（layerUp）。
+     */
+    layerDown: defineQuery(layerArgs, ({ args, ctx }) =>
+      zql.relation
+        .where("fromId", args.id)
+        .where(stepEdge(args.step))
+        .whereExists("to", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
+        .related("to", (w) =>
+          w
+            .related("type")
+            .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
+            .related("incoming", (r) => r.where(stepEdges(args.next, true))),
+        )
+        .orderBy("createdAt", "asc"),
+    ),
+    layerUp: defineQuery(layerArgs, ({ args, ctx }) =>
+      zql.relation
+        .where("toId", args.id)
+        .where(stepEdge(args.step))
+        .whereExists("from", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
+        .related("from", (w) =>
+          w
+            .related("type")
+            .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
+            .related("incoming", (r) => r.where(stepEdges(args.next, true))),
+        )
+        .orderBy("createdAt", "asc"),
     ),
     /** 树形视图里展开一个工作项：它的下级，以及每个下级自己的下级数量。 */
     children: defineQuery(z.object({ id: z.string(), hierarchy: hierarchyArgs }), ({ args, ctx }) =>

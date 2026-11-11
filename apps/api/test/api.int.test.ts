@@ -3209,3 +3209,105 @@ describe("metric charts", () => {
     expect((await chartsOf()).map((c) => c.id)).toEqual(["c2"]);
   });
 });
+
+describe("hierarchies", () => {
+  const spaceId = randomUUID();
+  const project = `${spaceId}/project`;
+  const story = `${spaceId}/story`;
+  const task = `${spaceId}/task`;
+  let admin: { cookie: string; userId: string };
+  let member: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+
+  beforeAll(async () => {
+    admin = await signUp(`hier-admin-${spaceId}@example.com`);
+    member = await signUp(`hier-member-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "层级" });
+    await services.database.db.insert(schema.spaceMember).values([{ spaceId, userId: member.userId }]);
+    for (const [id, key, name] of [
+      [project, "project", "项目"],
+      [story, "story", "需求"],
+      [task, "task", "任务"],
+    ] as const)
+      await run("workItemType.create", { id, spaceId, key, name });
+    // 项目 → 需求；任务 → 需求（从需求往任务走是反方向）；需求 → 需求（子需求）
+    await run("relationDef.create", {
+      id: `${spaceId}/r1`,
+      fromTypeId: project,
+      toTypeId: story,
+      name: "包含需求",
+      cardinality: "many",
+    });
+    await run("relationDef.create", {
+      id: `${spaceId}/r2`,
+      fromTypeId: task,
+      toTypeId: story,
+      name: "所属需求",
+      cardinality: "one",
+    });
+    await run("relationDef.create", {
+      id: `${spaceId}/r3`,
+      fromTypeId: story,
+      toTypeId: story,
+      name: "子需求",
+      cardinality: "many",
+    });
+  });
+
+  const rows = () => services.database.db.select().from(schema.hierarchy).where(eq(schema.hierarchy.spaceId, spaceId));
+
+  it("an admin builds a tree layer by layer, following relations either way, with a repeating layer", async () => {
+    const id = randomUUID();
+    await run("hierarchy.create", { id, spaceId, name: "项目树", rootTypeId: project, layers: [] });
+    await run("hierarchy.update", {
+      id,
+      layers: [
+        { typeId: story, relationDefId: `${spaceId}/r1` },
+        { typeId: story, relationDefId: `${spaceId}/r3`, repeat: true },
+        { typeId: task, relationDefId: `${spaceId}/r2`, reverse: true },
+      ],
+    });
+    const [row] = (await rows()).filter((h) => h.id === id);
+    expect(row?.layers).toEqual([
+      { typeId: story, relationDefId: `${spaceId}/r1` },
+      { typeId: story, relationDefId: `${spaceId}/r3`, repeat: true },
+      { typeId: task, relationDefId: `${spaceId}/r2`, reverse: true },
+    ]);
+    // 用到的关系不能删
+    await expect(run("relationDef.delete", { id: `${spaceId}/r2` })).rejects.toThrow("层级「项目树」用到了这条关系");
+    await run("hierarchy.update", { id, name: "项目拆解" });
+    await run("hierarchy.delete", { id });
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("rejects layers that the previous layer can't reach, and non-admins", async () => {
+    // 项目和任务之间没有关系
+    await expect(
+      run("hierarchy.create", {
+        id: randomUUID(),
+        spaceId,
+        name: "错的",
+        rootTypeId: project,
+        layers: [{ typeId: task, relationDefId: `${spaceId}/r2` }],
+      }),
+    ).rejects.toThrow("第 2 层和上一层之间没有这条关系");
+    // 方向反了：所属需求是 任务 → 需求，从需求往任务要走反方向
+    await expect(
+      run("hierarchy.create", {
+        id: randomUUID(),
+        spaceId,
+        name: "错的",
+        rootTypeId: story,
+        layers: [{ typeId: task, relationDefId: `${spaceId}/r2` }],
+      }),
+    ).rejects.toThrow("第 2 层和上一层之间没有这条关系");
+    await expect(
+      run(
+        "hierarchy.create",
+        { id: randomUUID(), spaceId, name: "成员的", rootTypeId: project, layers: [] },
+        member.userId,
+      ),
+    ).rejects.toThrow("只有空间管理员");
+    expect(await rows()).toHaveLength(0);
+  });
+});

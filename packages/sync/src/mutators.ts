@@ -73,6 +73,14 @@ import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
 import { handover } from "./handover.ts";
 import { handoverArgs } from "./handover-args.ts";
 import {
+  createHierarchy,
+  createHierarchyArgs,
+  deleteHierarchy,
+  deleteHierarchyArgs,
+  updateHierarchy,
+  updateHierarchyArgs,
+} from "./hierarchies.ts";
+import {
   assertNotFrozen,
   deleteWorkItem,
   purgeWorkItem,
@@ -313,6 +321,11 @@ export const mutators = defineMutators({
   relationDef: {
     create: defineMutator(createRelationDefArgs, ({ tx, args, ctx }) => createRelationDef(tx, args, ctx.userID)),
     delete: defineMutator(deleteRelationDefArgs, ({ tx, args, ctx }) => deleteRelationDef(tx, args, ctx.userID)),
+  },
+  hierarchy: {
+    create: defineMutator(createHierarchyArgs, ({ tx, args, ctx }) => createHierarchy(tx, args, ctx.userID)),
+    update: defineMutator(updateHierarchyArgs, ({ tx, args, ctx }) => updateHierarchy(tx, args, ctx.userID)),
+    delete: defineMutator(deleteHierarchyArgs, ({ tx, args, ctx }) => deleteHierarchy(tx, args, ctx.userID)),
   },
   relation: {
     add: defineMutator(addRelationArgs, async ({ tx, args, ctx }) => {
