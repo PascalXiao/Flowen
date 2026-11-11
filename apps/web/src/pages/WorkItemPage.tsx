@@ -13,6 +13,7 @@ import {
   FlowGraph,
   fieldStates,
   formatFieldValue,
+  type InstanceDependency,
   type LayoutItem,
   type LayoutSection,
   type NodeState,
@@ -41,6 +42,7 @@ import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
 import { MultiPersonField } from "@/components/MultiPersonField";
+import { NodeDependencies } from "@/components/NodeDependencies";
 import { NodeTasks } from "@/components/NodeTasks";
 import { PlanTable } from "@/components/PlanTable";
 import { RelationsCard } from "@/components/RelationsCard";
@@ -226,26 +228,25 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   const assignable = members.filter((m) => space?.members.find((x) => x.userId === m.userId)?.role !== "guest");
   const nameOf = (userId: string) => members.find((m) => m.userId === userId)?.name ?? users.get(userId) ?? userId;
   const today = dayInTimeZone(Date.now(), item.space?.timezone ?? "Asia/Shanghai");
-  /** 节点在等的依赖：没开始的看「才能开始」，进行中的看「才能完成」。 */
-  const waitingNote = (nodeKey: string) => {
-    if (!graph?.has(nodeKey)) return null;
-    const state = states.get(nodeKey)?.state;
-    const allow = state === "notStarted" ? "start" : state === "inProgress" ? "complete" : null;
-    if (!allow) return null;
-    const waiting = (graph.node(nodeKey).dependsOn ?? [])
-      .filter((d) => d.allow === allow && graph.has(d.node))
-      .filter((d) => !["completed", "skipped"].includes(states.get(d.node)?.state ?? "notStarted"))
-      .map((d) => `「${graph.node(d.node).name}」`);
-    if (waiting.length === 0) return null;
-    return (
-      <p role="note" className="rounded bg-warning-50 px-2 py-1 text-xs text-warning-600">
-        要等{waiting.join("、")}完成才能{allow === "start" ? "开始" : "完成"}
-      </p>
-    );
-  };
+  /** 工作项上加的依赖里等本工作项节点的：排期和关键路径要算上。 */
+  const ownDependencies: Record<string, InstanceDependency[]> = {};
+  for (const d of item.dependencies)
+    if (d.target?.workItemId === item.id)
+      ownDependencies[d.nodeKey] = [...(ownDependencies[d.nodeKey] ?? []), { allow: d.allow, node: d.target.nodeKey }];
   const nodeTasks = (nodeKey: string, nodeName: string, readOnly: boolean) => (
     <>
-      {waitingNote(nodeKey)}
+      {graph?.has(nodeKey) && (
+        <NodeDependencies
+          workItemId={item.id}
+          spaceId={item.spaceId}
+          nodeKey={nodeKey}
+          graph={graph}
+          stateOf={(key) => states.get(key)?.state ?? "notStarted"}
+          dependencies={item.dependencies.filter((d) => d.nodeKey === nodeKey)}
+          dependents={states.get(nodeKey)?.dependents ?? []}
+          canEdit={canOperate(nodeKey)}
+        />
+      )}
       <NodeTasks
         workItemId={item.id}
         nodeKey={nodeKey}
@@ -1059,6 +1060,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
               graph={graph}
               nodes={item.nodes}
               baselines={item.baselines}
+              dependencies={ownDependencies}
               me={me}
               isAdmin={isAdmin}
               canWrite={canWrite}

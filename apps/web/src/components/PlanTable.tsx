@@ -8,6 +8,7 @@ import {
   dayToIso,
   durationOf,
   type FlowGraph,
+  type InstanceDependencies,
   type WorkCalendar,
 } from "@fp/engine";
 import { mutators } from "@fp/sync";
@@ -57,6 +58,7 @@ export function PlanTable({
   graph,
   nodes,
   baselines,
+  dependencies,
   timeZone,
   calendar,
   me,
@@ -69,6 +71,8 @@ export function PlanTable({
   graph: FlowGraph;
   nodes: readonly PlannedNode[];
   baselines: readonly BaselineRow[];
+  /** 工作项上加的、等本工作项节点的依赖。 */
+  dependencies?: InstanceDependencies;
   timeZone: string;
   calendar: WorkCalendar;
   me: string;
@@ -84,13 +88,17 @@ export function PlanTable({
   const [naming, setNaming] = useState<string | null>(null);
   const baseline = baselines.find((b) => b.id === baselineId) ?? null;
 
-  const { rows, deps } = nodeGanttRows(graph, nodes, { timeZone, canPlan: (n) => canPlan(n.nodeKey) });
+  const { rows, deps } = nodeGanttRows(graph, nodes, {
+    timeZone,
+    canPlan: (n) => canPlan(n.nodeKey),
+    dependencies,
+  });
   const plan = useMemo(() => {
     const spans = Object.fromEntries(rows.map((r) => [r.key, { start: r.start, end: r.end }]));
     const states = Object.fromEntries(nodes.map((n) => [n.nodeKey, n.state ?? undefined]));
     const milestones = new Set(rows.filter((r) => r.milestone).map((r) => r.key));
-    return criticalPath(graph, calendar, { spans, states, milestones });
-  }, [rows, nodes, graph, calendar]);
+    return criticalPath(graph, calendar, { spans, states, milestones, dependencies });
+  }, [rows, nodes, graph, calendar, dependencies]);
 
   const baseSpan = (key: string) => {
     const b = baseline?.nodes[key];

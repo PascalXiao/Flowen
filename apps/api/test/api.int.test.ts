@@ -5,7 +5,15 @@ import { join } from "node:path";
 import { schema } from "@fp/db";
 import { createTestDatabase } from "@fp/db/testing";
 import { dayInTimeZone, dayToIso, type FlowDefinition, oemV289 } from "@fp/engine";
-import { cascadeSubItems, createMutatorRunner, matchRules, notify, runRule, tickAutomations } from "@fp/server";
+import {
+  cascadeDependencies,
+  cascadeSubItems,
+  createMutatorRunner,
+  matchRules,
+  notify,
+  runRule,
+  tickAutomations,
+} from "@fp/server";
 import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp, createServices, type Services } from "../src/app.ts";
@@ -1388,6 +1396,142 @@ describe("sub-items driving a node", () => {
     await expect(
       run("workItem.createSubItem", { id: randomUUID(), parentId, nodeKey: "build", typeId: taskType, name: "x" }),
     ).rejects.toThrow("不在进行中");
+  });
+});
+
+describe("node dependencies added on a work item", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/project`;
+  let admin: { cookie: string; userId: string };
+  let owner: { cookie: string; userId: string };
+  let other: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+
+  beforeAll(async () => {
+    admin = await signUp(`dep-admin-${spaceId}@example.com`);
+    owner = await signUp(`dep-owner-${spaceId}@example.com`);
+    other = await signUp(`dep-other-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "依赖" });
+    await services.database.db.insert(schema.spaceMember).values([
+      { spaceId, userId: owner.userId },
+      { spaceId, userId: other.userId },
+    ]);
+    await run("workItemType.create", { id: typeId, spaceId, key: "project", name: "项目" });
+    await run("roleDef.create", { id: `${typeId}/role/owner`, typeId, key: "owner", name: "负责人" });
+    await run("flowTemplate.create", { id: `${typeId}/default`, typeId, key: "default", name: "默认流程" });
+    const step = (key: string, name: string) => ({ key, name, completion: "singleConfirm", ownerRoles: ["owner"] });
+    await run("flowTemplate.saveDraft", {
+      templateId: `${typeId}/default`,
+      definition: {
+        key: "project",
+        version: 0,
+        nodes: [
+          { key: "start", name: "开始", completion: "auto", ownerRoles: [] },
+          step("design", "设计"),
+          step("buy", "采购"),
+          step("ship", "发货"),
+        ],
+        edges: [
+          { from: "start", to: "design" },
+          { from: "start", to: "buy" },
+          { from: "design", to: "ship" },
+          { from: "buy", to: "ship" },
+        ],
+      },
+    });
+    await run("flowTemplate.publish", { versionId: `${typeId}/default/v1` });
+  });
+
+  async function create(name: string) {
+    const id = randomUUID();
+    await run("workItem.create", { id, typeId, name, fields: {}, roles: { owner: [owner.userId] } });
+    return id;
+  }
+  const state = async (workItemId: string, nodeKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.nodeInstance)
+        .where(and(eq(schema.nodeInstance.workItemId, workItemId), eq(schema.nodeInstance.nodeKey, nodeKey)))
+    )[0]?.state;
+  const add = (
+    from: [item: string, node: string],
+    to: [item: string, node: string],
+    allow: "start" | "complete",
+    userId = owner.userId,
+    id: string = randomUUID(),
+  ) =>
+    run(
+      "dependency.add",
+      { id, workItemId: from[0], nodeKey: from[1], targetItemId: to[0], targetNodeKey: to[1], allow },
+      userId,
+    );
+  const confirm = (workItemId: string, nodeKey: string) => run("node.confirm", { workItemId, nodeKey }, owner.userId);
+  /** worker 收到一个工作项的事件时做的事。 */
+  async function cascade(workItemId: string) {
+    const runner = createMutatorRunner(services.database);
+    const events = await services.database.db
+      .select()
+      .from(schema.eventLog)
+      .where(eq(schema.eventLog.workItemId, workItemId));
+    for (const e of events) await cascadeDependencies(runner, e.id);
+  }
+
+  it("a node waits for a node in another work item until it completes", async () => {
+    const a = await create("面霜");
+    const b = await create("精华");
+    // 面霜的设计要等精华的设计完成才能完成；面霜的发货要等精华的采购完成才能开始
+    await add([a, "design"], [b, "design"], "complete");
+    await add([a, "ship"], [b, "buy"], "start");
+    await expect(add([a, "design"], [b, "design"], "complete")).rejects.toThrow(/已经有这条依赖/);
+    await expect(add([b, "design"], [a, "design"], "complete")).rejects.toThrow(/互相等待/);
+    await expect(add([a, "design"], [a, "ship"], "complete")).rejects.toThrow(/后面，等它会卡住/);
+    await expect(add([a, "design"], [b, "buy"], "start")).rejects.toThrow(/已经开始了/);
+    await expect(add([a, "design"], [a, "design"], "complete")).rejects.toThrow(/不能依赖自己/);
+
+    await expect(confirm(a, "design")).rejects.toThrow("要等「精华 · 设计」完成才能完成");
+    await confirm(b, "design");
+    await confirm(a, "design");
+    await confirm(a, "buy");
+    // 前序都完成了，但精华的采购还没完成：发货等着
+    expect(await state(a, "ship")).toBe("notStarted");
+    await cascade(b);
+    expect(await state(a, "ship")).toBe("notStarted");
+    await confirm(b, "buy");
+    await cascade(b);
+    expect(await state(a, "ship")).toBe("inProgress");
+    const events = await services.database.db.select().from(schema.eventLog).where(eq(schema.eventLog.workItemId, a));
+    expect(events.filter((e) => e.kind === "dependencyAdded")).toHaveLength(2);
+    expect(
+      events.find((e) => e.kind === "nodeStarted" && (e.payload as { node: string }).node === "ship"),
+    ).toBeTruthy();
+  });
+
+  it("stops waiting when the other work item is terminated", async () => {
+    const a = await create("面霜");
+    const b = await create("精华");
+    await add([a, "design"], [b, "design"], "complete");
+    await expect(confirm(a, "design")).rejects.toThrow(/要等/);
+    await run("workItem.terminate", { workItemId: b, reason: "取消" });
+    await confirm(a, "design");
+    expect(await state(a, "design")).toBe("completed");
+  });
+
+  it("inside one work item: removing the dependency lets the node start; others can't change it", async () => {
+    const a = await create("面霜");
+    const id = randomUUID();
+    await expect(add([a, "ship"], [a, "design"], "start", other.userId, id)).rejects.toThrow(/只有节点负责人/);
+    // 采购要等设计完成才能完成（两个并行节点之间）
+    await add([a, "buy"], [a, "design"], "complete", owner.userId, id);
+    await expect(confirm(a, "buy")).rejects.toThrow("要等「设计」完成才能完成");
+    await expect(run("dependency.remove", { id }, other.userId)).rejects.toThrow(/只有节点负责人/);
+    await run("dependency.remove", { id }, owner.userId);
+    await confirm(a, "buy");
+    expect(await state(a, "buy")).toBe("completed");
+    const kinds = (
+      await services.database.db.select().from(schema.eventLog).where(eq(schema.eventLog.workItemId, a))
+    ).map((e) => e.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["dependencyAdded", "dependencyRemoved"]));
   });
 });
 

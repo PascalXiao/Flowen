@@ -2,6 +2,8 @@ import { appendEvents, type NewEvent, schema, type Tx } from "@fp/db";
 import type { FlowEvent, StatusEvent } from "@fp/engine";
 import type { ZeroContext } from "@fp/sync";
 import {
+  addDependency,
+  addDependencyArgs,
   addRelation,
   addRelationArgs,
   castVote,
@@ -37,6 +39,10 @@ import {
   pressButton,
   pressButtonArgs,
   purgeWorkItem,
+  recheckArgs,
+  recheckDependencies,
+  removeDependency,
+  removeDependencyArgs,
   removeRelation,
   removeRelationArgs,
   restoreDeletedWorkItem,
@@ -382,6 +388,10 @@ export const serverMutators = defineMutators(mutators, {
         ...flowEvents(spaceId, args.workItemId, events),
       ]);
     }),
+    recheck: defineMutator(recheckArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, events } = await recheckDependencies(tx, args, ctx.userID);
+      await append(tx, ctx, flowEvents(spaceId, args.workItemId, events));
+    }),
     nudge: defineMutator(nudgeArgs, async ({ tx, args, ctx }) => {
       const { spaceId, to } = await nudgeNode(tx, args, ctx.userID);
       // 同一个人 10 分钟内只能催同一个节点一次，避免刷屏
@@ -496,6 +506,40 @@ export const serverMutators = defineMutators(mutators, {
           payload: { taskId: args.id, node: task.nodeKey, name: task.name },
           actor: ctx.userID,
         },
+      ]);
+    }),
+  },
+  dependency: {
+    add: defineMutator(addDependencyArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, targetNodeName, targetItemName, events } = await addDependency(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: args.workItemId,
+          kind: "dependencyAdded",
+          payload: {
+            node: args.nodeKey,
+            allow: args.allow,
+            targetItemId: args.targetItemId,
+            targetItemName: args.targetItemId === args.workItemId ? null : targetItemName,
+            targetNode: targetNodeName,
+          },
+          actor: ctx.userID,
+        },
+        ...flowEvents(spaceId, args.workItemId, events),
+      ]);
+    }),
+    remove: defineMutator(removeDependencyArgs, async ({ tx, args, ctx }) => {
+      const { spaceId, dependency, events } = await removeDependency(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId,
+          workItemId: dependency.workItemId,
+          kind: "dependencyRemoved",
+          payload: { node: dependency.nodeKey, allow: dependency.allow, targetNode: dependency.targetNodeName },
+          actor: ctx.userID,
+        },
+        ...flowEvents(spaceId, dependency.workItemId, events),
       ]);
     }),
   },

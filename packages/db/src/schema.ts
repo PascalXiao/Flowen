@@ -751,6 +751,34 @@ export const nodeTask = pgTable(
   (t) => [index("node_task_work_item").on(t.workItemId, t.nodeKey), index("node_task_assignee").on(t.assigneeId)],
 );
 
+/**
+ * 工作项上加的依赖：节点要等另一个节点完成才能开始（start）或才能完成（complete）。
+ * 对方节点可以在本工作项里，也可以在别的工作项里；对方的工作项被终止、删除，或节点被跳过时不再等。
+ */
+export const nodeDependency = pgTable(
+  "node_dependency",
+  {
+    id: text("id").primaryKey(),
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    nodeKey: text("node_key").notNull(),
+    /** 被依赖的节点实例。 */
+    targetNodeId: text("target_node_id")
+      .notNull()
+      .references(() => nodeInstance.id, { onDelete: "cascade" }),
+    /** 加依赖时对方节点的名称，看不到对方工作项的人也能知道在等什么。 */
+    targetNodeName: text("target_node_name").notNull(),
+    allow: text("allow").$type<"start" | "complete">().notNull(),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("node_dependency_unique").on(t.workItemId, t.nodeKey, t.targetNodeId, t.allow),
+    index("node_dependency_target").on(t.targetNodeId),
+  ],
+);
+
 /** 计划基线：某一刻所有节点计划日期的快照，用来和当前计划对比偏差。 */
 export const planBaseline = pgTable(
   "plan_baseline",
@@ -1110,6 +1138,7 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
   roleMembers: many(roleMember),
   nodes: many(nodeInstance),
   baselines: many(planBaseline),
+  dependencies: many(nodeDependency),
   outgoing: many(relation, { relationName: "from" }),
   incoming: many(relation, { relationName: "to" }),
   events: many(eventLog),
@@ -1120,6 +1149,11 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
 export const nodeTaskRelations = relations(nodeTask, ({ one }) => ({
   workItem: one(workItem, { fields: [nodeTask.workItemId], references: [workItem.id] }),
   assignee: one(user, { fields: [nodeTask.assigneeId], references: [user.id] }),
+}));
+
+export const nodeDependencyRelations = relations(nodeDependency, ({ one }) => ({
+  workItem: one(workItem, { fields: [nodeDependency.workItemId], references: [workItem.id] }),
+  target: one(nodeInstance, { fields: [nodeDependency.targetNodeId], references: [nodeInstance.id] }),
 }));
 
 export const planBaselineRelations = relations(planBaseline, ({ one }) => ({
@@ -1177,6 +1211,8 @@ export const relationRelations = relations(relation, ({ one }) => ({
 export const nodeInstanceRelations = relations(nodeInstance, ({ one, many }) => ({
   workItem: one(workItem, { fields: [nodeInstance.workItemId], references: [workItem.id] }),
   confirmations: many(nodeConfirmation),
+  /** 等这个节点完成的依赖。 */
+  dependents: many(nodeDependency),
 }));
 
 export const nodeConfirmationRelations = relations(nodeConfirmation, ({ one }) => ({
