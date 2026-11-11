@@ -40,6 +40,14 @@ import {
   updateComment,
   updateCommentArgs,
 } from "./comments.ts";
+import {
+  addDependency,
+  addDependencyArgs,
+  recheckArgs,
+  recheckDependencies,
+  removeDependency,
+  removeDependencyArgs,
+} from "./dependencies.ts";
 import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import {
   completeBySubItems,
@@ -407,6 +415,10 @@ export const mutators = defineMutators({
     nudge: defineMutator(nudgeArgs, async ({ tx, args, ctx }) => {
       await nudgeNode(tx, args, ctx.userID);
     }),
+    /** 别的工作项里被依赖的节点完成后，重算这个工作项：在等它的节点可以开始了。 */
+    recheck: defineMutator(recheckArgs, async ({ tx, args, ctx }) => {
+      await recheckDependencies(tx, args, ctx.userID);
+    }),
   },
   task: {
     create: defineMutator(createTaskArgs, async ({ tx, args, ctx }) => {
@@ -420,6 +432,14 @@ export const mutators = defineMutators({
     }),
     delete: defineMutator(deleteTaskArgs, async ({ tx, args, ctx }) => {
       await deleteTask(tx, args, ctx.userID);
+    }),
+  },
+  dependency: {
+    add: defineMutator(addDependencyArgs, async ({ tx, args, ctx }) => {
+      await addDependency(tx, args, ctx.userID);
+    }),
+    remove: defineMutator(removeDependencyArgs, async ({ tx, args, ctx }) => {
+      await removeDependency(tx, args, ctx.userID);
     }),
   },
   baseline: {

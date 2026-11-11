@@ -74,6 +74,39 @@ describe("FlowEngine", () => {
     expect(state.nodes.c?.state).toBe("inProgress");
   });
 
+  it("dependencies added on a work item: another node of the item, or a node somewhere else", () => {
+    // a 后面并行 b、c；工作项上加：c 要等 b 完成才能开始，b 要等别的工作项里的节点才能完成
+    const f = flow(["a", []], ["b", ["a"]], ["c", ["a"]]);
+    const engine = new FlowEngine(f);
+    const { state } = engine.start(noFields, ownersOf(f));
+    state.dependencies = {
+      c: [{ allow: "start", node: "b" }],
+      b: [{ allow: "complete", waiting: "新品 B · 采购" }],
+    };
+    engine.confirm(state, "a", u1, noFields);
+    expect(state.nodes.b?.state).toBe("inProgress");
+    expect(state.nodes.c?.state).toBe("notStarted");
+    expect(() => engine.confirm(state, "b", u1, noFields)).toThrow("要等「新品 B · 采购」完成才能完成");
+    // 对方完成后这条依赖不再传进来；重算时 c 仍然要等 b
+    state.dependencies = { c: [{ allow: "start", node: "b" }] };
+    engine.onFieldsChanged(state, noFields);
+    expect(state.nodes.c?.state).toBe("notStarted");
+    engine.confirm(state, "b", u1, noFields);
+    expect(state.nodes.c?.state).toBe("inProgress");
+  });
+
+  it("a node released by a dependency elsewhere starts on the next recompute", () => {
+    const f = flow(["a", []], ["b", ["a"]]);
+    const engine = new FlowEngine(f);
+    const { state } = engine.start(noFields, ownersOf(f));
+    state.dependencies = { b: [{ allow: "start", waiting: "新品 B · 采购" }] };
+    engine.confirm(state, "a", u1, noFields);
+    expect(state.nodes.b?.state).toBe("notStarted");
+    state.dependencies = {};
+    engine.onFieldsChanged(state, noFields);
+    expect(state.nodes.b?.state).toBe("inProgress");
+  });
+
   it("does not let a skipped node in a chain start its successor early", () => {
     const f = flow(["a", []], ["b", ["a"], "singleConfirm", cond.equal("x", "是")], ["c", ["b"]]);
     const engine = new FlowEngine(f);

@@ -42,6 +42,7 @@ export default drizzleZeroConfig(schema, {
     nodeConfirmation: true,
     nodeTask: true,
     planBaseline: true,
+    nodeDependency: true,
     eventLog: true,
     automationRun: true,
     webhook: true,

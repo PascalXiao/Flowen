@@ -51,7 +51,7 @@ try {
   const roles = Object.fromEntries(
     [...new Set(demoFlow.nodes.flatMap((n) => n.ownerRoles))].map((r) => [r, [user.id]]),
   );
-  const valueOf = (dataType: string, i: number, n: number): unknown => {
+  const sampleValue = (dataType: string, i: number, n: number): unknown => {
     if (dataType === "select") return options[(i + n) % options.length]?.value;
     if (dataType === "number") return (i * 7 + n) % 1000;
     if (dataType === "date") return `2027-${String(((i + n) % 12) + 1).padStart(2, "0")}-15`;
@@ -69,7 +69,7 @@ try {
       [F.linkedModel]: `M-${n}`,
     };
     fields.forEach((f, i) => {
-      values[f.key] = valueOf(f.dataType, i, n);
+      values[f.key] = sampleValue(f.dataType, i, n);
     });
     await runner.run(
       "workItem.create",

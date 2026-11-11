@@ -5,6 +5,7 @@ export * from "./baselines.ts";
 export * from "./charts.ts";
 export * from "./comments.ts";
 export * from "./context.ts";
+export * from "./dependencies.ts";
 export * from "./field-values.ts";
 export * from "./flow.ts";
 export * from "./formulas.ts";

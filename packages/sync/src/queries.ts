@@ -311,7 +311,12 @@ export const queries = defineQueries({
         )
         .related("fieldValues", visibleFieldValues(ctx.userID))
         .related("roleMembers", (r) => r.related("user"))
-        .related("nodes", (n) => n.related("confirmations"))
+        // 节点连同在等它的依赖（别的工作项的名称只给看得到它的人）
+        .related("nodes", (n) =>
+          n
+            .related("confirmations")
+            .related("dependents", (d) => d.related("workItem", (w) => w.where(itemVisible(ctx.userID)))),
+        )
         .related("comments", (c) => c.related("author").related("replyTo").orderBy("createdAt", "asc"))
         // 投票：自己的票，和已经公开（非盲投或已放榜）的票
         .related("ballots", (b) =>
@@ -325,6 +330,12 @@ export const queries = defineQueries({
         .related("tasks", (t) => t.orderBy("createdAt", "asc").orderBy("id", "asc"))
         // 计划基线：甘特图和排期明细里对比
         .related("baselines", (b) => b.related("creator").orderBy("createdAt", "asc"))
+        // 工作项上加的依赖和对方节点的状态；对方工作项只给看得到它的人
+        .related("dependencies", (d) =>
+          d
+            .related("target", (t) => t.related("workItem", (w) => w.where(itemVisible(ctx.userID))))
+            .orderBy("createdAt", "asc"),
+        )
         .related("marks", (m) => m.where("userId", ctx.userID))
         // 子工作项、上级工作项和自定义关联（两个方向）
         // 关联工作项带上字段值和字段定义：布局里的「关联信息」要显示它们的字段
@@ -351,6 +362,10 @@ export const queries = defineQueries({
             .related("def"),
         )
         .one(),
+    ),
+    /** 加依赖时选对方节点：一个工作项的流程和节点状态。 */
+    flowById: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
+      zql.workItem.where("id", args.id).where(itemVisible(ctx.userID)).related("flowVersion").related("nodes").one(),
     ),
     /**
      * 树形视图的第一层：符合筛选条件的工作项，带上它们的上级（判断是不是根）和下级数量。

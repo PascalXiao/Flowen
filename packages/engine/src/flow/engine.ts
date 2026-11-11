@@ -94,9 +94,7 @@ export class FlowEngine {
       throw new FlowError(`节点「${node.name}」的流转条件还没满足。`);
     const waiting = manualOverride ? [] : this.waitingFor(state, node, "complete");
     if (waiting.length > 0)
-      throw new FlowError(
-        `节点「${node.name}」要等${waiting.map((k) => `「${this.graph.node(k).name}」`).join("、")}完成才能完成。`,
-      );
+      throw new FlowError(`节点「${node.name}」要等${waiting.map((name) => `「${name}」`).join("、")}完成才能完成。`);
 
     // 节点字段和完成结论
     if (input.nodeFields) runtime.fields = { ...(runtime.fields ?? {}), ...input.nodeFields };
@@ -280,15 +278,25 @@ export class FlowEngine {
     state.stage = stage;
   }
 
-  /** 节点的依赖里还没完成的那些（被裁剪的依赖不用等）。 */
+  /**
+   * 节点还在等的依赖，返回它们的显示名：流程定义里配的和工作项上加的都算；
+   * 被裁剪的节点、已经不在流程里的节点不用等。
+   */
   waitingFor(state: WorkItemState, node: NodeDefinition, allow: "start" | "complete"): string[] {
-    return (node.dependsOn ?? [])
-      .filter((d) => d.allow === allow && this.graph.has(d.node))
-      .map((d) => d.node)
-      .filter((key) => {
-        const s = this.runtime(state, key).state;
-        return s !== "completed" && s !== "skipped";
-      });
+    const open = (key: string) => {
+      if (!this.graph.has(key) || key === node.key) return false;
+      const s = this.runtime(state, key).state;
+      return s !== "completed" && s !== "skipped";
+    };
+    const names = new Set<string>();
+    for (const d of node.dependsOn ?? [])
+      if (d.allow === allow && open(d.node)) names.add(this.graph.node(d.node).name);
+    for (const d of state.dependencies?.[node.key] ?? []) {
+      if (d.allow !== allow) continue;
+      if ("waiting" in d) names.add(d.waiting);
+      else if (open(d.node)) names.add(this.graph.node(d.node).name);
+    }
+    return [...names];
   }
 
   /**

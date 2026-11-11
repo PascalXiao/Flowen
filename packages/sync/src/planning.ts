@@ -44,6 +44,7 @@ export function planNodes(
   };
   return schedule(graph, calendar, {
     start,
+    dependencies: state.dependencies,
     nodes: Object.fromEntries(
       Object.entries(state.nodes).map(([key, runtime]) => {
         const plan = plans[key];

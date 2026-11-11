@@ -20,11 +20,20 @@ export interface NodeRuntime {
   fields?: Record<string, unknown>;
 }
 
+/**
+ * 工作项上加的依赖（流程定义之外的）：
+ * - node：等本工作项里的另一个节点，引擎按它当前的状态判断；
+ * - waiting：等别的工作项里的节点，调用方只把还没完成的传进来，值是显示用的名称。
+ */
+export type InstanceDependency = { allow: "start" | "complete" } & ({ node: string } | { waiting: string });
+
 /** 一个工作项在流程上的运行状态。由 FlowEngine 原地修改，可以直接 JSON 序列化存库。 */
 export interface WorkItemState {
   status: WorkItemStatus;
   stage: string | null;
   nodes: Record<string, NodeRuntime>;
+  /** 节点键 → 工作项上加的依赖。引擎只读不改。 */
+  dependencies?: Record<string, InstanceDependency[]>;
 }
 
 export type FlowEvent =
