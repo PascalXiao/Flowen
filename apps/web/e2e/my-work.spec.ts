@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace } from "./helpers";
+import { createItem, demoSpace } from "./helpers";
 
 test("my work lists the nodes I own and the tasks assigned to me, grouped by due date", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `mywork-${suffix}@example.com`, `我的工作 ${suffix}`);
+  await demoSpace(page, "Pascal", `mywork-${suffix}@example.com`, `我的工作 ${suffix}`);
   await createItem(page, "新品 W");
 
   // 在进行中的节点上加一个已经过了截止日期的子任务，指派给自己
-  const current = page.getByRole("main").getByRole("region", { name: "需求立项提案" });
-  await current.getByLabel("给需求立项提案添加子任务").fill("准备立项材料");
-  await current.getByLabel("给需求立项提案添加子任务").press("Enter");
+  const current = page.getByRole("main").getByRole("region", { name: "立项提案" });
+  await current.getByLabel("给立项提案添加子任务").fill("准备立项材料");
+  await current.getByLabel("给立项提案添加子任务").press("Enter");
   await current.getByLabel("准备立项材料的截止日期").fill("2020-01-02");
   await current.getByRole("button", { name: "准备立项材料的负责人" }).click();
   await page.getByRole("button", { name: "Pascal" }).click();
@@ -17,7 +17,7 @@ test("my work lists the nodes I own and the tasks assigned to me, grouped by due
 
   await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "我的工作" }).click();
   await expect(page.getByRole("heading", { name: "我的工作" })).toBeVisible();
-  const node = page.getByRole("listitem", { name: "需求立项提案" });
+  const node = page.getByRole("listitem", { name: "立项提案" });
   await expect(node).toContainText("新品 W");
   await expect(node).toContainText("节点");
   const overdue = page.getByRole("list", { name: "已逾期" });

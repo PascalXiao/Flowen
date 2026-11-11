@@ -3,7 +3,7 @@ import {
   choose,
   closeTypeConfig,
   createItem,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -12,15 +12,15 @@ import {
 
 test("a sub-item-driven node completes once its sub-items are done", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `sub-items-${suffix}@example.com`, `子工作项 ${suffix}`);
+  await demoSpace(page, "Pascal", `sub-items-${suffix}@example.com`, `子工作项 ${suffix}`);
 
   // 新品走到“需求评审”：它由子工作项驱动
   await createItem(page, "新品 S");
   const panel = page.getByRole("main");
-  await panel.getByLabel("关联需求SKU流程").fill("SKU-S");
-  await panel.getByLabel("关联需求SKU流程").blur();
-  await panel.getByRole("region", { name: "需求立项提案" }).getByRole("button", { name: "确认完成" }).click();
-  await panel.getByRole("region", { name: "财务分析（需求立项）" }).getByRole("button", { name: "确认完成" }).click();
+  await panel.getByLabel("关联型号").fill("SKU-S");
+  await panel.getByLabel("关联型号").blur();
+  await panel.getByRole("region", { name: "立项提案" }).getByRole("button", { name: "确认完成" }).click();
+  await panel.getByRole("region", { name: "财务分析（立项）" }).getByRole("button", { name: "确认完成" }).click();
   const review = panel.getByRole("region", { name: "需求评审" });
   await expect(review).toContainText("还没有子工作项");
 
@@ -59,7 +59,7 @@ test("a sub-item-driven node completes once its sub-items are done", async ({ pa
   await panel.getByRole("region", { name: "处理" }).getByRole("button", { name: "确认完成" }).click();
   await expect(page.locator("header")).toContainText("已完成");
   await page.getByRole("link", { name: "上级工作项：新品 S" }).click();
-  await expect(panel.getByRole("region", { name: "产品入库预排期" })).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByRole("region", { name: "量产预排期" })).toBeVisible({ timeout: 30_000 });
   await expect(review).toHaveCount(0);
 
   // 树形视图按子工作项分层：包材打样挂在新品 S 下面

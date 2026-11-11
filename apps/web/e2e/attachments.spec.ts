@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace } from "./helpers";
+import { createItem, demoSpace } from "./helpers";
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -8,7 +8,7 @@ const PNG = Buffer.from(
 
 test("upload, download and delete work item attachments", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `attach-${suffix}@example.com`, `附件 ${suffix}`);
+  await demoSpace(page, "Pascal", `attach-${suffix}@example.com`, `附件 ${suffix}`);
   await createItem(page, "新品 F");
 
   const card = page.getByRole("region", { name: "附件" });

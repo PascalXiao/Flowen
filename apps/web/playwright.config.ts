@@ -7,6 +7,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   timeout: 60_000,
+  // CI 上失败的用例重跑一次：全套服务跑在一台机器上，同步和 Temporal 偶尔慢。重跑才过的用例在报告里记为 flaky
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: process.env.WEB_URL ?? "http://localhost:5173",
     launchOptions: {

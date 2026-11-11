@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, createRelation, oemSpace, openItems } from "./helpers";
+import { choose, createItem, createRelation, demoSpace, openItems } from "./helpers";
 
 test("the tree view nests work items by the chosen hierarchy and expands level by level", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `tree-${suffix}@example.com`, `树形 ${suffix}`);
+  await demoSpace(page, "Pascal", `tree-${suffix}@example.com`, `树形 ${suffix}`);
 
   // “项目”上的“子项目”关联：新品 A → 新品 B → 新品 C
   await createRelation(page, { from: "项目", to: "项目", name: "子项目" });

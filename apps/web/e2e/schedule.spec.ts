@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace, openItems } from "./helpers";
+import { createItem, demoSpace, openItems } from "./helpers";
 
 test("people schedule lists each owner's planned nodes on a shared timeline", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `schedule-${suffix}@example.com`, `人员排期 ${suffix}`);
+  await demoSpace(page, "Pascal", `schedule-${suffix}@example.com`, `人员排期 ${suffix}`);
   for (const name of ["面霜立项", "精华立项"]) {
     await openItems(page, "项目");
     await createItem(page, name, { roles: ["开发：Pascal"] });

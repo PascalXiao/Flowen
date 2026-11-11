@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, createSpace, importOem, oemSpace, openItems } from "./helpers";
+import { choose, createItem, createSpace, demoSpace, importDemo, openItems } from "./helpers";
 
 test("panorama puts work items from several spaces together, as a table or a chart", async ({ page }) => {
   const suffix = `${Date.now()}`;
   const [a, b] = [`全景甲 ${suffix}`, `全景乙 ${suffix}`];
-  await oemSpace(page, "Pascal", `panorama-${suffix}@example.com`, a);
+  await demoSpace(page, "Pascal", `panorama-${suffix}@example.com`, a);
   await openItems(page, "项目");
   await createItem(page, "面霜立项");
   await page.goto("/");
   await createSpace(page, b);
-  await importOem(page);
+  await importDemo(page);
   await createItem(page, "精华立项");
 
   await page.getByRole("link", { name: "全景视图" }).click();

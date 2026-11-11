@@ -20,7 +20,7 @@ import { WebhooksCard } from "@/components/WebhooksCard";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
 import { AutomationsPanel } from "@/pages/AutomationsPage";
-import { ImportOem } from "@/pages/SpacePage";
+import { ImportDemo } from "@/pages/SpacePage";
 
 const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
 
@@ -224,7 +224,7 @@ function MembersCard({ space, canManage }: { space: Space; canManage: boolean })
   );
 }
 
-/** 空间里的工作项：卡片列表，点进去是全屏的配置页。管理员可以新建工作项类型、导入 OEM 演示。 */
+/** 空间里的工作项：卡片列表，点进去是全屏的配置页。管理员可以新建工作项类型、导入示例流程。 */
 function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
   const zero = useZero();
   const [error, setError] = useState<string | null>(null);
@@ -292,7 +292,7 @@ function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
         ) : (
           <div className="flex flex-col items-start gap-2 text-sm text-fg-muted">
             还没有工作项。
-            {canManage && <ImportOem spaceId={space.id} />}
+            {canManage && <ImportDemo spaceId={space.id} />}
           </div>
         )}
         {canManage && (

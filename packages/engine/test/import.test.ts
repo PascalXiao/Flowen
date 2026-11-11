@@ -9,8 +9,8 @@ const ctx: ImportContext = {
       name: "品牌",
       dataType: "select",
       options: [
-        { value: "kim", label: "KIMTRUE" },
-        { value: "oc", label: "ONCUR" },
+        { value: "kim", label: "星河" },
+        { value: "oc", label: "远山" },
       ],
     },
     { key: "launch", name: "上市日期", dataType: "date", required: true },
@@ -32,8 +32,8 @@ const ctx: ImportContext = {
     { key: "audit", name: "审核", config: { appear: { mode: "hidden" } } },
   ],
   flows: [
-    { id: "t1", name: "OEM" },
-    { id: "t2", name: "ODM" },
+    { id: "t1", name: "标准" },
+    { id: "t2", name: "快速" },
   ],
   members: [
     { userId: "u1", name: "Pascal" },
@@ -75,9 +75,9 @@ describe("import from a sheet", () => {
     const headers = ["名称", "流程类型", "品牌", "上市日期", "预算", "对接人", "开发"];
     const rows = planImport(
       [
-        ["面霜立项", "ODM", "KIMTRUE", "2027-03-01", "1,200", "Lin", "Lin、Pascal"],
+        ["面霜立项", "快速", "星河", "2027-03-01", "1,200", "Lin", "Lin、Pascal"],
         ["", "", "", "", "", "", ""],
-        ["精华立项", "", "ONCUR", "2027-04-01", "", "", ""],
+        ["精华立项", "", "远山", "2027-04-01", "", "", ""],
       ],
       guessTargets(headers, ctx),
       ctx,

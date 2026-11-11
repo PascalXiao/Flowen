@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { oemSpace, openItems } from "./helpers";
+import { demoSpace, openItems } from "./helpers";
 
 test("create several items in a row, then step through them in the drawer", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `drawer-${suffix}@example.com`, `抽屉 ${suffix}`);
+  await demoSpace(page, "Pascal", `drawer-${suffix}@example.com`, `抽屉 ${suffix}`);
   await openItems(page);
 
   // 连续新建：建完留在表单里，名称清空

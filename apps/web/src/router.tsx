@@ -22,7 +22,7 @@ const rootRoute = createRootRoute({ component: Outlet });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginPage });
 
-/** 不需要登录的引擎演示页：纯前端点着走 OEM 流程。 */
+/** 不需要登录的引擎演示页：纯前端点着走 示例流程。 */
 const demoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/demo", component: FlowDemo });
 
 /** 需要登录的部分：没登录跳到登录页；登录后挂上 Zero。 */

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { schema } from "@fp/db";
 import { createTestDatabase } from "@fp/db/testing";
-import { dayInTimeZone, dayToIso, type FlowDefinition, oemV289 } from "@fp/engine";
+import { dayInTimeZone, dayToIso, demoSample, type FlowDefinition } from "@fp/engine";
 import {
   cascadeDependencies,
   cascadeSubItems,
@@ -18,7 +18,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp, createServices, type Services } from "../src/app.ts";
 import type { Dashboard } from "../src/dashboard.ts";
-import { importOemTemplate } from "../src/seed/oem.ts";
+import { importDemoTemplate } from "../src/seed/demo.ts";
 
 let services: Services;
 let app: ReturnType<typeof createApp>;
@@ -61,7 +61,7 @@ describe("login + Zero mutators", () => {
   });
 
   it("space.create makes the creator an admin member", async () => {
-    await services.zero.run("space.create", { id: spaceId, name: "oemtest" }, owner.userId);
+    await services.zero.run("space.create", { id: spaceId, name: "测试空间" }, owner.userId);
     const [member] = await services.database.db
       .select()
       .from(schema.spaceMember)
@@ -75,8 +75,8 @@ describe("login + Zero mutators", () => {
     await db.insert(schema.fieldDef).values({
       id: `${spaceId}-f`,
       typeId: `${spaceId}-t`,
-      key: "needConceptTest",
-      name: "是否需要概念测试",
+      key: "needResearch",
+      name: "是否需要用户调研",
       dataType: "select",
       options: [
         { value: "是", label: "是" },
@@ -87,23 +87,23 @@ describe("login + Zero mutators", () => {
       id: workItemId,
       spaceId,
       typeId: `${spaceId}-t`,
-      name: "OEM 项目",
+      name: "示例项目",
       createdBy: owner.userId,
     });
 
-    await services.zero.run("fieldValue.set", { workItemId, fieldKey: "needConceptTest", value: "是" }, owner.userId);
-    await services.zero.run("fieldValue.set", { workItemId, fieldKey: "needConceptTest", value: "否" }, owner.userId);
+    await services.zero.run("fieldValue.set", { workItemId, fieldKey: "needResearch", value: "是" }, owner.userId);
+    await services.zero.run("fieldValue.set", { workItemId, fieldKey: "needResearch", value: "否" }, owner.userId);
 
     const [value] = await db
       .select()
       .from(schema.fieldValue)
-      .where(and(eq(schema.fieldValue.workItemId, workItemId), eq(schema.fieldValue.fieldKey, "needConceptTest")));
+      .where(and(eq(schema.fieldValue.workItemId, workItemId), eq(schema.fieldValue.fieldKey, "needResearch")));
     expect(value?.value).toBe("否");
 
     const events = await db.select().from(schema.eventLog).where(eq(schema.eventLog.workItemId, workItemId));
     expect(events.map((e) => [e.kind, e.payload, e.actor])).toEqual([
-      ["fieldChanged", { fieldKey: "needConceptTest", from: null, to: "是" }, owner.userId],
-      ["fieldChanged", { fieldKey: "needConceptTest", from: "是", to: "否" }, owner.userId],
+      ["fieldChanged", { fieldKey: "needResearch", from: null, to: "是" }, owner.userId],
+      ["fieldChanged", { fieldKey: "needResearch", from: "是", to: "否" }, owner.userId],
     ]);
     const outbox = await db.select().from(schema.outbox);
     expect(outbox.map((o) => o.stream)).toEqual([`work_item:${workItemId}`, `work_item:${workItemId}`]);
@@ -133,7 +133,7 @@ describe("login + Zero mutators", () => {
   });
 });
 
-describe("workItem.create with OEM v289", () => {
+describe("workItem.create with 示例流程", () => {
   const spaceId = randomUUID();
   let npd: { cookie: string; userId: string };
   let finance: { cookie: string; userId: string };
@@ -144,12 +144,12 @@ describe("workItem.create with OEM v289", () => {
     npd = await signUp(`npd-${spaceId}@example.com`);
     finance = await signUp(`finance-${spaceId}@example.com`);
     dev = await signUp(`dev-${spaceId}@example.com`);
-    await services.zero.run("space.create", { id: spaceId, name: "OEM 验收" }, npd.userId);
+    await services.zero.run("space.create", { id: spaceId, name: "示例空间" }, npd.userId);
     await services.database.db.insert(schema.spaceMember).values([
       { spaceId, userId: finance.userId },
       { spaceId, userId: dev.userId },
     ]);
-    ({ typeId } = await importOemTemplate(services.database.db, spaceId));
+    ({ typeId } = await importDemoTemplate(services.database.db, spaceId));
   });
 
   async function create(fields: Record<string, string>) {
@@ -176,16 +176,16 @@ describe("workItem.create with OEM v289", () => {
     return { id, item, node: (key: string) => nodes.find((n) => n.nodeKey === key), nodes, events };
   }
 
-  const { F } = oemV289;
+  const { F } = demoSample;
   const fields = {
     [F.needPhaseOut]: "是",
     [F.needLaunchPlan]: "是",
-    [F.needConceptTest]: "否",
+    [F.needResearch]: "否",
     [F.needVideo]: "是",
-    [F.needFiling]: "是",
+    [F.needCert]: "是",
   };
 
-  it("completes the start node, opens 需求立项提案 for its three owners and sets the stage", async () => {
+  it("completes the start node, opens 立项提案 for its three owners and sets the stage", async () => {
     const { item, node, nodes, events } = await create(fields);
     expect(item).toMatchObject({ stage: "概念阶段", status: "inProgress", createdBy: npd.userId });
     expect(nodes).toHaveLength(48);
@@ -237,8 +237,8 @@ describe("workItem.create with OEM v289", () => {
     };
   }
 
-  it("needs all three owners to confirm 需求立项提案, then starts 财务分析", async () => {
-    const { id } = await create({ ...fields, [F.linkedSku]: "SKU-001" });
+  it("needs all three owners to confirm 立项提案, then starts 财务分析", async () => {
+    const { id } = await create({ ...fields, [F.linkedModel]: "SKU-001" });
     const confirm = (userId: string) => services.zero.run("node.confirm", { workItemId: id, nodeKey: "doing" }, userId);
 
     await confirm(npd.userId);
@@ -273,8 +273,8 @@ describe("workItem.create with OEM v289", () => {
     expect((await reload(id)).events).toHaveLength(before);
   });
 
-  it("rolls back to 需求立项提案: clears its confirmations and reopens it, later nodes go back to not started", async () => {
-    const { id } = await create({ ...fields, [F.linkedSku]: "SKU-001" });
+  it("rolls back to 立项提案: clears its confirmations and reopens it, later nodes go back to not started", async () => {
+    const { id } = await create({ ...fields, [F.linkedModel]: "SKU-001" });
     for (const u of [npd, finance, dev])
       await services.zero.run("node.confirm", { workItemId: id, nodeKey: "doing" }, u.userId);
 
@@ -287,11 +287,11 @@ describe("workItem.create with OEM v289", () => {
   });
 
   it("changing a role re-assigns the open nodes it owns and drops the replaced owner's confirmation", async () => {
-    const { id } = await create({ ...fields, [F.linkedSku]: "SKU-001" });
+    const { id } = await create({ ...fields, [F.linkedModel]: "SKU-001" });
     await services.zero.run("node.confirm", { workItemId: id, nodeKey: "doing" }, finance.userId);
     await services.zero.run("node.confirm", { workItemId: id, nodeKey: "doing" }, dev.userId);
 
-    // 开发换成 NPD 本人：需求立项提案的负责人变成 NPD 和财务，开发的确认作废
+    // 开发换成 NPD 本人：立项提案的负责人变成 NPD 和财务，开发的确认作废
     await services.zero.run("role.set", { workItemId: id, roleKey: "开发", userIds: [npd.userId] }, npd.userId);
     const now = await reload(id);
     expect(now.node("doing")?.owners).toEqual([npd.userId, finance.userId]);
@@ -314,7 +314,7 @@ describe("workItem.create with OEM v289", () => {
   });
 
   it("plans every node on create and re-plans downstream when a node's dates are set by hand", async () => {
-    const { id } = await create({ ...fields, [F.linkedSku]: "SKU-001" });
+    const { id } = await create({ ...fields, [F.linkedModel]: "SKU-001" });
     const day = (ms: Date | null | undefined) => (ms ? ms.toISOString().slice(0, 10) : null);
     let now = await reload(id);
     const today = dayToIso(dayInTimeZone(Date.now(), "Asia/Shanghai"));
@@ -322,7 +322,7 @@ describe("workItem.create with OEM v289", () => {
     const financeStart = now.node("state_51")?.plannedStart as Date;
     expect(financeStart.getTime()).toBeGreaterThan((now.node("doing")?.plannedEnd as Date).getTime());
 
-    // 需求立项提案手动定到 12 月，后面的财务分析跟着顺延到它之后的第一个工作日
+    // 立项提案手动定到 12 月，后面的财务分析跟着顺延到它之后的第一个工作日
     await services.zero.run(
       "node.setPlan",
       { workItemId: id, nodeKey: "doing", start: "2026-12-01", end: "2026-12-04" },
@@ -355,7 +355,7 @@ describe("workItem.create with OEM v289", () => {
   });
 
   it("re-plans the space's work items when the admin changes the work calendar", async () => {
-    const { id } = await create({ ...fields, [F.linkedSku]: "SKU-002" });
+    const { id } = await create({ ...fields, [F.linkedModel]: "SKU-002" });
     const day = (ms: Date | null | undefined) => (ms ? ms.toISOString().slice(0, 10) : null);
     await services.zero.run(
       "node.setPlan",
@@ -517,18 +517,18 @@ describe("POST /api/spaces/:spaceId/members", () => {
   });
 });
 
-describe("POST /api/spaces/:spaceId/import-oem", () => {
+describe("POST /api/spaces/:spaceId/import-demo", () => {
   it("lets the space admin import once and refuses everyone else", async () => {
     const spaceId = randomUUID();
     const admin = await signUp(`admin-${spaceId}@example.com`);
     const other = await signUp(`other-${spaceId}@example.com`);
     await services.zero.run("space.create", { id: spaceId, name: "演示" }, admin.userId);
-    const url = `/api/spaces/${spaceId}/import-oem`;
+    const url = `/api/spaces/${spaceId}/import-demo`;
 
     expect((await app.request(url, { method: "POST", headers: { cookie: other.cookie } })).status).toBe(403);
     const ok = await app.request(url, { method: "POST", headers: { cookie: admin.cookie } });
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ typeId: `${spaceId}/project`, templateId: `${spaceId}/project/oem` });
+    expect(await ok.json()).toEqual({ typeId: `${spaceId}/project`, templateId: `${spaceId}/project/standard` });
     expect((await app.request(url, { method: "POST", headers: { cookie: admin.cookie } })).status).toBe(409);
   });
 });
@@ -659,14 +659,14 @@ describe("automation rules", () => {
   let admin: { cookie: string; userId: string };
   let member: { cookie: string; userId: string };
   let typeId: string;
-  const { F } = oemV289;
+  const { F } = demoSample;
 
   beforeAll(async () => {
     admin = await signUp(`auto-admin-${spaceId}@example.com`);
     member = await signUp(`auto-member-${spaceId}@example.com`);
     await services.zero.run("space.create", { id: spaceId, name: "自动化" }, admin.userId);
     await services.database.db.insert(schema.spaceMember).values({ spaceId, userId: member.userId });
-    ({ typeId } = await importOemTemplate(services.database.db, spaceId));
+    ({ typeId } = await importDemoTemplate(services.database.db, spaceId));
   });
 
   async function createItem() {
@@ -693,7 +693,7 @@ describe("automation rules", () => {
       spaceId,
       name: "x",
       trigger: { kind: "workItemCreated" },
-      actions: [{ type: "setField", field: F.linkedSku, value: "A" }],
+      actions: [{ type: "setField", field: F.linkedModel, value: "A" }],
     };
     await expect(services.zero.run("automation.create", rule, member.userId)).rejects.toThrow("管理员");
     await expect(services.zero.run("automation.create", { ...rule, actions: [] }, admin.userId)).rejects.toThrow(
@@ -708,10 +708,10 @@ describe("automation rules", () => {
       {
         id: ruleId,
         spaceId,
-        name: "需求立项提案开始时填 SKU",
+        name: "立项提案开始时填 SKU",
         trigger: { kind: "nodeStarted", typeId, node: "doing" },
         condition: { kind: "equal", field: F.needPhaseOut, value: "是" },
-        actions: [{ type: "setField", field: F.linkedSku, value: "SKU-AUTO" }],
+        actions: [{ type: "setField", field: F.linkedModel, value: "SKU-AUTO" }],
       },
       admin.userId,
     );
@@ -728,7 +728,7 @@ describe("automation rules", () => {
     const [value] = await services.database.db
       .select()
       .from(schema.fieldValue)
-      .where(and(eq(schema.fieldValue.workItemId, id), eq(schema.fieldValue.fieldKey, F.linkedSku)));
+      .where(and(eq(schema.fieldValue.workItemId, id), eq(schema.fieldValue.fieldKey, F.linkedModel)));
     expect(value?.value).toBe("SKU-AUTO");
 
     const changed = (await eventsOf(id)).at(-1);
@@ -745,10 +745,10 @@ describe("automation rules", () => {
       "automation.update",
       {
         id: ruleId,
-        name: "需求立项提案开始时填 SKU",
+        name: "立项提案开始时填 SKU",
         enabled: false,
         trigger: { kind: "nodeStarted", typeId, node: "doing" },
-        actions: [{ type: "setField", field: F.linkedSku, value: "SKU-AUTO" }],
+        actions: [{ type: "setField", field: F.linkedModel, value: "SKU-AUTO" }],
       },
       admin.userId,
     );
@@ -765,7 +765,7 @@ describe("automation rules", () => {
         name: "创建后填 SKU 并完成财务分析",
         trigger: { kind: "workItemCreated" },
         actions: [
-          { type: "setField", field: F.linkedSku, value: "SKU-ROLLBACK" },
+          { type: "setField", field: F.linkedModel, value: "SKU-ROLLBACK" },
           { type: "confirmNode", node: "state_51" },
         ],
       },
@@ -782,7 +782,7 @@ describe("automation rules", () => {
     const values = await services.database.db
       .select()
       .from(schema.fieldValue)
-      .where(and(eq(schema.fieldValue.workItemId, id), eq(schema.fieldValue.fieldKey, F.linkedSku)));
+      .where(and(eq(schema.fieldValue.workItemId, id), eq(schema.fieldValue.fieldKey, F.linkedModel)));
     expect(values).toEqual([]);
 
     await services.zero.run("automation.delete", { id: ruleId }, admin.userId);
@@ -907,7 +907,7 @@ describe("timed automation and branches", () => {
   const spaceId = randomUUID();
   let admin: { cookie: string; userId: string };
   let typeId: string;
-  const { F } = oemV289;
+  const { F } = demoSample;
   // 2020-01-07 09:00（上海）。固定在过去：新建工作项的节点默认排期从今天算，
   // 如果时钟用的日子贴近今天，别的工作项的默认计划完成日会碰巧命中到期规则。
   const nine = Date.parse("2020-01-07T01:00:00Z");
@@ -915,7 +915,7 @@ describe("timed automation and branches", () => {
   beforeAll(async () => {
     admin = await signUp(`timed-${spaceId}@example.com`);
     await services.zero.run("space.create", { id: spaceId, name: "定时" }, admin.userId);
-    ({ typeId } = await importOemTemplate(services.database.db, spaceId));
+    ({ typeId } = await importDemoTemplate(services.database.db, spaceId));
   });
 
   async function createItem(name: string, phaseOut = "是") {
@@ -1093,14 +1093,14 @@ describe("comments and notifications", () => {
   let admin: { cookie: string; userId: string };
   let member: { cookie: string; userId: string };
   let itemId: string;
-  const { F } = oemV289;
+  const { F } = demoSample;
 
   beforeAll(async () => {
     admin = await signUp(`note-admin-${spaceId}@example.com`);
     member = await signUp(`note-member-${spaceId}@example.com`);
     await services.zero.run("space.create", { id: spaceId, name: "通知" }, admin.userId);
     await services.database.db.insert(schema.spaceMember).values({ spaceId, userId: member.userId });
-    const { typeId } = await importOemTemplate(services.database.db, spaceId);
+    const { typeId } = await importDemoTemplate(services.database.db, spaceId);
     itemId = randomUUID();
     await services.zero.run(
       "workItem.create",
@@ -1122,7 +1122,7 @@ describe("comments and notifications", () => {
     const started = (await eventsOf()).find((e) => e.kind === "nodeStarted" && e.payload.node === "doing");
     expect(await notify(services.database, started?.id as number)).toBeGreaterThan(0);
     expect(await inbox(member.userId)).toMatchObject([
-      { kind: "nodeAssigned", workItemId: itemId, text: "「新品 N」的节点「需求立项提案」轮到你了", readAt: null },
+      { kind: "nodeAssigned", workItemId: itemId, text: "「新品 N」的节点「立项提案」轮到你了", readAt: null },
     ]);
   });
 
@@ -1243,7 +1243,7 @@ describe("comments and notifications", () => {
     expect(to).not.toContain(admin.userId);
     await notify(services.database, event?.id as number);
     expect((await inbox(member.userId)).filter((n) => n.kind === "nudge").map((n) => n.text)).toEqual([
-      expect.stringContaining("催你处理「新品 N」的节点「需求立项提案」"),
+      expect.stringContaining("催你处理「新品 N」的节点「立项提案」"),
     ]);
     await expect(
       services.zero.run("node.nudge", { workItemId: itemId, nodeKey: "doing" }, admin.userId),

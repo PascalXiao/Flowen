@@ -27,14 +27,14 @@ beforeAll(async () => {
   connection = await Connection.connect({ address: temporalAddress });
   client = new Client({ connection });
   await database.db.insert(schema.user).values({ id: "u1", name: "Pascal", email: "pascal@example.com" });
-  await database.db.insert(schema.space).values({ id: "s1", name: "oemtest" });
+  await database.db.insert(schema.space).values({ id: "s1", name: "测试空间" });
   await database.db.insert(schema.workItemType).values({ id: "t1", spaceId: "s1", key: "project", name: "项目" });
   for (const id of [w1Id, w2Id])
     await database.db.insert(schema.workItem).values({ id, spaceId: "s1", typeId: "t1", name: id, createdBy: "u1" });
   await database.db.insert(schema.automationRule).values({
     id: "r1",
     spaceId: "s1",
-    name: "需求评审进行中时建评审管理",
+    name: "需求评审进行中时建评审",
     trigger: { kind: "nodeStarted" },
     actions: [],
     createdBy: "u1",

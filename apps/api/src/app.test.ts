@@ -1,4 +1,4 @@
-import { oemV289 } from "@fp/engine";
+import { demoSample } from "@fp/engine";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp, createServices } from "./app.ts";
 
@@ -8,12 +8,12 @@ const app = createApp(services);
 afterAll(() => services.database.close());
 
 describe("api", () => {
-  it("validates the OEM flow", async () => {
-    const res = await app.request("/api/flows/validate", { method: "POST", body: JSON.stringify(oemV289.oemFlow) });
+  it("validates the demo flow", async () => {
+    const res = await app.request("/api/flows/validate", { method: "POST", body: JSON.stringify(demoSample.demoFlow) });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { errors: string[]; warnings: string[] };
     expect(body.errors).toEqual([]);
-    expect(body.warnings.some((w) => w.includes("配方成本初步核算"))).toBe(true);
+    expect(body.warnings.some((w) => w.includes("物料成本初步核算"))).toBe(true);
   });
 
   it("rejects a body that is not a flow", async () => {

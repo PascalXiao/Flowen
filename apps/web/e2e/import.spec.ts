@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import {
   choose,
   closeTypeConfig,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -20,7 +20,7 @@ async function xlsx(rows: string[][]): Promise<Buffer> {
 
 test("import work items from Excel with a pre-check", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `import-${suffix}@example.com`, `导入 ${suffix}`);
+  await demoSpace(page, "Pascal", `import-${suffix}@example.com`, `导入 ${suffix}`);
   await openSettings(page);
   await openTypeConfig(page, "项目");
   await typeTab(page, "字段");

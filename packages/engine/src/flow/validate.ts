@@ -67,7 +67,7 @@ export function validateFlow(definition: FlowDefinition): ValidationResult {
 }
 
 /**
- * 节点把阶段改回比它某个前序节点更早的阶段时给出警告（如 OEM 的“配方成本初步核算”）。
+ * 节点把阶段改回比它某个前序节点更早的阶段时给出警告（如示例流程的“物料成本初步核算”）。
  * 阶段先后按它们在流程里第一次出现的顺序推断。
  */
 function stageRegressions(graph: FlowGraph, order: string[]): string[] {

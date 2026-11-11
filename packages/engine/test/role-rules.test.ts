@@ -14,9 +14,9 @@ import {
 } from "../src/index.ts";
 
 const lines = [
-  { id: "kim", name: "KIMTRUE" },
-  { id: "qc", name: "且初", parentId: "kim" },
-  { id: "oncur", name: "ONCUR" },
+  { id: "kim", name: "星河" },
+  { id: "qc", name: "晨曦", parentId: "kim" },
+  { id: "oncur", name: "远山" },
 ];
 const lineField = {
   key: "line",
@@ -104,7 +104,7 @@ describe("roles", () => {
 describe("business lines", () => {
   it("validates the tree and works as a cascade field", () => {
     expect(checkBusinessLines(lines)).toBeNull();
-    expect(checkBusinessLines([...lines, { id: "x", name: "且初", parentId: "kim" }])).toContain("重名");
+    expect(checkBusinessLines([...lines, { id: "x", name: "晨曦", parentId: "kim" }])).toContain("重名");
     expect(
       checkBusinessLines([
         { id: "a", name: "A", parentId: "b" },

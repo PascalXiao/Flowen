@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { createItem, oemSpace, openItems } from "./helpers";
+import { createItem, demoSpace, openItems } from "./helpers";
 
 test("export the list to Excel with the shown columns", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `export-${suffix}@example.com`, `导出 ${suffix}`);
+  await demoSpace(page, "Pascal", `export-${suffix}@example.com`, `导出 ${suffix}`);
   for (const name of ["面霜立项", "精华立项"]) {
     await openItems(page, "项目");
     await createItem(page, name);

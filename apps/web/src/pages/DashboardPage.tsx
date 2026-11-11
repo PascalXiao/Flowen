@@ -10,7 +10,7 @@ import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/p
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { MetricChartCard } from "@/pages/MetricsPage";
-import { ImportOem } from "@/pages/SpacePage";
+import { ImportDemo } from "@/pages/SpacePage";
 
 /** 和 apps/api/src/dashboard.ts 的返回值一致。 */
 interface Dashboard {
@@ -102,13 +102,13 @@ export function DashboardPage() {
               title="空间里还没有工作项"
               description={
                 isAdmin
-                  ? "可以导入 OEM v289 作为演示，也可以在空间配置里新建工作项，自己配置角色、字段和流程。"
+                  ? "可以导入 示例流程 作为演示，也可以在空间配置里新建工作项，自己配置角色、字段和流程。"
                   : "请空间管理员先在空间配置里配置工作项。"
               }
               action={
                 isAdmin && (
                   <div className="flex gap-2">
-                    <ImportOem spaceId={spaceId} />
+                    <ImportDemo spaceId={spaceId} />
                     <Button variant="outline" asChild>
                       <Link to="/spaces/$spaceId/setting/$tab" params={{ spaceId, tab: "workObjectSetting" }}>
                         空间配置

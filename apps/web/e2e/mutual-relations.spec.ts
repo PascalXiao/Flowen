@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, createRelation, oemSpace, openItems } from "./helpers";
+import { choose, createItem, createRelation, demoSpace, openItems } from "./helpers";
 
 test("a mutual relation has a field on both work items, editable from either side", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `mutual-${suffix}@example.com`, `互相关联 ${suffix}`);
+  await demoSpace(page, "Pascal", `mutual-${suffix}@example.com`, `互相关联 ${suffix}`);
 
   // 关联「前置项目」，另一端叫「后续项目」，另一端一个项目最多被一个项目当作后续
   await createRelation(page, { from: "项目", to: "项目", name: "前置项目", reverseName: "后续项目" });

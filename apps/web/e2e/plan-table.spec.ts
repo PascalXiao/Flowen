@@ -1,10 +1,10 @@
 import { dayInTimeZone, dayToIso, WorkCalendar } from "@fp/engine";
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace } from "./helpers";
+import { createItem, demoSpace } from "./helpers";
 
 test("plan table: critical path, save a baseline, see the slip after a delay, delete it", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `plan-${suffix}@example.com`, `计划表 ${suffix}`);
+  await demoSpace(page, "Pascal", `plan-${suffix}@example.com`, `计划表 ${suffix}`);
   await createItem(page, "新品 P");
 
   await page.getByRole("region", { name: "流程" }).getByRole("tab", { name: "甘特图" }).click();
@@ -27,11 +27,11 @@ test("plan table: critical path, save a baseline, see the slip after a delay, de
   await expect(toolbar.getByLabel("对比基线")).toContainText("立项");
   await expect(toolbar.getByLabel("整体偏差")).toContainText("持平");
 
-  // 需求立项提案往后推两个月：它和后面的节点比基线晚，整体也晚
+  // 立项提案往后推两个月：它和后面的节点比基线晚，整体也晚
   const calendar = new WorkCalendar();
   const later = calendar.onOrAfter(dayInTimeZone(Date.now(), "Asia/Shanghai") + 60);
-  await row("需求立项提案").getByLabel("计划开始").fill(dayToIso(later));
-  await expect(row("需求立项提案").getByLabel("偏差")).toContainText("晚");
+  await row("立项提案").getByLabel("计划开始").fill(dayToIso(later));
+  await expect(row("立项提案").getByLabel("偏差")).toContainText("晚");
   await expect(toolbar.getByLabel("整体偏差")).toContainText("晚");
 
   // 删除基线：回到不对比

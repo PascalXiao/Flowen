@@ -10,7 +10,7 @@ import { type BlobStore, fileBlobStore } from "./blobs.ts";
 import { config } from "./config.ts";
 import { dashboardRoutes } from "./dashboard.ts";
 import { createOpenApiHandler, OPEN_API_PREFIX } from "./open-api.ts";
-import { importOemTemplate } from "./seed/oem.ts";
+import { importDemoTemplate } from "./seed/demo.ts";
 import { tokenRoutes } from "./tokens.ts";
 import { createZeroHandlers } from "./zero/handlers.ts";
 
@@ -75,17 +75,17 @@ export function createApp({ database, auth, zero, blobs }: Services) {
         if (!id) return c.json({ error: "未登录。" }, 401);
         return c.json(await zero.mutate(c.req.raw, id));
       })
-      // 模板编辑器做好之前，用它把 OEM v289 导入空间作为演示和验收数据。只有空间管理员能调用。
-      .post("/api/spaces/:spaceId/import-oem", async (c) => {
+      // 模板编辑器做好之前，用它把 示例流程 导入空间作为演示和验收数据。只有空间管理员能调用。
+      .post("/api/spaces/:spaceId/import-demo", async (c) => {
         const id = await userID(c.req.raw.headers);
         if (!id) return c.json({ error: "未登录。" }, 401);
         const spaceId = c.req.param("spaceId");
         if (!(await isSpaceAdmin(spaceId, id))) return c.json({ error: "只有空间管理员可以导入模板。" }, 403);
         const existing = await database.db.$count(schema.workItemType, eq(schema.workItemType.spaceId, spaceId));
         if (existing > 0) return c.json({ error: "这个空间已经有工作项类型了。" }, 409);
-        return c.json(await importOemTemplate(database.db, spaceId));
+        return c.json(await importDemoTemplate(database.db, spaceId));
       })
-      // 按邮箱把已注册的用户加进空间，可以指定空间角色（默认成员）。查用户要看全站的用户表，所以不走 Zero（浏览器拿不到别人的邮箱）。
+      // 按邮箱把已注册的用户加进空间，可以指定空间角色（默认成员）。查用户要看全站的用户表，所以不走 Zero（浏览器只同步得到同空间成员的邮箱）。
       .post("/api/spaces/:spaceId/members", async (c) => {
         const id = await userID(c.req.raw.headers);
         if (!id) return c.json({ error: "未登录。" }, 401);

@@ -1,20 +1,20 @@
 import { expect, test } from "@playwright/test";
-import { addMember, createItem, oemSpace, openItems, registerColleague } from "./helpers";
+import { addMember, createItem, demoSpace, openItems, registerColleague } from "./helpers";
 
 test("comment with a mention, and both people get notified", async ({ page, browser }) => {
   const suffix = `${Date.now()}`;
   const linEmail = `lin-comment-${suffix}@example.com`;
   await registerColleague(linEmail, "Lin");
-  await oemSpace(page, "Pascal", `comments-${suffix}@example.com`, `评论 ${suffix}`);
+  await demoSpace(page, "Pascal", `comments-${suffix}@example.com`, `评论 ${suffix}`);
   await addMember(page, linEmail, "Lin");
   await openItems(page);
   await createItem(page, "新品 J");
 
-  // Pascal 是需求立项提案的负责人：worker 处理 nodeStarted 事件后给他发通知
+  // Pascal 是立项提案的负责人：worker 处理 nodeStarted 事件后给他发通知
   const bell = page.getByRole("button", { name: /^通知/ });
   await expect(bell).toHaveAccessibleName(/未读/, { timeout: 30_000 });
   await bell.click();
-  await expect(page.getByRole("list", { name: "通知列表" })).toContainText("「新品 J」的节点「需求立项提案」轮到你了");
+  await expect(page.getByRole("list", { name: "通知列表" })).toContainText("「新品 J」的节点「立项提案」轮到你了");
   await page.getByRole("button", { name: "全部已读" }).click();
   await expect(bell).toHaveAccessibleName("通知");
   await bell.click();
@@ -47,7 +47,7 @@ test("comment with a mention, and both people get notified", async ({ page, brow
 
 test("reply in a thread, edit and delete your own comment", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `threads-${suffix}@example.com`, `楼中楼 ${suffix}`);
+  await demoSpace(page, "Pascal", `threads-${suffix}@example.com`, `楼中楼 ${suffix}`);
   await openItems(page);
   await createItem(page, "新品 R");
   const tabs = page.getByRole("tablist", { name: "详情页签" });

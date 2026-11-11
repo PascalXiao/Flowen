@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { addMember, choose, createItem, oemSpace, openItems, registerColleague } from "./helpers";
+import { addMember, choose, createItem, demoSpace, openItems, registerColleague } from "./helpers";
 
 test("filter the work item list and save the filter as a view", async ({ page }) => {
   const suffix = `${Date.now()}`;
   await registerColleague(`lin-view-${suffix}@example.com`, "Lin");
-  await oemSpace(page, "Pascal", `views-${suffix}@example.com`, `视图 ${suffix}`);
+  await demoSpace(page, "Pascal", `views-${suffix}@example.com`, `视图 ${suffix}`);
   await addMember(page, `lin-view-${suffix}@example.com`, "Lin");
   await openItems(page);
 

@@ -1424,7 +1424,7 @@ function StatusPanel({
   );
 }
 
-/** 角色多的类型（如 OEM 有 16 个）默认只显示前几个。 */
+/** 角色多的类型（如示例流程有 16 个）默认只显示前几个。 */
 const ROLES_FOLDED = 5;
 
 const COMPLETION_LABEL: Record<string, string> = {

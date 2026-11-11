@@ -11,9 +11,9 @@
 ## 第一次部署
 
 ```sh
-git clone https://github.com/XiaoMingChengFly/AIToys.git /opt/feishu-project
+# 仓库是私有的，用有权限的账号或部署密钥克隆
+git clone https://github.com/PascalXiao/Flowen.git /opt/feishu-project
 cd /opt/feishu-project
-git checkout feishu-project/engine-skeleton
 
 cp deploy/.env.example deploy/.env
 # 编辑 deploy/.env：填 DOMAIN，三个密钥分别用 openssl rand -hex 32 生成

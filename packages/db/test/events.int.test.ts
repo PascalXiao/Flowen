@@ -10,11 +10,11 @@ let database: Database;
 beforeAll(async () => {
   database = connect(await createTestDatabase("fp_test_db"));
   await database.db.insert(user).values({ id: "u1", name: "Pascal", email: "pascal@example.com" });
-  await database.db.insert(space).values({ id: "s1", name: "oemtest" });
+  await database.db.insert(space).values({ id: "s1", name: "测试空间" });
   await database.db.insert(workItemType).values({ id: "t1", spaceId: "s1", key: "project", name: "项目" });
   await database.db
     .insert(workItem)
-    .values({ id: "w1", spaceId: "s1", typeId: "t1", name: "OEM 项目", createdBy: "u1" });
+    .values({ id: "w1", spaceId: "s1", typeId: "t1", name: "示例项目", createdBy: "u1" });
 });
 
 afterAll(() => database?.close());
