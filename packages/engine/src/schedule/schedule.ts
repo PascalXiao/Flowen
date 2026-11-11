@@ -1,5 +1,5 @@
 import type { FlowGraph, NodeDefinition } from "../flow/definition.ts";
-import type { NodeState } from "../flow/state.ts";
+import type { InstanceDependency, NodeState } from "../flow/state.ts";
 import type { Day, WorkCalendar } from "./calendar.ts";
 
 export interface Span {
@@ -21,7 +21,12 @@ export interface ScheduleInput {
   /** 第一个节点最早的开始日期，通常是工作项创建那天。 */
   start: Day;
   nodes: Readonly<Record<string, ScheduleNodeInput>>;
+  /** 工作项上加的依赖（只算本工作项里的节点）。 */
+  dependencies?: InstanceDependencies;
 }
+
+/** 工作项上加的依赖，按等待的节点分组。 */
+export type InstanceDependencies = Readonly<Record<string, readonly InstanceDependency[]>>;
 
 /**
  * 排期上的先后约束：FS 前一个结束后再过 lag 个工作日开始（连线和「完成后开始」都是 lag 0），
@@ -34,8 +39,11 @@ export interface ScheduleLink {
   lag: number;
 }
 
-/** 连线、依赖和排期规则合在一起的排期约束。指向不存在节点的跳过。 */
-export function scheduleLinks(graph: FlowGraph): ScheduleLink[] {
+/**
+ * 连线、依赖和排期规则合在一起的排期约束。指向不存在节点的跳过。
+ * 工作项上加的依赖里，等本工作项节点的也算；等别的工作项的不影响排期。
+ */
+export function scheduleLinks(graph: FlowGraph, dependencies?: InstanceDependencies): ScheduleLink[] {
   const links: ScheduleLink[] = graph.definition.edges.map((e) => ({ from: e.from, to: e.to, type: "FS", lag: 0 }));
   for (const node of graph.nodes) {
     for (const d of node.dependsOn ?? [])
@@ -44,6 +52,9 @@ export function scheduleLinks(graph: FlowGraph): ScheduleLink[] {
     for (const r of node.scheduleRules ?? [])
       if (graph.has(r.node) && r.node !== node.key)
         links.push({ from: r.node, to: node.key, type: r.edge === "end" ? "FS" : "SS", lag: Math.trunc(r.offset) });
+    for (const d of dependencies?.[node.key] ?? [])
+      if ("node" in d && graph.has(d.node) && d.node !== node.key)
+        links.push({ from: d.node, to: node.key, type: d.allow === "start" ? "FS" : "FF", lag: 0 });
   }
   return links;
 }
@@ -99,7 +110,7 @@ export function schedule(graph: FlowGraph, calendar: WorkCalendar, input: Schedu
   const result: Record<string, Span | null> = {};
   /** 节点对后续节点而言的结束日；没有前序的节点以 start 的前一天作为“前序结束”。 */
   const finish = new Map<string, Day>();
-  const links = scheduleLinks(graph);
+  const links = scheduleLinks(graph, input.dependencies);
   const incoming = new Map<string, ScheduleLink[]>();
   for (const l of links) incoming.set(l.to, [...(incoming.get(l.to) ?? []), l]);
 

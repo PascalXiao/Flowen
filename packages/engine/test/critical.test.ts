@@ -165,6 +165,23 @@ describe("dependencies and schedule rules", () => {
     expect(iso(spans.b)).toBe("2026-10-27..2026-10-27");
   });
 
+  it("a dependency added on the work item schedules like one from the template", () => {
+    // 工作项上加：c 要等 a 完成才能开始 → c 排在 a 后面；等别的工作项的不影响排期
+    const graph = withLinks(() => {});
+    const dependencies = {
+      c: [
+        { allow: "start" as const, node: "a" },
+        { allow: "start" as const, waiting: "新品 B · 采购" },
+      ],
+    };
+    const spans = schedule(graph, calendar, { start: d("2026-10-21"), nodes: all, dependencies });
+    expect(iso(spans.c)).toBe("2026-10-23..2026-10-27");
+    const states: Record<string, NodeState> = Object.fromEntries(Object.keys(all).map((k) => [k, "notStarted"]));
+    const r = criticalPath(graph, calendar, { spans, states, milestones: new Set(["start", "end"]), dependencies });
+    expect([...r.critical].sort()).toEqual(["a", "c", "end", "start"]);
+    expect(r.float.b).toBe(2);
+  });
+
   it("validation rejects a dependency on a later node and a waiting loop", () => {
     const later = withLinks((g) => {
       node(g, "a").dependsOn = [{ node: "b", allow: "start" }];

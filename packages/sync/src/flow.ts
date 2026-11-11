@@ -9,6 +9,7 @@ import {
   defaultRoleMembers,
   FlowEngine,
   type FlowEvent,
+  type InstanceDependency,
   nodeFlowOf,
   normalizeFieldValue,
   resolveOwners,
@@ -94,12 +95,43 @@ async function loadFlow(tx: Transaction, workItemId: string, userID: string): Pr
       .related("fieldValues")
       .related("nodes", (n) => n.related("confirmations"))
       .related("roleMembers", (r) => r.where("userId", userID))
+      .related("dependencies", (d) => d.related("target", (t) => t.related("workItem")))
       .one(),
   );
   if (!item) throw new Error("工作项不存在或没有权限。");
   const { isAdmin } = await requireWriter(tx, item.spaceId, userID);
   const definition = nodeFlowOf(item.flowVersion?.definition);
   if (!definition) return null;
+
+  // 工作项上加的依赖：本工作项里的交给引擎按节点状态判断；别的工作项里的只留还没完成的
+  const dependencies: Record<string, InstanceDependency[]> = {};
+  const others = item.dependencies.flatMap((d) =>
+    d.target && d.target.workItemId !== workItemId ? [d.target.workItemId] : [],
+  );
+  // 对方工作项的名称只给看得到它的人
+  const visible =
+    others.length > 0
+      ? new Map((await tx.run(zql.workItem.where("id", "IN", others).where(itemVisible(userID)))).map((w) => [w.id, w]))
+      : new Map<string, { name: string }>();
+  for (const d of item.dependencies) {
+    const target = d.target;
+    // 对方节点没同步到浏览器时先不拦，服务端再判断
+    if (!target) continue;
+    let dependency: InstanceDependency;
+    if (target.workItemId === workItemId) dependency = { allow: d.allow, node: target.nodeKey };
+    else {
+      const other = target.workItem;
+      const settled =
+        target.state === "completed" ||
+        target.state === "skipped" ||
+        other?.status === "terminated" ||
+        other?.deletedAt != null;
+      if (settled) continue;
+      const name = visible.get(target.workItemId)?.name;
+      dependency = { allow: d.allow, waiting: name ? `${name} · ${d.targetNodeName}` : d.targetNodeName };
+    }
+    dependencies[d.nodeKey] = [...(dependencies[d.nodeKey] ?? []), dependency];
+  }
   const timeZone = item.space?.timezone ?? "Asia/Shanghai";
   const toDay = (ms: number | null | undefined) => (ms == null ? null : dayFromDate(ms));
 
@@ -120,6 +152,7 @@ async function loadFlow(tx: Transaction, workItemId: string, userID: string): Pr
         },
       ]),
     ),
+    dependencies,
   };
   return {
     workItemId,
@@ -251,7 +284,7 @@ async function applyAssignments(tx: Transaction, flow: LoadedFlow, events: FlowE
 }
 
 /** 确认、回滚前的共同检查。 */
-async function loadForAction(tx: Transaction, workItemId: string, userID: string): Promise<LoadedFlow> {
+export async function loadForAction(tx: Transaction, workItemId: string, userID: string): Promise<LoadedFlow> {
   const flow = await loadFlow(tx, workItemId, userID);
   if (!flow) throw new Error("这个工作项没有节点流程。");
   if (flow.terminated) throw new Error("工作项已终止。");

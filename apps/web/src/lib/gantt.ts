@@ -3,6 +3,7 @@ import {
   dayInTimeZone,
   durationOf,
   type FlowGraph,
+  type InstanceDependencies,
   linkOrder,
   type NodeState,
   scheduleLinks,
@@ -28,13 +29,21 @@ export interface PlannedNode {
 export function nodeGanttRows(
   graph: FlowGraph,
   nodes: readonly PlannedNode[],
-  options: { timeZone: string; canPlan: (node: PlannedNode) => boolean; keyPrefix?: string; depth?: number },
+  options: {
+    timeZone: string;
+    canPlan: (node: PlannedNode) => boolean;
+    keyPrefix?: string;
+    depth?: number;
+    /** 工作项上加的依赖：影响行的顺序，也画成连线。 */
+    dependencies?: InstanceDependencies;
+  },
 ): { rows: GanttRow[]; deps: { from: string; to: string }[] } {
   const prefix = options.keyPrefix ?? "";
   const byKey = new Map(nodes.map((n) => [n.nodeKey, n]));
   const localDay = (ms: number | null | undefined) => (ms == null ? null : dayInTimeZone(ms, options.timeZone));
   const rows: GanttRow[] = [];
-  for (const key of linkOrder(graph, scheduleLinks(graph))) {
+  const links = scheduleLinks(graph, options.dependencies);
+  for (const key of linkOrder(graph, links)) {
     const n = byKey.get(key);
     if (!n || n.state === "skipped" || n.plannedStart == null || n.plannedEnd == null) continue;
     rows.push({
@@ -54,7 +63,7 @@ export function nodeGanttRows(
   const shown = new Set(rows.map((r) => r.key));
   // 连线加上依赖和排期规则
   const seen = new Set<string>();
-  const deps = scheduleLinks(graph)
+  const deps = links
     .map((e) => ({ from: prefix + e.from, to: prefix + e.to }))
     .filter((e) => {
       const id = `${e.from}>${e.to}`;

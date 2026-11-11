@@ -1,5 +1,6 @@
 import type { Database } from "@fp/db";
 import {
+  cascadeDependencies,
   cascadeSubItems,
   createMutatorRunner,
   type DeliverOptions,
@@ -35,12 +36,13 @@ export function createActivities(
 
   return {
     /**
-     * 处理一条事件：生成通知，推进子工作项驱动的父节点，找出它触发的自动化规则和要推送的 Webhook。
+     * 处理一条事件：生成通知，推进子工作项驱动的父节点，放行在等这个节点的别的工作项，找出它触发的自动化规则和要推送的 Webhook。
      * 每步都可以安全重试。
      */
     async processEvent(eventId: number): Promise<ProcessEventResult> {
       await notify(database, eventId);
       await cascadeSubItems(runner, eventId);
+      await cascadeDependencies(runner, eventId);
       return {
         eventId,
         matchedRuleIds: await matchRules(database, eventId),

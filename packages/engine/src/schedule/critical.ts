@@ -1,7 +1,7 @@
 import type { FlowGraph } from "../flow/definition.ts";
 import type { NodeState } from "../flow/state.ts";
 import type { Day, WorkCalendar } from "./calendar.ts";
-import { linkOrder, type ScheduleLink, type Span, scheduleLinks } from "./schedule.ts";
+import { type InstanceDependencies, linkOrder, type ScheduleLink, type Span, scheduleLinks } from "./schedule.ts";
 
 /** 从 a 到 b 差几个工作日：b 在 a 之后为正，之前为负，同一天或中间没有工作日为 0。 */
 export function workdayDelta(calendar: WorkCalendar, a: Day, b: Day): number {
@@ -18,6 +18,8 @@ export interface FloatInput {
   milestones?: ReadonlySet<string>;
   /** 整个计划要守住的结束日（如上市日）。不传时取计划里最晚的结束日。 */
   deadline?: Day | null;
+  /** 工作项上加的依赖，和排期时传的一样。 */
+  dependencies?: InstanceDependencies;
 }
 
 export interface FloatResult {
@@ -53,7 +55,7 @@ export function criticalPath(graph: FlowGraph, calendar: WorkCalendar, input: Fl
   if (end == null) return { end, float, critical };
   const finish = input.deadline ?? end;
 
-  const links = scheduleLinks(graph);
+  const links = scheduleLinks(graph, input.dependencies);
   const outgoing = new Map<string, ScheduleLink[]>();
   for (const l of links) outgoing.set(l.from, [...(outgoing.get(l.from) ?? []), l]);
   /** 节点的「完成后开始」前序最晚什么时候必须结束。 */

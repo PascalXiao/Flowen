@@ -120,6 +120,12 @@ export function describeEvent(kind: string, p: Payload, ctx: ActivityContext): s
       return `上传了附件「${str(p.name)}」`;
     case "attachmentRemoved":
       return `删除了附件「${str(p.name)}」`;
+    case "dependencyAdded": {
+      const target = `${p.targetItemName ? `${str(p.targetItemName)} · ` : ""}${str(p.targetNode)}`;
+      return `给${node()}加了依赖：要等「${target}」完成才能${p.allow === "start" ? "开始" : "完成"}`;
+    }
+    case "dependencyRemoved":
+      return `删除了${node()}对「${str(p.targetNode)}」的依赖`;
     case "baselineSaved":
       return `存了计划基线「${str(p.name)}」`;
     case "baselineDeleted":
