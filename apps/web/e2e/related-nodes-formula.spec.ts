@@ -28,7 +28,7 @@ test("a formula reads the flow type and node state of related work items", async
     await expect(page.getByRole("list", { name: "工作项类型" })).toContainText(name);
   }
 
-  // 资料：角色「开发」，流程 开始 → 产品手册（开发负责）
+  // 资料：角色「开发」，流程 开始 → 用户手册（开发负责）
   await openTypeConfig(page, "资料");
   await typeTab(page, "角色");
   await page.getByLabel("新角色名称").fill("开发");
@@ -41,13 +41,13 @@ test("a formula reads the flow type and node state of related work items", async
   const editor = page.getByRole("main");
   await node("开始").click();
   await page.getByRole("button", { name: "添加节点" }).click();
-  await editor.getByLabel("节点名称").fill("产品手册");
+  await editor.getByLabel("节点名称").fill("用户手册");
   await editor.getByLabel("开发", { exact: true }).check();
   await page.getByRole("button", { name: "发布" }).click();
   await expect(page.getByText("v1 已发布（当前版本）")).toBeVisible();
   await closeTypeConfig(page);
 
-  // 总项：状态流默认流程，加一个公式字段看关联资料里「产品手册」节点有没有完成
+  // 总项：状态流默认流程，加一个公式字段看关联资料里「用户手册」节点有没有完成
   await openTypeConfig(page, "总项");
   await typeTab(page, "流程");
   await page.getByLabel("新模板名称").fill("默认");
@@ -62,7 +62,7 @@ test("a formula reads the flow type and node state of related work items", async
   await page
     .getByLabel("公式", { exact: true })
     .fill(
-      'IF(COUNTIF(FILTER(RELATED("关联资料").节点, each.名称 = "产品手册"), each.状态 = "completed") > 0, "是", "否")',
+      'IF(COUNTIF(FILTER(RELATED("关联资料").节点, each.名称 = "用户手册"), each.状态 = "completed") > 0, "是", "否")',
     );
   await page.getByRole("button", { name: "添加字段" }).click();
   await expect(page.getByRole("cell", { name: "手册是否完成", exact: true })).toBeVisible();
@@ -79,12 +79,12 @@ test("a formula reads the flow type and node state of related work items", async
   const flag = page.getByRole("region", { name: "字段" }).getByLabel("手册是否完成");
   await expect(flag).toHaveValue("否");
 
-  // 资料 A 的「产品手册」节点完成后，总项 A 的公式变成「是」
+  // 资料 A 的「用户手册」节点完成后，总项 A 的公式变成「是」
   await openItems(page, "资料");
   await page.getByRole("link", { name: "资料 A" }).click();
   await page
     .getByRole("main")
-    .getByRole("region", { name: "产品手册" })
+    .getByRole("region", { name: "用户手册" })
     .getByRole("button", { name: "确认完成" })
     .click();
   await expect(page.getByText("流程已走完。")).toBeVisible();

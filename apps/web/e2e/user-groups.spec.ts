@@ -4,7 +4,7 @@ import {
   closeTypeConfig,
   createItem,
   createSpace,
-  importOem,
+  importDemo,
   openItems,
   openSettings,
   openTypeConfig,
@@ -30,7 +30,7 @@ test("user groups and type permissions decide who sees and creates work items", 
   await registerColleague(wangEmail, "Wang");
   await signUp(page, "Pascal", `groups-${suffix}@example.com`);
   await createSpace(page, `用户组 ${suffix}`);
-  await importOem(page);
+  await importDemo(page);
   await createItem(page, "面霜立项");
   const itemUrl = page.url();
 

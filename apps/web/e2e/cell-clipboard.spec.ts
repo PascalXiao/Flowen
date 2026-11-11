@@ -3,7 +3,7 @@ import {
   choose,
   closeTypeConfig,
   createItem,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -26,7 +26,7 @@ function clipboard(page: Page, kind: "copy" | "paste", text = "") {
 
 test("list cells copy and paste like a spreadsheet", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `clipboard-${suffix}@example.com`, `复制粘贴 ${suffix}`);
+  await demoSpace(page, "Pascal", `clipboard-${suffix}@example.com`, `复制粘贴 ${suffix}`);
   await openSettings(page);
   await openTypeConfig(page, "项目");
   await typeTab(page, "字段");

@@ -100,7 +100,7 @@ export function BusinessLinesCard({
   };
 
   function add() {
-    // 可以一次写一条路径「KIMTRUE/且初」，缺的上级一并建出来
+    // 可以一次写一条路径「星河/晨曦」，缺的上级一并建出来
     const parts = draft
       .split("/")
       .map((p) => p.trim())
@@ -217,7 +217,7 @@ export function BusinessLinesCard({
             <Input
               aria-label="新业务线"
               value={draft}
-              placeholder="新业务线，可写路径：KIMTRUE/且初"
+              placeholder="新业务线，可写路径：星河/晨曦"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {

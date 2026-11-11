@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace, openItems } from "./helpers";
+import { createItem, demoSpace, openItems } from "./helpers";
 
 test("global search finds work items by name and by comment text", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `search-${suffix}@example.com`, `搜索 ${suffix}`);
+  await demoSpace(page, "Pascal", `search-${suffix}@example.com`, `搜索 ${suffix}`);
   await createItem(page, `面霜 ${suffix}`);
   await openItems(page);
   await createItem(page, `精华 ${suffix}`);

@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, createRelation, oemSpace, openItems } from "./helpers";
+import { choose, createItem, createRelation, demoSpace, openItems } from "./helpers";
 
 test("define a relation on a type and link two work items with it", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `relations-${suffix}@example.com`, `关联 ${suffix}`);
+  await demoSpace(page, "Pascal", `relations-${suffix}@example.com`, `关联 ${suffix}`);
 
   // 在“项目”类型上定义“前置项目”：可以关联多个项目
   await createRelation(page, { from: "项目", to: "项目", name: "前置项目" });

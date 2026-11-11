@@ -4,7 +4,7 @@ import {
   closeTypeConfig,
   createItem,
   createSpace,
-  importOem,
+  importDemo,
   openItems,
   openSettings,
   openTypeConfig,
@@ -115,7 +115,7 @@ test("an admin terminates, restores, freezes and unfreezes a work item", async (
   const suffix = `${Date.now()}`;
   await signUp(page, "Pascal", `terminate-${suffix}@example.com`);
   await createSpace(page, `终止冻结 ${suffix}`);
-  await importOem(page);
+  await importDemo(page);
   await openItems(page);
   await createItem(page, "面霜立项");
 

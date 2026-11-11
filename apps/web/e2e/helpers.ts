@@ -30,21 +30,22 @@ export async function createSpace(page: Page, name: string) {
   await page.locator("[role=dialog][aria-modal=true]").getByLabel("空间名称").fill(name);
   await page.locator("[role=dialog][aria-modal=true]").getByRole("button", { name: "创建" }).click();
   await page.getByRole("link", { name }).click();
-  await expect(page.getByRole("button", { name: "导入 OEM 模板" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "导入示例模板" })).toBeVisible();
 }
 
-/** 导入 OEM 模板，等「项目」出现在左侧导航的工作项里。 */
-export async function importOem(page: Page) {
-  await page.getByRole("button", { name: "导入 OEM 模板" }).click();
-  await expect(workItemNav(page).getByRole("link", { name: "项目", exact: true })).toBeVisible();
+/** 导入示例模板，等「项目」出现在左侧导航的工作项里。 */
+export async function importDemo(page: Page) {
+  await page.getByRole("button", { name: "导入示例模板" }).click();
+  // 导入走接口，导航里的新类型要等同步推过来，CI 机器忙时会超过默认的 5 秒
+  await expect(workItemNav(page).getByRole("link", { name: "项目", exact: true })).toBeVisible({ timeout: 30_000 });
   await openItems(page, "项目");
 }
 
-/** 注册、建空间、导入 OEM，一步到位。 */
-export async function oemSpace(page: Page, user: string, email: string, space: string) {
+/** 注册、建空间、导入示例模板，一步到位。 */
+export async function demoSpace(page: Page, user: string, email: string, space: string) {
   await signUp(page, user, email);
   await createSpace(page, space);
-  await importOem(page);
+  await importDemo(page);
 }
 
 /** 打开新建工作项的弹窗，填名称（和可选的角色），创建后停在工作项页。 */
@@ -157,9 +158,13 @@ export async function choose(select: Locator, option: string | { label: string }
     typeof option === "string"
       ? options.filter({ has: page.locator(`[data-value="${option}"]`) }).or(options.filter({ hasText: exact(option) }))
       : options.filter({ hasText: exact(option.label) });
-  await target.first().click();
-  // 等下拉收起，选中值才算落定
-  await expect(options).toHaveCount(0);
+  // 下拉弹出时还在动画、选项还在渲染，偶尔点空，下拉一直开着；没收起就重新点一次（单选，重复点同一项不改变结果）
+  await expect(async () => {
+    if ((await options.count()) === 0) await combobox.click();
+    await target.first().click({ timeout: 3_000 });
+    // 等下拉收起，选中值才算落定
+    await expect(options).toHaveCount(0, { timeout: 3_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** 按 name 找表单里的下拉框。 */

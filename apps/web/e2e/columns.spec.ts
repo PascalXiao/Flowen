@@ -4,7 +4,7 @@ import {
   closeTypeConfig,
   createItem,
   createRelation,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -13,7 +13,7 @@ import {
 
 test("admins set the default columns of a work item list", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `columns-${suffix}@example.com`, `默认列 ${suffix}`);
+  await demoSpace(page, "Pascal", `columns-${suffix}@example.com`, `默认列 ${suffix}`);
 
   // 默认列里有「创建者」「提出时间」
   const grid = page.getByRole("grid");
@@ -47,12 +47,12 @@ test("admins set the default columns of a work item list", async ({ page }) => {
 
 test("role, node and schedule columns show who does what and how a work item is doing", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `role-columns-${suffix}@example.com`, `角色列 ${suffix}`);
+  await demoSpace(page, "Pascal", `role-columns-${suffix}@example.com`, `角色列 ${suffix}`);
   await openSettings(page);
   await openTypeConfig(page, "项目");
   await typeTab(page, "列");
   await page.getByRole("checkbox", { name: "显示列 角色：NPD" }).check();
-  await page.getByRole("checkbox", { name: "显示列 节点：需求立项提案" }).check();
+  await page.getByRole("checkbox", { name: "显示列 节点：立项提案" }).check();
   await page.getByRole("checkbox", { name: "显示列 延期" }).check();
   await page.getByRole("checkbox", { name: "显示列 预计完成" }).check();
   await page.getByRole("button", { name: "保存默认列" }).click();
@@ -63,7 +63,7 @@ test("role, node and schedule columns show who does what and how a work item is 
   await createItem(page, "面霜立项");
   await openItems(page, "项目");
   const grid = page.getByRole("grid");
-  for (const name of ["角色：NPD", "节点：需求立项提案", "延期", "预计完成"])
+  for (const name of ["角色：NPD", "节点：立项提案", "延期", "预计完成"])
     await expect(grid.getByRole("columnheader", { name })).toBeVisible();
   const row = grid.getByRole("row").filter({ hasText: "面霜立项" });
   await expect(row).toContainText("进行中");
@@ -71,7 +71,7 @@ test("role, node and schedule columns show who does what and how a work item is 
 
 test("the list freezes columns, changes row height and sums up columns at the bottom", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `list-summary-${suffix}@example.com`, `汇总行 ${suffix}`);
+  await demoSpace(page, "Pascal", `list-summary-${suffix}@example.com`, `汇总行 ${suffix}`);
   await openItems(page, "项目");
   await createItem(page, "面霜立项");
   await openItems(page, "项目");
@@ -106,7 +106,7 @@ test("the list freezes columns, changes row height and sums up columns at the bo
 
 test("relation columns show linked work items and their fields", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `relation-columns-${suffix}@example.com`, `关联列 ${suffix}`);
+  await demoSpace(page, "Pascal", `relation-columns-${suffix}@example.com`, `关联列 ${suffix}`);
   await createRelation(page, { from: "项目", to: "项目", name: "前置项目", reverseName: "后续项目" });
   await openItems(page, "项目");
   for (const name of ["新品 A", "新品 B"]) {

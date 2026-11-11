@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FlowEngine, FlowGraph, validateFlow, type WorkItemState } from "../src/index.ts";
-import { F, oemFlow, ownersByRole } from "../src/samples/oem-v289.ts";
+import { demoFlow, F, ownersByRole } from "../src/samples/demo-flow.ts";
 
-/** 设计文档「OEM 验收用例清单」里只涉及流程引擎的那几条。 */
-describe("OEM v289", () => {
-  const engine = new FlowEngine(oemFlow);
+/** 设计文档「示例空间用例清单」里只涉及流程引擎的那几条。 */
+describe("示例流程", () => {
+  const engine = new FlowEngine(demoFlow);
   const admin = { userId: "admin", isSuperAdmin: true };
   let fields: Record<string, unknown>;
 
@@ -12,10 +12,10 @@ describe("OEM v289", () => {
     fields = {
       [F.needPhaseOut]: "是",
       [F.needLaunchPlan]: "是",
-      [F.needConceptTest]: "否",
+      [F.needResearch]: "否",
       [F.needVideo]: "是",
-      [F.needFiling]: "是",
-      [F.linkedSku]: "SKU-001",
+      [F.needCert]: "是",
+      [F.linkedModel]: "SKU-001",
     };
   });
 
@@ -51,14 +51,14 @@ describe("OEM v289", () => {
   ];
 
   it("imports 48 nodes, 52 edges, 17 leaves and passes validation", () => {
-    expect(oemFlow.nodes).toHaveLength(48);
-    expect(oemFlow.edges).toHaveLength(52);
-    expect(new FlowGraph(oemFlow).leaves).toHaveLength(17);
-    expect(validateFlow(oemFlow).errors).toEqual([]);
+    expect(demoFlow.nodes).toHaveLength(48);
+    expect(demoFlow.edges).toHaveLength(52);
+    expect(new FlowGraph(demoFlow).leaves).toHaveLength(17);
+    expect(validateFlow(demoFlow).errors).toEqual([]);
   });
 
-  it("flags the stage regression on 配方成本初步核算", () => {
-    expect(validateFlow(oemFlow).warnings).toContainEqual(expect.stringContaining("配方成本初步核算"));
+  it("flags the stage regression on 物料成本初步核算", () => {
+    expect(validateFlow(demoFlow).warnings).toContainEqual(expect.stringContaining("物料成本初步核算"));
   });
 
   it("auto-completes start and waits on the proposal in the concept stage", () => {
@@ -74,10 +74,10 @@ describe("OEM v289", () => {
     engine.confirm(state, "doing", { userId: "财务BP负责人" }, fields);
     expect(at(state, "doing")).toBe("inProgress");
 
-    fields[F.linkedSku] = null;
+    fields[F.linkedModel] = null;
     expect(() => engine.confirm(state, "doing", { userId: "开发" }, fields)).toThrow("流转条件");
 
-    fields[F.linkedSku] = "SKU-001";
+    fields[F.linkedModel] = "SKU-001";
     engine.confirm(state, "doing", { userId: "开发" }, fields);
     expect(at(state, "doing")).toBe("completed");
   });
@@ -96,22 +96,23 @@ describe("OEM v289", () => {
     expect(at(state, "state_2")).toBe("inProgress");
   });
 
-  it("auto-completes 配方锁定 when the field turns Y, and members cannot force it", () => {
+  it("auto-completes 设计冻结 when the field turns Y, and members cannot force it", () => {
     const state = start();
     pass(state, ...throughProjectReview, "state_3", "state_5");
 
-    expect(at(state, "formulalocked")).toBe("inProgress");
-    expect(() => engine.confirm(state, "formulalocked", { userId: "NPD" }, fields)).toThrow("超管");
+    expect(at(state, "design_freeze")).toBe("inProgress");
+    expect(() => engine.confirm(state, "design_freeze", { userId: "NPD" }, fields)).toThrow("超管");
 
-    fields[F.formulaLocked] = "Y";
+    fields[F.designFrozen] = "Y";
     engine.onFieldsChanged(state, fields);
-    expect(at(state, "formulalocked")).toBe("completed");
-    for (const key of ["state_7", "state_9", "wdxtest", "gxtest"]) expect(at(state, key)).toBe("inProgress");
+    expect(at(state, "design_freeze")).toBe("completed");
+    for (const key of ["state_7", "state_9", "reliability_test", "performance_test"])
+      expect(at(state, key)).toBe("inProgress");
   });
 
   it("fans out to five nodes after the launch review", () => {
     const state = start();
-    // 相容性测试、产品成本确认、安评送检没有卡点，到达即自动完成
+    // 兼容性测试、产品成本确认、安规送检没有卡点，到达即自动完成
     pass(state, ...throughProjectReview, "state_16", "state_20", "state_23", "state_26");
 
     for (const key of ["state_27", "state_29", "state_28", "state_30", "state_44"])
@@ -131,7 +132,7 @@ describe("OEM v289", () => {
   });
 
   it("completes the project once every visible leaf is done", () => {
-    fields[F.formulaLocked] = "Y";
+    fields[F.designFrozen] = "Y";
     const state = start();
 
     for (let round = 0; round < 60 && state.status === "inProgress"; round++) {

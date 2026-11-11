@@ -83,12 +83,12 @@ describe("new field types", () => {
 describe("field rules", () => {
   const fields: RuleField[] = [
     { key: "line", name: "业务线", dataType: "cascadeSelect", options: regions },
-    { key: "needFiling", name: "是否需要备案", dataType: "bool" },
+    { key: "needCert", name: "是否需要认证", dataType: "bool" },
     {
       key: "filingNo",
       name: "备案号",
       dataType: "text",
-      config: { validWhen: cond.equal("needFiling", true), requiredWhen: cond.equal("line", "east") },
+      config: { validWhen: cond.equal("needCert", true), requiredWhen: cond.equal("line", "east") },
     },
     { key: "note", name: "备注", dataType: "text", required: true, config: { showWhen: cond.notEmpty("line") } },
   ];
@@ -96,11 +96,11 @@ describe("field rules", () => {
   it("works out valid, visible and required from other fields", () => {
     expect(fieldStates(fields, {}).filingNo).toEqual({ valid: false, visible: false, required: false });
     expect(fieldStates(fields, {}).note).toEqual({ valid: true, visible: false, required: false });
-    const states = fieldStates(fields, { needFiling: true, line: "sh" });
+    const states = fieldStates(fields, { needCert: true, line: "sh" });
     expect(states.filingNo).toEqual({ valid: true, visible: true, required: true });
     expect(states.note?.required).toBe(true);
-    expect(missingRequired(fields, { needFiling: true, line: "sh" }).map((f) => f.key)).toEqual(["filingNo", "note"]);
-    expect(missingRequired(fields, { needFiling: false, line: "north", note: "x" })).toEqual([]);
+    expect(missingRequired(fields, { needCert: true, line: "sh" }).map((f) => f.key)).toEqual(["filingNo", "note"]);
+    expect(missingRequired(fields, { needCert: false, line: "north", note: "x" })).toEqual([]);
   });
 
   it("fills defaults on create, first match or union", () => {
@@ -136,13 +136,13 @@ describe("field rules", () => {
         config: {
           defaultValue: {
             mode: "conditional",
-            rules: [{ when: cond.equal(TEMPLATE_CONDITION_KEY, "GWP礼赠品"), value: true }],
+            rules: [{ when: cond.equal(TEMPLATE_CONDITION_KEY, "赠品"), value: true }],
           },
         },
       },
     ];
-    expect(applyDefaults(fields, { [TEMPLATE_CONDITION_KEY]: "GWP礼赠品" }).needTrial).toBe(true);
-    expect(applyDefaults(fields, { [TEMPLATE_CONDITION_KEY]: "OEM" }).needTrial).toBeUndefined();
+    expect(applyDefaults(fields, { [TEMPLATE_CONDITION_KEY]: "赠品" }).needTrial).toBe(true);
+    expect(applyDefaults(fields, { [TEMPLATE_CONDITION_KEY]: "标准" }).needTrial).toBeUndefined();
   });
 
   it("fills defaults that depend on other defaults, whatever the field order", () => {

@@ -23,16 +23,16 @@
  * ANYOF、ALLOF 里当前的那一项。工作项上除了字段，还有 名称、状态、阶段、流程类型 四个属性，
  * 以及 节点（这个工作项的流程节点列表，每个节点有 名称、状态、结论）：
  *
- *   COUNTIF(RELATED("关联评审管理"), each.流程类型 = "CDCP") > 0         关联的评审里有没有 CDCP 流程的
- *   COUNTIF(FILTER(RELATED("关联产品资料").节点, each.名称 = "产品手册"), each.状态 = "completed") > 0
+ *   COUNTIF(RELATED("关联评审"), each.流程类型 = "概念评审") > 0         关联的评审里有没有 概念评审 流程的
+ *   COUNTIF(FILTER(RELATED("关联资料").节点, each.名称 = "用户手册"), each.状态 = "completed") > 0
  *
  * 节点还有 计划开始、计划结束、实际结束（YYYY-MM-DD）。TEMPLATE()、TYPE() 是本工作项的流程类型和类型名，
  * LIST(a, b, …) 把几个值放成一个列表：JOIN(LIST(RELATED("关联项目").名称, TEMPLATE()), " ")。
  *FIND(列表, 条件) 取第一个满足的项；
  * LEVEL(级联值, n) 取级联选项路径上的第 n 级：
  *
- *   FIND(FILTER(RELATED("关联需求SKU流程").节点, TRUE), each.名称 = "成品到仓").计划结束
- *   FIND(RELATED("关联成本率").{成本率维护}, LEVEL(each.{分类}, 3) = LEVEL({分类}, 3)).{成本率}
+ *   FIND(FILTER(RELATED("关联型号").节点, TRUE), each.名称 = "成品入库").计划结束
+ *   FIND(RELATED("关联费率").{费率维护}, LEVEL(each.{分类}, 3) = LEVEL({分类}, 3)).{费率}
  */
 
 export type FormulaValue = number | string | boolean | null;

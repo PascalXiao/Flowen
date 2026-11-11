@@ -1,20 +1,20 @@
 import {
   type Actor,
+  demoSample,
   FlowEngine,
   FlowError,
   type FlowEvent,
   type NodeState,
-  oemV289,
   type WorkItemState,
 } from "@fp/engine";
 import { Background, Controls, type Edge, MarkerType, type Node, ReactFlow } from "@xyflow/react";
 import { useMemo, useState } from "react";
 import { layoutByDepth } from "./layout.ts";
 
-const engine = new FlowEngine(oemV289.oemFlow);
+const engine = new FlowEngine(demoSample.demoFlow);
 const positions = layoutByDepth(engine.graph);
 const ADMIN: Actor = { userId: "admin", isSuperAdmin: true };
-const F = oemV289.F;
+const F = demoSample.F;
 
 const STATE_STYLE: Record<NodeState, string> = {
   notStarted: "bg-surface border-line text-fg-muted",
@@ -38,23 +38,23 @@ const MODE_LABEL = {
 } as const;
 
 const TOGGLES: { field: string; label: string; on: string; off: string }[] = [
-  { field: F.needPhaseOut, label: "需要迭代老品下市物料风险评估", on: "是", off: "否" },
-  { field: F.needLaunchPlan, label: "需要产品上市计划", on: "是", off: "否" },
-  { field: F.needConceptTest, label: "需要概念测试", on: "是", off: "否" },
-  { field: F.needVideo, label: "需要视频拍摄制作", on: "是", off: "否" },
-  { field: F.needFiling, label: "需要备案", on: "是", off: "否" },
-  { field: F.formulaLocked, label: "配方已锁定", on: "Y", off: "N" },
-  { field: F.linkedSku, label: "已关联需求SKU", on: "SKU-001", off: "" },
+  { field: F.needPhaseOut, label: "需要旧型号退市评估", on: "是", off: "否" },
+  { field: F.needLaunchPlan, label: "需要上市推广计划", on: "是", off: "否" },
+  { field: F.needResearch, label: "需要用户调研", on: "是", off: "否" },
+  { field: F.needVideo, label: "需要宣传视频", on: "是", off: "否" },
+  { field: F.needCert, label: "需要认证", on: "是", off: "否" },
+  { field: F.designFrozen, label: "设计已冻结", on: "Y", off: "N" },
+  { field: F.linkedModel, label: "已关联型号", on: "SKU-001", off: "" },
 ];
 
 const INITIAL_FIELDS: Record<string, unknown> = {
   [F.needPhaseOut]: "是",
   [F.needLaunchPlan]: "否",
-  [F.needConceptTest]: "否",
+  [F.needResearch]: "否",
   [F.needVideo]: "是",
-  [F.needFiling]: "是",
-  [F.formulaLocked]: "N",
-  [F.linkedSku]: "SKU-001",
+  [F.needCert]: "是",
+  [F.designFrozen]: "N",
+  [F.linkedModel]: "SKU-001",
 };
 
 function describe(event: FlowEvent): string {
@@ -86,7 +86,7 @@ function describe(event: FlowEvent): string {
 export function FlowDemo() {
   const [fields, setFields] = useState(INITIAL_FIELDS);
   const [{ state, log }, setRun] = useState(() => {
-    const started = engine.start(INITIAL_FIELDS, oemV289.ownersByRole);
+    const started = engine.start(INITIAL_FIELDS, demoSample.ownersByRole);
     return { state: started.state, log: started.events.map(describe).reverse() };
   });
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +132,7 @@ export function FlowDemo() {
   }
 
   function reset() {
-    const started = engine.start(fields, oemV289.ownersByRole);
+    const started = engine.start(fields, demoSample.ownersByRole);
     setRun({ state: started.state, log: started.events.map(describe).reverse() });
     setError(null);
   }
@@ -167,7 +167,7 @@ export function FlowDemo() {
 
   const edges: Edge[] = useMemo(
     () =>
-      oemV289.oemFlow.edges.map((e) => ({
+      demoSample.demoFlow.edges.map((e) => ({
         id: `${e.from}->${e.to}`,
         source: e.from,
         target: e.to,
@@ -186,7 +186,7 @@ export function FlowDemo() {
     <div className="flex h-screen bg-canvas font-sans text-fg">
       <aside className="flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-r border-line-subtle bg-surface p-5">
         <header>
-          <h1 className="text-lg font-semibold">OEM v289 流程演示</h1>
+          <h1 className="text-lg font-semibold">示例流程演示</h1>
           <p className="mt-1 text-sm text-fg-muted">
             点击蓝色的进行中节点推进一步。左侧开关就是流程裁剪和卡点用到的字段。
           </p>

@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, oemSpace, openAutomations, openItems } from "./helpers";
+import { choose, createItem, demoSpace, openAutomations, openItems } from "./helpers";
 
 test("an automation rule fills a field on new work items through the Temporal worker", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `automation-${suffix}@example.com`, `自动化 ${suffix}`);
+  await demoSpace(page, "Pascal", `automation-${suffix}@example.com`, `自动化 ${suffix}`);
 
-  // 新建规则：工作项创建后，把“关联需求SKU流程”填成 SKU-AUTO
+  // 新建规则：工作项创建后，把“关联型号”填成 SKU-AUTO
   await openAutomations(page);
   await expect(page.getByText("还没有自动化规则。")).toBeVisible();
   await page.getByLabel("规则名称").fill("创建后填 SKU");
@@ -13,16 +13,16 @@ test("an automation rule fills a field on new work items through the Temporal wo
   await page.getByRole("button", { name: "添加动作" }).click();
   const action = page.getByRole("group", { name: "动作 1" });
   await choose(action.getByLabel("动作类型"), "修改字段");
-  await choose(action.getByRole("combobox", { name: "字段", exact: true }), "关联需求SKU流程");
+  await choose(action.getByRole("combobox", { name: "字段", exact: true }), "关联型号");
   await action.getByLabel("设为").fill("SKU-AUTO");
   await page.getByRole("button", { name: "保存规则" }).click();
   const rule = page.getByRole("region", { name: "创建后填 SKU" });
-  await expect(rule).toContainText("工作项创建后，把「关联需求SKU流程」设为 SKU-AUTO");
+  await expect(rule).toContainText("工作项创建后，把「关联型号」设为 SKU-AUTO");
 
   // 创建工作项：事件经 Outbox → Temporal → worker 执行规则，字段值同步回页面
   await openItems(page);
   await createItem(page, "新品 G");
-  await expect(page.getByLabel("关联需求SKU流程")).toHaveValue("SKU-AUTO", { timeout: 30_000 });
+  await expect(page.getByLabel("关联型号")).toHaveValue("SKU-AUTO", { timeout: 30_000 });
 
   // 执行记录
   await openAutomations(page);
@@ -36,7 +36,7 @@ test("an automation rule fills a field on new work items through the Temporal wo
 
 test("a comment triggers a reply comment and a notification, and a rule can be edited", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `automation-comment-${suffix}@example.com`, `自动化评论 ${suffix}`);
+  await demoSpace(page, "Pascal", `automation-comment-${suffix}@example.com`, `自动化评论 ${suffix}`);
 
   await openAutomations(page);
   await page.getByLabel("规则名称").fill("评论后回复");
@@ -83,7 +83,7 @@ test("a comment triggers a reply comment and a notification, and a rule can be e
 
 test("schedule and due-date triggers with a condition branch are configured and described", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `automation-timed-${suffix}@example.com`, `定时自动化 ${suffix}`);
+  await demoSpace(page, "Pascal", `automation-timed-${suffix}@example.com`, `定时自动化 ${suffix}`);
   await openAutomations(page);
 
   // 每周一、周五 10 点：满足条件发通知，否则评论
@@ -116,7 +116,7 @@ test("schedule and due-date triggers with a condition branch are configured and 
   // 节点计划完成日前 2 天 9 点提醒
   await page.getByLabel("规则名称").fill("到期提醒");
   await choose(page.getByLabel("触发时机"), "日期临近、到期或超期时");
-  await choose(page.getByLabel("按哪个日期"), "节点「需求立项提案」计划完成");
+  await choose(page.getByLabel("按哪个日期"), "节点「立项提案」计划完成");
   await page.getByLabel("天数").fill("2");
   await page.getByRole("button", { name: "添加动作", exact: true }).click();
   const remind = page.getByRole("group", { name: "动作 1" });
@@ -124,6 +124,6 @@ test("schedule and due-date triggers with a condition branch are configured and 
   await remind.getByLabel("评论内容").fill("快到期了");
   await page.getByRole("button", { name: "保存规则" }).click();
   await expect(page.getByRole("region", { name: "到期提醒" })).toContainText(
-    "「需求立项提案」计划完成日前 2 天 09:00，评论「快到期了」",
+    "「立项提案」计划完成日前 2 天 09:00，评论「快到期了」",
   );
 });

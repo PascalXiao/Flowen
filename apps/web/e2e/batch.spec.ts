@@ -3,7 +3,7 @@ import {
   choose,
   closeTypeConfig,
   createItem,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -13,7 +13,7 @@ import {
 
 test("batch edit a field, terminate and restore selected rows", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `batch-${suffix}@example.com`, `批量 ${suffix}`);
+  await demoSpace(page, "Pascal", `batch-${suffix}@example.com`, `批量 ${suffix}`);
   await openSettings(page);
   await openTypeConfig(page, "项目");
   await typeTab(page, "字段");

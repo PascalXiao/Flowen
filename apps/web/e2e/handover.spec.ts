@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { addMember, choose, createItem, oemSpace, openItems, openSettings, registerColleague } from "./helpers";
+import { addMember, choose, createItem, demoSpace, openItems, openSettings, registerColleague } from "./helpers";
 
 test("an admin hands over a member's work to someone else", async ({ page }) => {
   const suffix = `${Date.now()}`;
   await registerColleague(`lin-h-${suffix}@example.com`, "Lin");
-  await oemSpace(page, "Pascal", `handover-${suffix}@example.com`, `移交 ${suffix}`);
+  await demoSpace(page, "Pascal", `handover-${suffix}@example.com`, `移交 ${suffix}`);
   await addMember(page, `lin-h-${suffix}@example.com`, "Lin");
   for (const name of ["面霜立项", "精华立项"]) {
     await openItems(page, "项目");

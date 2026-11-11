@@ -3,9 +3,9 @@ import {
   dayFromIso,
   dayInTimeZone,
   dayToIso,
+  demoSample,
   type FlowDefinition,
   FlowGraph,
-  oemV289,
   type ScheduleNodeInput,
   schedule,
   WorkCalendar,
@@ -106,8 +106,8 @@ describe("schedule", () => {
     expect(iso(plan.b)).toBe("2026-10-26..2026-10-26");
   });
 
-  it("schedules every reachable node of OEM v289", () => {
-    const graph = new FlowGraph(oemV289.oemFlow);
+  it("schedules every reachable node of 示例流程", () => {
+    const graph = new FlowGraph(demoSample.demoFlow);
     const plan = schedule(graph, calendar, {
       start,
       nodes: Object.fromEntries(graph.nodes.map((n) => [n.key, { state: "notStarted" as const }])),

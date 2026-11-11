@@ -453,10 +453,10 @@ function DrawerStepper({
   );
 }
 
-export function ImportOem({ spaceId }: { spaceId: string }) {
+export function ImportDemo({ spaceId }: { spaceId: string }) {
   const [error, setError] = useState<string | null>(null);
   async function run() {
-    const res = await fetch(`${env.apiUrl}/api/spaces/${spaceId}/import-oem`, {
+    const res = await fetch(`${env.apiUrl}/api/spaces/${spaceId}/import-demo`, {
       method: "POST",
       credentials: "include",
     });
@@ -464,7 +464,7 @@ export function ImportOem({ spaceId }: { spaceId: string }) {
   }
   return (
     <>
-      <Button onClick={run}>导入 OEM 模板</Button>
+      <Button onClick={run}>导入示例模板</Button>
       {error && <span className="text-sm text-danger-600">{error}</span>}
     </>
   );
@@ -540,7 +540,7 @@ function CreateWorkItemForm({
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [keepCreating, setKeepCreating] = useState(false);
-  // 一个类型有多套已发布的流程（如 OEM、ODM、包装变更）时，新建时选用哪套
+  // 一个类型有多套已发布的流程（如标准、快速、变更）时，新建时选用哪套
   const flows = type.flowTemplates.filter((t) => t.currentVersionId);
   const [templateId, setTemplateId] = useState(flows[0]?.id ?? "");
   // 用户动过的字段；没动过的字段按默认值规则补上（条件默认值随别的字段变化）

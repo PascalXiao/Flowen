@@ -5,7 +5,7 @@ import {
   closeTypeConfig,
   createItem,
   createSpace,
-  oemSpace,
+  demoSpace,
   openItems,
   openSettings,
   openTypeConfig,
@@ -58,7 +58,7 @@ test("the board groups a status-flow type by status, and dragging a card follows
 test("board swimlanes by role and extra fields on cards", async ({ page }) => {
   const suffix = `${Date.now()}`;
   await registerColleague(`lin-lanes-${suffix}@example.com`, "Lin");
-  await oemSpace(page, "Pascal", `lanes-${suffix}@example.com`, `泳道 ${suffix}`);
+  await demoSpace(page, "Pascal", `lanes-${suffix}@example.com`, `泳道 ${suffix}`);
   await addMember(page, `lin-lanes-${suffix}@example.com`, "Lin");
   await openItems(page);
   await createItem(page, "新品 L1", { roles: ["开发：Lin"] });
@@ -81,11 +81,11 @@ test("board swimlanes by role and extra fields on cards", async ({ page }) => {
 
   // 卡片上加字段
   await page.getByRole("button", { name: "卡片字段" }).click();
-  await page.getByRole("group", { name: "卡片字段" }).getByRole("checkbox", { name: "是否需要备案" }).check();
-  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要备案");
+  await page.getByRole("group", { name: "卡片字段" }).getByRole("checkbox", { name: "是否需要认证" }).check();
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要认证");
 
   // 设置记在本机：刷新后还在
   await page.reload();
   await page.getByRole("tab", { name: "看板" }).click();
-  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要备案");
+  await expect(lane("Lin").getByRole("listitem", { name: "新品 L1" })).toContainText("是否需要认证");
 });

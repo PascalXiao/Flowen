@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createItem, oemSpace, openItems, openSettings } from "./helpers";
+import { createItem, demoSpace, openItems, openSettings } from "./helpers";
 
 test("delete work items into the recycle bin, recover one and purge another", async ({ page }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `recycle-${suffix}@example.com`, `回收站 ${suffix}`);
+  await demoSpace(page, "Pascal", `recycle-${suffix}@example.com`, `回收站 ${suffix}`);
   for (const name of ["面霜立项", "精华立项", "乳液立项"]) {
     await openItems(page, "项目");
     await createItem(page, name);

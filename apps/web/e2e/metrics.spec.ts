@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { choose, createItem, oemSpace, openItems } from "./helpers";
+import { choose, createItem, demoSpace, openItems } from "./helpers";
 
 test("build metric charts: preview while editing, save, drill down, pin to dashboard, switch style, delete", async ({
   page,
 }) => {
   const suffix = `${Date.now()}`;
-  await oemSpace(page, "Pascal", `metrics-${suffix}@example.com`, `度量 ${suffix}`);
+  await demoSpace(page, "Pascal", `metrics-${suffix}@example.com`, `度量 ${suffix}`);
   for (const name of ["面霜立项", "精华立项"]) {
     await openItems(page, "项目");
     await createItem(page, name);

@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "seed:oem": "node src/seed/oem-cli.ts"
+    "seed:demo": "node src/seed/demo-cli.ts",
+    "seed:load": "node src/seed/load-cli.ts"
   },
   "dependencies": {
     "@fp/db": "workspace:*",
