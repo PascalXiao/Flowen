@@ -137,6 +137,12 @@ function boardCards(q: ReturnType<typeof zql.workItem.where>, fields: readonly s
     .related("roleMembers", (r) => r.related("user"));
 }
 
+/** 树形视图的排期管理模式要每个工作项的节点排期（跳过的不算）；不要时用不会命中的条件，保持形状不变。 */
+function treePlans(plans: boolean | undefined) {
+  return (n: ReturnType<typeof zql.nodeInstance.where>) =>
+    plans ? n.where("state", "!=", "skipped") : n.where("workItemId", "IS", null);
+}
+
 /** 树形视图按哪种关系展开：relationDefId 为空时按子工作项，否则按这个自定义关联。 */
 const hierarchyArgs = z.object({ relationDefId: z.string().nullable() });
 
@@ -150,7 +156,12 @@ function hierarchyEdges({ relationDefId }: z.output<typeof hierarchyArgs>) {
 const stepArgs = z.object({ typeId: z.string(), relationDefId: z.string().nullable(), reverse: z.boolean() });
 type Step = z.output<typeof stepArgs>;
 
-const layerArgs = z.object({ id: z.string(), step: stepArgs, next: z.array(stepArgs).max(2) });
+const layerArgs = z.object({
+  id: z.string(),
+  step: stepArgs,
+  next: z.array(stepArgs).max(2),
+  plans: z.boolean().optional(),
+});
 
 /** 一步用的是哪条关系。 */
 function stepEdge(step: Step) {
@@ -500,19 +511,23 @@ export const queries = defineQueries({
      * 树形视图的第一层：符合筛选条件的工作项，带上它们的上级（判断是不是根）和下级数量。
      * 更深的层级展开时用 workItems.children 按需加载。
      */
-    treeBySpace: defineQuery(spaceItemsArgs.extend({ hierarchy: hierarchyArgs }), ({ args, ctx }) =>
-      spaceItems(args, ctx.userID)
-        .related("type")
-        .related("incoming", (r) => r.where(hierarchyEdges(args.hierarchy)))
-        .related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy)))
-        .orderBy("createdAt", "desc"),
+    treeBySpace: defineQuery(
+      spaceItemsArgs.extend({ hierarchy: hierarchyArgs, plans: z.boolean().optional() }),
+      ({ args, ctx }) =>
+        spaceItems(args, ctx.userID)
+          .related("type")
+          .related("nodes", treePlans(args.plans))
+          .related("incoming", (r) => r.where(hierarchyEdges(args.hierarchy)))
+          .related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy)))
+          .orderBy("createdAt", "desc"),
     ),
     /** 按层级管理的树形视图：第一层的工作项，带上沿下一层的关系能找到的下级。 */
     layerRoots: defineQuery(
-      spaceItemsArgs.extend({ rootTypeId: z.string(), next: z.array(stepArgs).max(2) }),
+      spaceItemsArgs.extend({ rootTypeId: z.string(), next: z.array(stepArgs).max(2), plans: z.boolean().optional() }),
       ({ args, ctx }) =>
         spaceItems({ spaceId: args.spaceId, filter: { ...args.filter, typeIds: [args.rootTypeId] } }, ctx.userID)
           .related("type")
+          .related("nodes", treePlans(args.plans))
           .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
           .related("incoming", (r) => r.where(stepEdges(args.next, true)))
           .orderBy("createdAt", "desc"),
@@ -529,6 +544,7 @@ export const queries = defineQueries({
         .related("to", (w) =>
           w
             .related("type")
+            .related("nodes", treePlans(args.plans))
             .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
             .related("incoming", (r) => r.where(stepEdges(args.next, true))),
         )
@@ -542,19 +558,27 @@ export const queries = defineQueries({
         .related("from", (w) =>
           w
             .related("type")
+            .related("nodes", treePlans(args.plans))
             .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
             .related("incoming", (r) => r.where(stepEdges(args.next, true))),
         )
         .orderBy("createdAt", "asc"),
     ),
     /** 树形视图里展开一个工作项：它的下级，以及每个下级自己的下级数量。 */
-    children: defineQuery(z.object({ id: z.string(), hierarchy: hierarchyArgs }), ({ args, ctx }) =>
-      zql.relation
-        .where("fromId", args.id)
-        .where(hierarchyEdges(args.hierarchy))
-        .whereExists("to", (w) => w.where(itemVisible(ctx.userID)))
-        .related("to", (w) => w.related("type").related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy))))
-        .orderBy("createdAt", "asc"),
+    children: defineQuery(
+      z.object({ id: z.string(), hierarchy: hierarchyArgs, plans: z.boolean().optional() }),
+      ({ args, ctx }) =>
+        zql.relation
+          .where("fromId", args.id)
+          .where(hierarchyEdges(args.hierarchy))
+          .whereExists("to", (w) => w.where(itemVisible(ctx.userID)))
+          .related("to", (w) =>
+            w
+              .related("type")
+              .related("nodes", treePlans(args.plans))
+              .related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy))),
+          )
+          .orderBy("createdAt", "asc"),
     ),
     /** 工作项动态：最近的事件，新的在前。受限字段的改动只给能看到这个字段的人。 */
     activity: defineQuery(

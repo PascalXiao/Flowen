@@ -392,6 +392,7 @@ function WorkItems({
           )}
           hierarchies={space.hierarchies}
           typeId={type.id}
+          timeZone={space.timezone ?? "Asia/Shanghai"}
         />
       ) : view === "board" ? (
         <Board
