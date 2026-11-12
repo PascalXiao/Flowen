@@ -27,6 +27,14 @@ export interface DependencyRow {
   } | null;
 }
 
+/** 空间关联规则要这个节点等的源节点。 */
+export interface LinkedSource {
+  key: string;
+  item: { id: string; name: string };
+  name: string;
+  state: NodeState | null;
+}
+
 /** 在等这个节点的别的节点。 */
 export interface DependentRow {
   id: string;
@@ -57,6 +65,7 @@ export function NodeDependencies({
   stateOf,
   dependencies,
   dependents,
+  linked = [],
   canEdit,
 }: {
   workItemId: string;
@@ -66,6 +75,8 @@ export function NodeDependencies({
   stateOf: (nodeKey: string) => NodeState;
   dependencies: readonly DependencyRow[];
   dependents: readonly DependentRow[];
+  /** 空间关联里「才允许完成」的源节点（源工作项没有这个节点时 state 为 null，不用等）。 */
+  linked?: readonly LinkedSource[];
   canEdit: boolean;
 }) {
   const zero = useZero();
@@ -132,10 +143,20 @@ export function NodeDependencies({
         ...added
           .filter((d) => d.row.allow === allow && open(d.state) && !d.released)
           .map((d) => (d.item ? `${d.item.name} · ${d.name}` : d.name)),
+        ...(allow === "complete"
+          ? linked.filter((l) => l.state !== null && open(l.state)).map((l) => `${l.item.name} · ${l.name}`)
+          : []),
       ]
     : [];
 
-  if (fromTemplate.length === 0 && added.length === 0 && dependents.length === 0 && (!canEdit || finished)) return null;
+  if (
+    fromTemplate.length === 0 &&
+    added.length === 0 &&
+    linked.length === 0 &&
+    dependents.length === 0 &&
+    (!canEdit || finished)
+  )
+    return null;
   return (
     <fieldset aria-label={`${node.name}的依赖`} className="flex min-w-0 flex-col gap-1">
       <div className="flex items-center gap-2 text-fg-muted">
@@ -156,7 +177,7 @@ export function NodeDependencies({
           要等{waiting.map((w) => `「${w}」`).join("、")}完成才能{allow === "start" ? "开始" : "完成"}
         </p>
       )}
-      {(fromTemplate.length > 0 || added.length > 0) && (
+      {(fromTemplate.length > 0 || added.length > 0 || linked.length > 0) && (
         <ul className="flex flex-col">
           {fromTemplate.map((d) => (
             <li key={d.key} className="flex h-8 items-center gap-2 px-1">
@@ -165,6 +186,25 @@ export function NodeDependencies({
               <Tag tone={STATE[d.state]?.[1]}>{STATE[d.state]?.[0]}</Tag>
               <span className="ml-auto shrink-0 text-xs text-fg-subtle" title="在流程模板里配置，对所有工作项生效">
                 流程模板
+              </span>
+            </li>
+          ))}
+          {linked.map((l) => (
+            <li key={l.key} className="flex h-8 items-center gap-2 px-1">
+              <span className="min-w-0 truncate">
+                <Link
+                  to="/items/$itemId"
+                  params={{ itemId: l.item.id }}
+                  className="text-brand-500 hover:text-brand-600"
+                >
+                  {l.item.name}
+                </Link>
+                {` · ${l.name}`}
+              </span>
+              <span className="shrink-0 text-xs text-fg-subtle">{ALLOW.complete}</span>
+              {l.state ? <Tag tone={STATE[l.state]?.[1]}>{STATE[l.state]?.[0]}</Tag> : <Tag>没有这个节点</Tag>}
+              <span className="ml-auto shrink-0 text-xs text-fg-subtle" title="在空间配置的「空间关联」里配置">
+                空间关联
               </span>
             </li>
           ))}

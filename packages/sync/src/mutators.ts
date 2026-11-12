@@ -92,6 +92,14 @@ import {
   terminateWorkItem,
   workItemIdArgs,
 } from "./lifecycle.ts";
+import {
+  createLinkRule,
+  createLinkRuleArgs,
+  deleteLinkRule,
+  deleteLinkRuleArgs,
+  setLinkRuleEnabled,
+  setLinkRuleEnabledArgs,
+} from "./link-rules.ts";
 import { markArgs, recordVisit, setMark, visitArgs } from "./marks.ts";
 import { nudgeArgs, nudgeNode } from "./nudge.ts";
 import {
@@ -321,6 +329,11 @@ export const mutators = defineMutators({
   relationDef: {
     create: defineMutator(createRelationDefArgs, ({ tx, args, ctx }) => createRelationDef(tx, args, ctx.userID)),
     delete: defineMutator(deleteRelationDefArgs, ({ tx, args, ctx }) => deleteRelationDef(tx, args, ctx.userID)),
+  },
+  linkRule: {
+    create: defineMutator(createLinkRuleArgs, ({ tx, args, ctx }) => createLinkRule(tx, args, ctx.userID)),
+    setEnabled: defineMutator(setLinkRuleEnabledArgs, ({ tx, args, ctx }) => setLinkRuleEnabled(tx, args, ctx.userID)),
+    delete: defineMutator(deleteLinkRuleArgs, ({ tx, args, ctx }) => deleteLinkRule(tx, args, ctx.userID)),
   },
   hierarchy: {
     create: defineMutator(createHierarchyArgs, ({ tx, args, ctx }) => createHierarchy(tx, args, ctx.userID)),

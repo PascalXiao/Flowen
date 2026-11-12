@@ -44,6 +44,7 @@ export default drizzleZeroConfig(schema, {
     planBaseline: true,
     nodeDependency: true,
     hierarchy: true,
+    linkRule: true,
     eventLog: true,
     automationRun: true,
     webhook: true,

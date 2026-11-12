@@ -1,6 +1,7 @@
 import type { Database } from "@fp/db";
 import {
   cascadeDependencies,
+  cascadeLinks,
   cascadeSubItems,
   createMutatorRunner,
   type DeliverOptions,
@@ -43,6 +44,7 @@ export function createActivities(
       await notify(database, eventId);
       await cascadeSubItems(runner, eventId);
       await cascadeDependencies(runner, eventId);
+      await cascadeLinks(runner, eventId);
       return {
         eventId,
         matchedRuleIds: await matchRules(database, eventId),

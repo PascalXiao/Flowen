@@ -7,6 +7,7 @@ import { createTestDatabase } from "@fp/db/testing";
 import { dayInTimeZone, dayToIso, demoSample, type FlowDefinition } from "@fp/engine";
 import {
   cascadeDependencies,
+  cascadeLinks,
   cascadeSubItems,
   createMutatorRunner,
   matchRules,
@@ -3309,5 +3310,172 @@ describe("hierarchies", () => {
       ),
     ).rejects.toThrow("只有空间管理员");
     expect(await rows()).toHaveLength(0);
+  });
+});
+
+describe("space links", () => {
+  const spaceId = randomUUID();
+  const typeId = `${spaceId}/project`;
+  let admin: { cookie: string; userId: string };
+  let owner: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const def = (n: number) => `${spaceId}/rel${n}`;
+
+  beforeAll(async () => {
+    admin = await signUp(`link-admin-${spaceId}@example.com`);
+    owner = await signUp(`link-owner-${spaceId}@example.com`);
+    await run("space.create", { id: spaceId, name: "空间关联" });
+    await services.database.db.insert(schema.spaceMember).values([{ spaceId, userId: owner.userId }]);
+    await run("workItemType.create", { id: typeId, spaceId, key: "project", name: "项目" });
+    await run("roleDef.create", { id: `${typeId}/role/owner`, typeId, key: "owner", name: "负责人" });
+    await run("fieldDef.create", { id: `${typeId}/field/brand`, typeId, key: "brand", name: "品牌", dataType: "text" });
+    await run("fieldDef.create", {
+      id: `${typeId}/field/count`,
+      typeId,
+      key: "count",
+      name: "数量",
+      dataType: "number",
+    });
+    await run("flowTemplate.create", { id: `${typeId}/default`, typeId, key: "default", name: "默认流程" });
+    const step = (key: string, name: string) => ({ key, name, completion: "singleConfirm", ownerRoles: ["owner"] });
+    await run("flowTemplate.saveDraft", {
+      templateId: `${typeId}/default`,
+      definition: {
+        key: "project",
+        version: 0,
+        nodes: [
+          { key: "start", name: "开始", completion: "auto", ownerRoles: [] },
+          step("design", "设计"),
+          step("buy", "采购"),
+          step("ship", "发货"),
+        ],
+        edges: [
+          { from: "start", to: "design" },
+          { from: "start", to: "buy" },
+          { from: "design", to: "ship" },
+          { from: "buy", to: "ship" },
+        ],
+      },
+    });
+    await run("flowTemplate.publish", { versionId: `${typeId}/default/v1` });
+    for (const n of [1, 2, 3])
+      await run("relationDef.create", {
+        id: def(n),
+        fromTypeId: typeId,
+        toTypeId: typeId,
+        name: `关联${n}`,
+        cardinality: "many",
+      });
+  });
+
+  async function create(name: string) {
+    const id = randomUUID();
+    await run("workItem.create", { id, typeId, name, fields: {}, roles: { owner: [owner.userId] } });
+    return id;
+  }
+  const link = (n: number, fromId: string, toId: string) =>
+    run("relation.add", { id: randomUUID(), relationDefId: def(n), fromId, toId });
+  const rule = (n: number, config: unknown, userId = admin.userId) =>
+    run(
+      "linkRule.create",
+      { id: randomUUID(), name: `规则${n}`, relationDefId: def(n), sourceSide: "from", config },
+      userId,
+    );
+  const confirm = (workItemId: string, nodeKey: string) => run("node.confirm", { workItemId, nodeKey }, owner.userId);
+  const field = async (workItemId: string, fieldKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.fieldValue)
+        .where(and(eq(schema.fieldValue.workItemId, workItemId), eq(schema.fieldValue.fieldKey, fieldKey)))
+    )[0]?.value;
+  const state = async (workItemId: string, nodeKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.nodeInstance)
+        .where(and(eq(schema.nodeInstance.workItemId, workItemId), eq(schema.nodeInstance.nodeKey, nodeKey)))
+    )[0]?.state;
+  /** worker 收到一个工作项的事件时做的事。 */
+  async function cascade(workItemId: string) {
+    const runner = createMutatorRunner(services.database);
+    const events = await services.database.db
+      .select()
+      .from(schema.eventLog)
+      .where(eq(schema.eventLog.workItemId, workItemId))
+      .orderBy(schema.eventLog.id);
+    for (const e of events) await cascadeLinks(runner, e.id);
+  }
+
+  it("only admins add rules, and synced fields must have the same type", async () => {
+    await expect(rule(1, { kind: "field", sourceField: "brand", targetField: "brand" }, owner.userId)).rejects.toThrow(
+      "只有空间管理员",
+    );
+    await expect(rule(1, { kind: "field", sourceField: "brand", targetField: "count" })).rejects.toThrow(
+      "字段类型不同",
+    );
+    await expect(rule(1, { kind: "nodeDrive", sourceNode: "nope", targetNode: "buy", mode: "allow" })).rejects.toThrow(
+      "节点不存在",
+    );
+  });
+
+  it("syncs a field one way, on change and when the relation is added", async () => {
+    await rule(1, { kind: "field", sourceField: "brand", targetField: "brand" });
+    const a = await create("面霜");
+    const b = await create("精华");
+    await link(1, a, b);
+    await run("fieldValue.set", { workItemId: a, fieldKey: "brand", value: "示例品牌" }, owner.userId);
+    await cascade(a);
+    expect(await field(b, "brand")).toBe("示例品牌");
+    // 新关联的工作项马上同步一次
+    const c = await create("乳液");
+    await link(1, a, c);
+    await cascade(a);
+    expect(await field(c, "brand")).toBe("示例品牌");
+    // 单向：目标改了不回传
+    await run("fieldValue.set", { workItemId: b, fieldKey: "brand", value: "别的" }, owner.userId);
+    await cascade(b);
+    expect(await field(a, "brand")).toBe("示例品牌");
+  });
+
+  it("syncs a node's schedule", async () => {
+    await rule(1, { kind: "nodeSchedule", sourceNode: "ship", targetNode: "ship" });
+    const a = await create("面霜");
+    const b = await create("精华");
+    await link(1, a, b);
+    await run("node.setPlan", { workItemId: a, nodeKey: "ship", start: "2027-03-01", end: "2027-03-05" }, owner.userId);
+    await cascade(a);
+    const [node] = await services.database.db
+      .select()
+      .from(schema.nodeInstance)
+      .where(and(eq(schema.nodeInstance.workItemId, b), eq(schema.nodeInstance.nodeKey, "ship")));
+    expect(node?.plannedPinned).toBe(true);
+    expect(node?.plannedEnd?.toISOString().slice(0, 10)).toBe("2027-03-05");
+  });
+
+  it("a target node can only complete after the source node: 才允许完成", async () => {
+    await rule(2, { kind: "nodeDrive", sourceNode: "design", targetNode: "buy", mode: "allow" });
+    const a = await create("面霜");
+    const b = await create("精华");
+    await link(2, a, b);
+    await expect(confirm(b, "buy")).rejects.toThrow("要等「面霜 · 设计」完成才能完成");
+    await confirm(a, "design");
+    await confirm(b, "buy");
+    expect(await state(b, "buy")).toBe("completed");
+  });
+
+  it("completing the source node completes the target node: 即完成", async () => {
+    await rule(3, { kind: "nodeDrive", sourceNode: "buy", targetNode: "design", mode: "complete" });
+    const a = await create("面霜");
+    const b = await create("精华");
+    await link(3, a, b);
+    await confirm(a, "buy");
+    await cascade(a);
+    expect(await state(b, "design")).toBe("completed");
+    const events = await services.database.db.select().from(schema.eventLog).where(eq(schema.eventLog.workItemId, b));
+    const completed = events.find(
+      (e) => e.kind === "nodeCompleted" && (e.payload as { node: string }).node === "design",
+    );
+    expect(completed?.causedBy).not.toBeNull();
   });
 });
