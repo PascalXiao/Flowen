@@ -290,6 +290,7 @@ function WorkItems({
     ...(initialView?.filter ?? {}),
     typeIds: [type.id],
   });
+  const zero = useZero();
   const [view, setView] = useState<"table" | "tree" | "board" | "gantt">("table");
   // 列表的显示设置（列、排序、分组、着色）：没套用视图时记在本机，下次打开还是这样
   const displayKey = `flowen.list.${space.id}.${type.id}`;
@@ -402,6 +403,7 @@ function WorkItems({
           userName={(id) => members.find((m) => m.userId === id)?.name ?? id}
           display={display.board}
           onDisplay={(board) => setDisplay({ ...display, board })}
+          guest={space.members.find((m) => m.userId === zero.userID)?.role === "guest"}
         />
       ) : view === "gantt" ? (
         <div className="p-4">

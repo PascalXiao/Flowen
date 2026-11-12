@@ -9,6 +9,7 @@ import { type Auth, createAuth } from "./auth.ts";
 import { type BlobStore, fileBlobStore } from "./blobs.ts";
 import { config } from "./config.ts";
 import { dashboardRoutes } from "./dashboard.ts";
+import { listStatsRoutes } from "./list-stats.ts";
 import { createOpenApiHandler, OPEN_API_PREFIX } from "./open-api.ts";
 import { importDemoTemplate } from "./seed/demo.ts";
 import { tokenRoutes } from "./tokens.ts";
@@ -56,6 +57,7 @@ export function createApp({ database, auth, zero, blobs }: Services) {
       .route("/", attachmentRoutes(database, blobs, userID))
       .route("/", tokenRoutes(database, userID))
       .route("/", dashboardRoutes(database, userID))
+      .route("/", listStatsRoutes(database, userID))
       // 开放接口给服务端调用，用令牌认证，不带 cookie，所以不需要 CORS 白名单
       .all(`${OPEN_API_PREFIX}/*`, async (c) => {
         const { matched, response } = await openApi.handle(c.req.raw, {

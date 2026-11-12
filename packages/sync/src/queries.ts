@@ -14,7 +14,36 @@ const spaceItemsArgs = z.object({ spaceId: z.string(), filter: workItemFilter.op
 /** 列表页的页签：全部、最近浏览、我创建的、我参与的、我关注的、我收藏的。 */
 const listArgs = spaceItemsArgs.extend({
   tab: z.enum(["all", "recent", "created", "involved", "followed", "starred"]).default("all"),
+  /**
+   * 只同步列表要用的数据（显示的列、排序、分组、着色用到的）。不传时全部带上。
+   * fields：字段键；nodes：none 不要节点，active 只要进行中的，all 全部；
+   * relations：要不要关联，relatedFields：关联另一端要带的字段键；roles：要带成员的角色键。
+   */
+  /** 名称包含这段文字。 */
+  search: z.string().max(200).optional(),
+  /** 排序（只能按工作项本身的列）；不传时按创建时间倒序。 */
+  order: z
+    .array(z.object({ key: z.enum(["createdAt", "updatedAt"]), desc: z.boolean().optional() }))
+    .max(3)
+    .optional(),
+  /** 最多取几条（分批加载）；不传时全部。 */
+  limit: z.number().int().min(1).max(10000).optional(),
+  needs: z
+    .object({
+      fields: z.array(z.string()).max(1000),
+      nodes: z.enum(["none", "active", "all"]),
+      relations: z.boolean(),
+      relatedFields: z.array(z.string()).max(1000),
+      roles: z.array(z.string()).max(200),
+    })
+    .optional(),
 });
+
+/** 只留这些字段键的值；一个都不要时什么都不匹配。 */
+function onlyFields(keys: readonly string[] | undefined) {
+  return (q: ReturnType<typeof zql.fieldValue.where>) =>
+    keys === undefined ? q : keys.length ? q.where("fieldKey", "IN", [...keys]) : q.where("workItemId", "IS", null);
+}
 
 /** 范围筛选的边界：数字原样；日期（YYYY-MM-DD）换成检索列里的天数。 */
 function rangeBound(value: number | string | undefined): number | null {
@@ -88,6 +117,24 @@ function visibleEvent(userID: string) {
       cmp("fieldKey", "IS", null),
       exists("fieldValue", (v) => visibleFieldValues(userID)(v)),
     );
+}
+
+const boardArgs = spaceItemsArgs.extend({ fields: z.array(z.string()).max(200).optional() });
+/** 看板的一列：阶段（null 是没有阶段）、状态流的一个状态，或者对不上任何状态的「其他」。 */
+const boardColumnArgs = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("stage"), stage: z.string().nullable() }),
+  z.object({ kind: z.literal("status"), key: z.string(), name: z.string(), keys: z.array(z.string()).max(200) }),
+  z.object({ kind: z.literal("other"), keys: z.array(z.string()).max(200), names: z.array(z.string()).max(200) }),
+]);
+
+/** 看板卡片要的东西：类型、流程定义、指定字段的值、角色成员（头像），以及自己在空间里的身份。 */
+function boardCards(q: ReturnType<typeof zql.workItem.where>, fields: readonly string[] | undefined, userID: string) {
+  return q
+    .related("type")
+    .related("flowVersion")
+    .related("space", (s) => s.related("members", (m) => m.where("userId", userID)))
+    .related("fieldValues", (v) => visibleFieldValues(userID)(onlyFields(fields)(v)))
+    .related("roleMembers", (r) => r.related("user"));
 }
 
 /** 树形视图按哪种关系展开：relationDefId 为空时按子工作项，否则按这个自定义关联。 */
@@ -235,17 +282,29 @@ export const queries = defineQueries({
       spaceItems(args, ctx.userID).related("type").orderBy("createdAt", "desc"),
     ),
     /**
-     * 空间看板：工作项连同处理人和流程定义。状态流卡片拖到别的列时在前端乐观执行流转，
-     * 所以也要带上字段值（流转条件）和自己在空间里的成员身份。
+     * 空间看板（分泳道时用）：工作项连同处理人和流程定义。状态流卡片拖到别的列时在前端乐观执行流转，
+     * 所以也要带上字段值（流转条件）和自己在空间里的成员身份。fields 只带这些字段的值（卡片、泳道、流转条件用到的）。
      */
-    boardBySpace: defineQuery(spaceItemsArgs, ({ args, ctx }) =>
-      spaceItems(args, ctx.userID)
-        .related("type")
-        .related("flowVersion")
-        .related("space", (s) => s.related("members", (m) => m.where("userId", ctx.userID)))
-        .related("fieldValues", visibleFieldValues(ctx.userID))
-        .related("roleMembers", (r) => r.related("user"))
-        .orderBy("updatedAt", "desc"),
+    boardBySpace: defineQuery(boardArgs, ({ args, ctx }) =>
+      boardCards(spaceItems(args, ctx.userID), args.fields, ctx.userID).orderBy("updatedAt", "desc"),
+    ),
+    /** 看板分列、数每列有几张卡片用：只要工作项本身。 */
+    boardIndex: defineQuery(spaceItemsArgs, ({ args, ctx }) => spaceItems(args, ctx.userID)),
+    /** 看板的一列：按阶段（node）或状态（status）分，最近更新的在前，最多 limit 张。 */
+    boardColumn: defineQuery(
+      boardArgs.extend({ column: boardColumnArgs, limit: z.number().int().min(1).max(5000) }),
+      ({ args, ctx }) => {
+        const c = args.column;
+        const q = spaceItems(args, ctx.userID).where(({ or, and, cmp }) => {
+          if (c.kind === "stage") return c.stage === null ? cmp("stage", "IS", null) : cmp("stage", c.stage);
+          // 状态键不在这个状态流里（旧版本流程）的按状态名对上，和看板前端分列的规则一样
+          const unknownKey = or(cmp("flowStatus", "IS", null), cmp("flowStatus", "NOT IN", c.keys));
+          return c.kind === "status"
+            ? or(cmp("flowStatus", c.key), and(unknownKey, cmp("stage", c.name)))
+            : and(unknownKey, or(cmp("stage", "IS", null), cmp("stage", "NOT IN", c.names)));
+        });
+        return boardCards(q, args.fields, ctx.userID).orderBy("updatedAt", "desc").limit(args.limit);
+      },
     ),
     /**
      * 回收站：空间里删除了的工作项。空间管理员看全部，其他成员只看自己删的。
@@ -267,9 +326,25 @@ export const queries = defineQueries({
         .related("deleter")
         .orderBy("deletedAt", "desc"),
     ),
-    /** 度量图表的数据源：命中筛选的工作项，带自己能看到的字段值和角色成员，在前端汇总。 */
-    forChart: defineQuery(spaceItemsArgs, ({ args, ctx }) =>
-      spaceItems(args, ctx.userID).related("fieldValues", visibleFieldValues(ctx.userID)).related("roleMembers"),
+    /**
+     * 度量图表的数据源：命中筛选的工作项，带自己能看到的字段值和角色成员，在前端汇总。
+     * fields、roles 只带图表用到的字段和角色（不传时全部带上）。
+     */
+    forChart: defineQuery(
+      spaceItemsArgs.extend({
+        fields: z.array(z.string()).max(10).optional(),
+        roles: z.array(z.string()).max(10).optional(),
+      }),
+      ({ args, ctx }) =>
+        spaceItems(args, ctx.userID)
+          .related("fieldValues", (v) => visibleFieldValues(ctx.userID)(onlyFields(args.fields)(v)))
+          .related("roleMembers", (r) =>
+            args.roles === undefined
+              ? r
+              : args.roles.length
+                ? r.where("roleKey", "IN", args.roles)
+                : r.where("workItemId", "IS", null),
+          ),
     ),
     /** 空间甘特图：工作项连同节点排期和流程定义。改排期的 mutator 在前端乐观执行时也要读这些。 */
     /**
@@ -299,27 +374,51 @@ export const queries = defineQueries({
       if (args.tab === "followed") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "follow"));
       if (args.tab === "starred") q = q.whereExists("marks", (m) => m.where("userId", me).where("kind", "star"));
       if (args.tab === "recent") q = q.whereExists("visits", (v) => v.where("userId", me));
+      const search = args.search?.trim();
+      if (search) q = q.where("name", "ILIKE", containsPattern(search));
+      for (const o of args.order?.length ? args.order : [{ key: "createdAt" as const, desc: true }])
+        q = q.orderBy(o.key, o.desc ? "desc" : "asc");
+      if (args.limit) q = q.limit(args.limit);
+      const needs = args.needs;
+      const fields = (v: ReturnType<typeof zql.fieldValue.where>) =>
+        visibleFieldValues(me)(onlyFields(needs?.fields)(v));
+      const related = (v: ReturnType<typeof zql.fieldValue.where>) =>
+        visibleFieldValues(me)(onlyFields(needs?.relatedFields)(v));
+      const nodes = needs?.nodes ?? "all";
+      // 不要关联时用一个不会命中的条件，保持返回的形状不变
+      const relations = needs?.relations ?? true;
       return (
         q
           .related("type")
           .related("flowVersion")
-          .related("fieldValues", visibleFieldValues(me))
-          .related("roleMembers")
-          .related("nodes")
+          .related("fieldValues", fields)
+          .related("roleMembers", (r) =>
+            needs === undefined
+              ? r
+              : needs.roles.length
+                ? r.where("roleKey", "IN", needs.roles)
+                : r.where("workItemId", "IS", null),
+          )
+          .related("nodes", (n) =>
+            nodes === "all"
+              ? n
+              : nodes === "active"
+                ? n.where("state", "inProgress")
+                : n.where("workItemId", "IS", null),
+          )
           // 自定义关联（两个方向）连同另一端的名称、状态和字段值：关联列、关联字段列要显示
           .related("outgoing", (r) =>
             r
-              .where("relationDefId", "IS NOT", null)
-              .related("to", (w) => w.where(itemVisible(me)).related("fieldValues", visibleFieldValues(me))),
+              .where(({ cmp }) => (relations ? cmp("relationDefId", "IS NOT", null) : cmp("fromId", "IS", null)))
+              .related("to", (w) => w.where(itemVisible(me)).related("fieldValues", related)),
           )
           .related("incoming", (r) =>
             r
-              .where("relationDefId", "IS NOT", null)
-              .related("from", (w) => w.where(itemVisible(me)).related("fieldValues", visibleFieldValues(me))),
+              .where(({ cmp }) => (relations ? cmp("relationDefId", "IS NOT", null) : cmp("toId", "IS", null)))
+              .related("from", (w) => w.where(itemVisible(me)).related("fieldValues", related)),
           )
           .related("marks", (m) => m.where("userId", me))
           .related("visits", (v) => v.where("userId", me))
-          .orderBy("createdAt", "desc")
       );
     }),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>

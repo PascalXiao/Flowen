@@ -90,7 +90,21 @@ function useChartData(space: Space, filter: WorkItemFilterArgs, config: ChartCon
 }
 
 function useChart(space: Space, filter: WorkItemFilterArgs, config: ChartConfig) {
-  const [rows] = useQuery(queries.workItems.forChart({ spaceId: space.id, filter }));
+  // 只同步这张图用到的字段和角色
+  const dims = [config.dimension, config.series].flatMap((d) => (d?.key ? [d] : []));
+  const [rows] = useQuery(
+    queries.workItems.forChart({
+      spaceId: space.id,
+      filter,
+      fields: [
+        ...new Set([
+          ...dims.filter((d) => d.by === "field").map((d) => d.key as string),
+          ...(config.metric.field ? [config.metric.field] : []),
+        ]),
+      ],
+      roles: [...new Set(dims.filter((d) => d.by === "role").map((d) => d.key as string))],
+    }),
+  );
   return useMemo(() => {
     const items: ChartItem[] = rows.map((w) => {
       const roles: Record<string, string[]> = {};

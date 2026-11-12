@@ -2771,6 +2771,32 @@ describe("space dashboard", () => {
     const bugs = (await (await get(admin.cookie, `?type=${encodeURIComponent(bugType)}`)).json()) as Dashboard;
     expect(bugs.totals).toMatchObject({ inProgress: 1, completed: 1, overdue: 0 });
   });
+
+  it("counts the list stats with the same visibility as the list", async () => {
+    const stats = async (cookie: string, query = "") => {
+      const res = await app.request(`/api/spaces/${spaceId}/list-stats${query}`, { headers: { cookie } });
+      return { status: res.status, body: res.ok ? await res.json() : null };
+    };
+    expect((await stats(stranger.cookie)).status).toBe(404);
+    expect((await stats(admin.cookie)).body).toEqual({ total: 4, completed: 1, involved: 2 });
+    expect((await stats(admin.cookie, `?type=${encodeURIComponent(projectType)}`)).body).toEqual({
+      total: 2,
+      completed: 0,
+      involved: 2,
+    });
+    // 项目只给成员看参与的：成员只数到自己担任角色的那个项目，缺陷都能看
+    const member = await signUp(`dash-member-${spaceId}@example.com`);
+    await services.database.db.insert(schema.spaceMember).values({ spaceId, userId: member.userId });
+    await run("workItemType.setPermissions", { typeId: projectType, permissions: { view: { members: "involved" } } });
+    await run("workItem.create", {
+      id: `${spaceId}/会员`,
+      typeId: projectType,
+      name: "会员",
+      roles: { pm: [member.userId] },
+    });
+    expect((await stats(member.cookie)).body).toEqual({ total: 3, completed: 1, involved: 1 });
+    expect((await stats(admin.cookie)).body).toEqual({ total: 5, completed: 1, involved: 2 });
+  });
 });
 
 describe("user groups and type permissions", () => {
