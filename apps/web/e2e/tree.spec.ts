@@ -38,4 +38,20 @@ test("the tree view nests work items by the chosen hierarchy and expands level b
   await expect(tree.getByRole("link", { name: "新品 C" })).toBeVisible();
   await tree.getByRole("button", { name: "收起新品 A" }).click();
   await expect(tree.getByRole("link", { name: /^新品 [ABC]$/ })).toHaveCount(1);
+
+  // 排期管理模式：右边是时间轴，每个工作项一条排期条（节点默认从今天开始排）
+  await page.getByRole("group", { name: "显示模式" }).getByRole("button", { name: "排期管理" }).click();
+  await expect(tree.getByRole("img", { name: /^新品 A排期 \d{4}-\d{2}-\d{2} ~ / })).toBeVisible();
+  await tree.getByRole("button", { name: "展开新品 A" }).click();
+  await expect(tree.getByRole("img", { name: /^新品 B排期 / })).toBeVisible();
+  // 往后翻远了排期条就不在时间轴上了，点「今天」回来
+  for (let i = 0; i < 8; i++) await page.getByRole("button", { name: "往后" }).click();
+  await expect(tree.getByRole("img", { name: /^新品 A排期 / })).toHaveCount(0);
+  await page.getByRole("button", { name: "今天" }).click();
+  await expect(tree.getByRole("img", { name: /^新品 A排期 / })).toBeVisible();
+  await choose(page.getByLabel("时间刻度"), "month");
+  await expect(tree.getByRole("img", { name: /^新品 A排期 / })).toBeVisible();
+  // 回到表格模式
+  await page.getByRole("group", { name: "显示模式" }).getByRole("button", { name: "表格" }).click();
+  await expect(tree.getByRole("img", { name: /排期/ })).toHaveCount(0);
 });
