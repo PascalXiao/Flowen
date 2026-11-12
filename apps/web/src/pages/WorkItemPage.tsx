@@ -233,6 +233,28 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   for (const d of item.dependencies)
     if (d.target?.workItemId === item.id)
       ownDependencies[d.nodeKey] = [...(ownDependencies[d.nodeKey] ?? []), { allow: d.allow, node: d.target.nodeKey }];
+  /** 空间关联里「才允许完成」的联动：关联的源工作项和它的源节点。 */
+  const linkedSources = (nodeKey: string) =>
+    (space?.linkRules ?? []).flatMap((rule) => {
+      const c = rule.config;
+      if (rule.enabled === false || c.kind !== "nodeDrive" || c.mode !== "allow" || c.targetNode !== nodeKey) return [];
+      const sources =
+        rule.sourceSide === "from"
+          ? item.incoming.filter((r) => r.relationDefId === rule.relationDefId).map((r) => r.from)
+          : item.outgoing.filter((r) => r.relationDefId === rule.relationDefId).map((r) => r.to);
+      return sources.flatMap((src) =>
+        src && src.status !== "terminated" && src.deletedAt == null
+          ? [
+              {
+                key: `${rule.id}-${src.id}`,
+                item: { id: src.id, name: src.name },
+                name: c.sourceNodeName,
+                state: src.nodes.find((n) => n.nodeKey === c.sourceNode)?.state ?? null,
+              },
+            ]
+          : [],
+      );
+    });
   const nodeTasks = (nodeKey: string, nodeName: string, readOnly: boolean) => (
     <>
       {graph?.has(nodeKey) && (
@@ -244,6 +266,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
           stateOf={(key) => states.get(key)?.state ?? "notStarted"}
           dependencies={item.dependencies.filter((d) => d.nodeKey === nodeKey)}
           dependents={states.get(nodeKey)?.dependents ?? []}
+          linked={linkedSources(nodeKey)}
           canEdit={canOperate(nodeKey)}
         />
       )}

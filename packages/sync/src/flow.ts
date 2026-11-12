@@ -22,6 +22,7 @@ import { z } from "zod";
 import { requireWriter, syncFieldAccess } from "./access.ts";
 import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import { recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
+import { linkGates } from "./link-rules.ts";
 import { itemVisible, requireOp } from "./permissions.ts";
 import { type NodePlan, planNodes } from "./planning.ts";
 import { zql } from "./schema.gen.ts";
@@ -132,6 +133,9 @@ async function loadFlow(tx: Transaction, workItemId: string, userID: string): Pr
     }
     dependencies[d.nodeKey] = [...(dependencies[d.nodeKey] ?? []), dependency];
   }
+  // 空间关联里「才允许完成」的联动：关联的源节点没完成时，目标节点也要等
+  for (const [nodeKey, gates] of Object.entries(await linkGates(tx, item, userID)))
+    dependencies[nodeKey] = [...(dependencies[nodeKey] ?? []), ...gates];
   const timeZone = item.space?.timezone ?? "Asia/Shanghai";
   const toDay = (ms: number | null | undefined) => (ms == null ? null : dayFromDate(ms));
 

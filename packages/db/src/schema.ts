@@ -372,6 +372,47 @@ export const automationRule = pgTable("automation_rule", {
 });
 
 /**
+ * 空间关联的一条联动规则：挂在一条关系上，源头一端的变化同步给另一端关联的工作项。
+ * - field：源字段改了，关联工作项的目标字段跟着改（建立关联时也同步一次）；
+ * - nodeDrive：源节点完成后，关联工作项的目标节点「即完成」(complete) 或「才允许完成」(allow)；
+ * - nodeSchedule：源节点排期改了，目标节点排期跟着改。
+ */
+export type LinkRuleConfig =
+  | { kind: "field"; sourceField: string; targetField: string }
+  | {
+      kind: "nodeDrive";
+      sourceNode: string;
+      sourceNodeName: string;
+      targetNode: string;
+      mode: "complete" | "allow";
+    }
+  | { kind: "nodeSchedule"; sourceNode: string; targetNode: string };
+
+export const linkRule = pgTable(
+  "link_rule",
+  {
+    id: text("id").primaryKey(),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => space.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    relationDefId: text("relation_def_id")
+      .notNull()
+      .references(() => relationDef.id, { onDelete: "cascade" }),
+    /** 源头在关系的哪一端：from（本端）或 to（对端）。 */
+    sourceSide: text("source_side").$type<"from" | "to">().notNull(),
+    config: jsonb("config").$type<LinkRuleConfig>().notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** 联动以创建人（空间管理员）的身份改关联的工作项。 */
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("link_rule_space").on(t.spaceId), index("link_rule_relation").on(t.relationDefId)],
+);
+
+/**
  * Webhook：空间里发生的事件推送到外部地址。空间管理员配置。
  * 请求体用 secret 做 HMAC-SHA256 签名，接收方据此确认请求来自这里。
  */
@@ -1036,6 +1077,13 @@ export const spaceRelations = relations(space, ({ many }) => ({
   businessLines: many(businessLine),
   userGroups: many(userGroup),
   hierarchies: many(hierarchy),
+  linkRules: many(linkRule),
+}));
+
+export const linkRuleRelations = relations(linkRule, ({ one }) => ({
+  space: one(space, { fields: [linkRule.spaceId], references: [space.id] }),
+  def: one(relationDef, { fields: [linkRule.relationDefId], references: [relationDef.id] }),
+  creator: one(user, { fields: [linkRule.createdBy], references: [user.id] }),
 }));
 
 export const hierarchyRelations = relations(hierarchy, ({ one }) => ({

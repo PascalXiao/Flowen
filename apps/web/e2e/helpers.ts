@@ -90,7 +90,7 @@ export async function openItems(page: Page, typeName?: string) {
   await expect(page.getByRole("tab", { name: "工作项列表" })).toHaveAttribute("aria-selected", "true");
 }
 
-type SettingTab = "空间信息" | "工作项" | "权限" | "关联" | "自动化" | "回收站";
+type SettingTab = "空间信息" | "工作项" | "权限" | "空间关联" | "自动化" | "回收站";
 /** 左侧导航进空间配置，切到某个页签（默认「工作项」）。 */
 export async function openSettings(page: Page, tab: SettingTab = "工作项") {
   await nav(page).getByRole("link", { name: "空间配置" }).click();

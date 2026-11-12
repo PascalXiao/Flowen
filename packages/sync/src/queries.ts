@@ -150,6 +150,8 @@ export const queries = defineQueries({
         // 用户组和成员：权限配置要用，前端也按它算自己能看到哪些工作项类型
         .related("userGroups", (g) => g.related("members").orderBy("createdAt", "asc"))
         .related("hierarchies", (h) => h.orderBy("createdAt", "asc"))
+        // 空间关联的联动规则：「才允许完成」在浏览器乐观执行时也要拦
+        .related("linkRules", (r) => r.orderBy("createdAt", "asc"))
         .related("workItemTypes", (t) =>
           t
             .orderBy("sort", "asc")

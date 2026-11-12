@@ -7,6 +7,7 @@ import { useActiveSpace } from "@/components/AppShell";
 import { BusinessLinesCard } from "@/components/BusinessLinesCard";
 import { CalendarCard } from "@/components/CalendarCard";
 import { HandoverCard } from "@/components/HandoverCard";
+import { LinkRulesCard } from "@/components/LinkRulesCard";
 import { RecycleBinCard } from "@/components/RecycleBinCard";
 import { UserGroupsCard } from "@/components/UserGroupsCard";
 import { Avatar } from "@/components/ui/avatar";
@@ -31,6 +32,7 @@ const SETTING_TABS = [
   ["basicInfo", "空间信息"],
   ["workObjectSetting", "工作项"],
   ["permission", "权限"],
+  ["spaceLink", "空间关联"],
   ["automation", "自动化"],
   ["recycleBin", "回收站"],
 ] as const;
@@ -38,7 +40,7 @@ type SettingTab = (typeof SETTING_TABS)[number][0];
 
 /**
  * 空间配置：空间信息（业务线、工作日历）、工作项（类型卡片，点进去是全屏配置页）、权限（成员、用户组）、
- * 关联（工作项之间的关系）、自动化（规则和 Webhook）、回收站（删除的工作项）。只有管理员能改，成员只读。
+ * 空间关联（关联工作项之间的联动规则）、自动化（规则和 Webhook）、回收站（删除的工作项）。只有管理员能改，成员只读。
  */
 export function SpaceSettingsPage() {
   const { spaceId, tab: rawTab } = useParams({ from: "/app/spaces/$spaceId/setting/$tab" });
@@ -98,6 +100,9 @@ export function SpaceSettingsPage() {
               />
             )}
           </>
+        )}
+        {tab === "spaceLink" && (
+          <LinkRulesCard types={space.workItemTypes} rules={space.linkRules} canManage={isAdmin} />
         )}
         {tab === "automation" && (
           <>
