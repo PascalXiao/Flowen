@@ -25,7 +25,8 @@ import { ErrorBanner, PageBody } from "@/components/ui/page";
 import { Tabs } from "@/components/ui/tabs";
 import type { ListDisplay } from "@/components/WorkItemList";
 import { withLineOptions } from "@/lib/fields";
-import { columnSources } from "@/lib/list-columns";
+import { columnSources, type ListField } from "@/lib/list-columns";
+import { foreignTypes } from "@/lib/relations";
 import { newId } from "@/lib/utils";
 
 /** 新建字段时可选的类型，按字段类型分组。 */
@@ -168,10 +169,8 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
     );
   const isAdmin = type.space?.members.some((m) => m.role === "admin") ?? false;
   const fields = withLineOptions(type.fields, type.space?.businessLines);
-  // 别的工作项指向本工作项、并且在本端有字段名的互相关联
-  const reverseDefs = (space?.workItemTypes ?? [])
-    .flatMap((t) => t.relationDefs)
-    .filter((d) => d.toTypeId === type.id && d.reverseName);
+  // 别的工作项（可能在别的空间）指向本工作项、并且在本端有字段名的互相关联
+  const reverseDefs = type.incomingRelationDefs.filter((d) => d.reverseName);
   async function reorder(index: number, by: -1 | 1) {
     const keys = type ? type.roles.map((r) => r.key) : [];
     const [key] = keys.splice(index, 1);
@@ -497,10 +496,13 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
                   })),
                 },
               ],
-              (space?.workItemTypes ?? []).map((t) => ({
-                ...t,
-                fields: withLineOptions(t.fields, space?.businessLines),
-              })),
+              [
+                ...(space?.workItemTypes ?? []).map((t) => ({
+                  ...t,
+                  fields: withLineOptions(t.fields, space?.businessLines),
+                })),
+                ...(space ? foreignTypes(space) : []).map((t) => ({ ...t, fields: t.fields as readonly ListField[] })),
+              ],
             )}
             value={(type.defaultDisplay as ListDisplay | null) ?? null}
             canManage={isAdmin}

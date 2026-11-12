@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
 import { Tabs } from "@/components/ui/tabs";
+import { foreignTypes, isCrossSpace, spaceRelationDefs } from "@/lib/relations";
 import { newId } from "@/lib/utils";
 
 /**
@@ -32,8 +33,10 @@ export function AdvancedConfigPage() {
       <p className="p-6 text-sm text-fg-muted">{result.type === "complete" ? "空间不存在或没有权限。" : "加载中…"}</p>
     );
   const isAdmin = space.members.some((m) => m.userId === zero.userID && m.role === "admin");
-  const typeName = (id: string) => space.workItemTypes.find((t) => t.id === id)?.name ?? "?";
-  const defs = space.workItemTypes.flatMap((t) => t.relationDefs);
+  // 跨空间关联的另一端显示成「空间 / 类型」
+  const types = [...space.workItemTypes, ...foreignTypes(space)];
+  const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "?";
+  const defs = spaceRelationDefs(space);
   const shown = defs.filter((d) => {
     const keyword = q.trim().toLowerCase();
     return (
@@ -118,7 +121,10 @@ export function AdvancedConfigPage() {
                       <td className="px-4 py-2">
                         {typeName(d.fromTypeId)} ↔ {typeName(d.toTypeId)}
                       </td>
-                      <td className="px-4 py-2 text-fg-muted">{d.reverseName ? "互相关联" : "单向关联"}</td>
+                      <td className="px-4 py-2 text-fg-muted">
+                        {d.reverseName ? "互相关联" : "单向关联"}
+                        {isCrossSpace(d) && <span className="ml-1 text-xs text-brand-500">跨空间</span>}
+                      </td>
                       <td className="px-4 py-2">{[d.name, d.reverseName].filter(Boolean).join("；")}</td>
                       <td className="px-4 py-2 text-right">
                         {isAdmin && (
@@ -159,7 +165,7 @@ function CreateRelation({
   space,
   onError,
 }: {
-  space: { workItemTypes: readonly { id: string; name: string }[] };
+  space: { id: string; workItemTypes: readonly { id: string; name: string }[] };
   onError: (message: string | null) => void;
 }) {
   const zero = useZero();
@@ -167,6 +173,11 @@ function CreateRelation({
   const [fromId, setFromId] = useState(space.workItemTypes[0]?.id ?? "");
   const [toId, setToId] = useState(space.workItemTypes[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+  // 对端也可以是别的空间的类型（跨空间关联），要同时是那个空间的管理员
+  const [spaces] = useQuery(queries.spaces.panoramaSources());
+  const others = spaces.filter(
+    (s) => s.id !== space.id && s.members.some((m) => m.userId === zero.userID && m.role === "admin"),
+  );
   const typeOptions = space.workItemTypes.map((t) => (
     <option key={t.id} value={t.id}>
       {t.name}
@@ -210,9 +221,18 @@ function CreateRelation({
                 {typeOptions}
               </Select>
             </Field>
-            <Field label="对端工作项">
+            <Field label="对端工作项" hint="可以选别的空间的工作项（跨空间关联），要同时是那个空间的管理员">
               <Select value={toId} onChange={(e) => setToId(e.target.value)}>
-                {typeOptions}
+                <optgroup label="本空间">{typeOptions}</optgroup>
+                {others.map((s) => (
+                  <optgroup key={s.id} label={s.name}>
+                    {s.workItemTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {s.name} / {t.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </Select>
             </Field>
             <Field label="本端字段名称" hint="本端工作项上用来关联对端的字段，如「关联SKU」">

@@ -210,12 +210,35 @@ export const queries = defineQueries({
         .related("hierarchies", (h) => h.orderBy("createdAt", "asc"))
         // 空间关联的联动规则：「才允许完成」在浏览器乐观执行时也要拦
         .related("linkRules", (r) => r.orderBy("createdAt", "asc"))
+        // 别的空间建的、指向本空间类型的跨空间关联
+        .related("incomingRelationDefs", (d) =>
+          d
+            .where("spaceId", "!=", args.id)
+            .related("fromType", (t) =>
+              t
+                .related("space")
+                .related("fields", (f) => f.orderBy("sort", "asc"))
+                .related("flowTemplates", (f) => f.related("currentVersion")),
+            )
+            .related("linkRules")
+            .orderBy("createdAt", "asc"),
+        )
         .related("workItemTypes", (t) =>
           t
             .orderBy("sort", "asc")
             .related("fields")
             .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
-            .related("relationDefs")
+            // 关联的另一端可能在别的空间（跨空间关联），带上它的空间、字段和流程：关联列、联动规则要用
+            .related("relationDefs", (d) =>
+              d
+                .related("toType", (t) =>
+                  t
+                    .related("space")
+                    .related("fields", (f) => f.orderBy("sort", "asc"))
+                    .related("flowTemplates", (f) => f.related("currentVersion")),
+                )
+                .related("linkRules"),
+            )
             // 带上当前版本：前端乐观创建工作项时要用流程定义启动引擎
             .related("flowTemplates", (f) => f.related("currentVersion")),
         )
@@ -264,6 +287,8 @@ export const queries = defineQueries({
         )
         .related("roles", (r) => r.orderBy("sort", "asc").orderBy("createdAt", "asc"))
         .related("relationDefs", (r) => r.related("toType").orderBy("createdAt", "asc"))
+        // 指向这个类型的关联（可能来自别的空间），布局里放反向关联要用
+        .related("incomingRelationDefs", (r) => r.related("fromType").orderBy("createdAt", "asc"))
         .related("fields", (f) => f.orderBy("sort", "asc"))
         .related("flowTemplates", (t) => t.related("versions", (v) => v.orderBy("version", "desc").limit(1)))
         .one(),

@@ -15,6 +15,8 @@ interface Def {
   id: string;
   name: string;
   toTypeId: string;
+  /** 候选工作项所在的空间（跨空间关联是另一个空间）。 */
+  otherSpaceId?: string;
   cardinality: "one" | "many";
 }
 /** 互相关联在本工作项这一端的字段：别的工作项（fromTypeId 类型）关联到本工作项。 */
@@ -22,6 +24,7 @@ interface ReverseDef {
   id: string;
   name: string;
   fromTypeId: string;
+  otherSpaceId?: string;
   cardinality: "one" | "many";
 }
 interface Linked {
@@ -85,7 +88,13 @@ export function RelationsCard({
         {reverseDefs.map((def) => (
           <RelationGroup
             key={def.id}
-            def={{ id: def.id, name: def.name, toTypeId: def.fromTypeId, cardinality: def.cardinality }}
+            def={{
+              id: def.id,
+              name: def.name,
+              toTypeId: def.fromTypeId,
+              cardinality: def.cardinality,
+              ...(def.otherSpaceId && { otherSpaceId: def.otherSpaceId }),
+            }}
             spaceId={spaceId}
             workItemId={workItemId}
             linked={incoming.filter((r) => r.relationDefId === def.id)}
@@ -129,8 +138,10 @@ function RelationGroup({
   onAdd: (toId: string) => void;
   onRemove: (relationId: string) => void;
 }) {
-  // 候选：同一空间里关联目标类型的工作项，去掉自己和已经关联的
-  const [candidates] = useQuery(queries.workItems.bySpace({ spaceId, filter: { typeIds: [def.toTypeId] } }));
+  // 候选：目标类型所在空间（跨空间关联是另一个空间）里的工作项，去掉自己和已经关联的
+  const [candidates] = useQuery(
+    queries.workItems.bySpace({ spaceId: def.otherSpaceId ?? spaceId, filter: { typeIds: [def.toTypeId] } }),
+  );
   const taken = new Set(linked.map((r) => r.item?.id));
   const options = candidates.filter((c) => c.id !== workItemId && !taken.has(c.id));
 

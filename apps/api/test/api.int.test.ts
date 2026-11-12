@@ -3505,3 +3505,126 @@ describe("space links", () => {
     expect(completed?.causedBy).not.toBeNull();
   });
 });
+
+describe("cross-space relations", () => {
+  const spaceA = randomUUID();
+  const spaceB = randomUUID();
+  const typeA = `${spaceA}/project`;
+  const typeB = `${spaceB}/sku`;
+  const defId = `${spaceA}/rel/sku`;
+  let admin: { cookie: string; userId: string };
+  let otherAdmin: { cookie: string; userId: string };
+  let memberA: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+
+  async function setupType(spaceId: string, typeId: string, key: string, name: string, userId: string) {
+    await run("workItemType.create", { id: typeId, spaceId, key, name }, userId);
+    await run("roleDef.create", { id: `${typeId}/role/owner`, typeId, key: "owner", name: "负责人" }, userId);
+    await run(
+      "fieldDef.create",
+      { id: `${typeId}/field/brand`, typeId, key: "brand", name: "品牌", dataType: "text" },
+      userId,
+    );
+    await run("flowTemplate.create", { id: `${typeId}/default`, typeId, key: "default", name: "默认流程" }, userId);
+    await run(
+      "flowTemplate.saveDraft",
+      {
+        templateId: `${typeId}/default`,
+        definition: {
+          key,
+          version: 0,
+          nodes: [
+            { key: "start", name: "开始", completion: "auto", ownerRoles: [] },
+            { key: "design", name: "设计", completion: "singleConfirm", ownerRoles: ["owner"] },
+          ],
+          edges: [{ from: "start", to: "design" }],
+        },
+      },
+      userId,
+    );
+    await run("flowTemplate.publish", { versionId: `${typeId}/default/v1` }, userId);
+  }
+
+  beforeAll(async () => {
+    admin = await signUp(`cross-admin-${spaceA}@example.com`);
+    otherAdmin = await signUp(`cross-other-${spaceA}@example.com`);
+    memberA = await signUp(`cross-member-${spaceA}@example.com`);
+    await run("space.create", { id: spaceA, name: "项目空间" });
+    await run("space.create", { id: spaceB, name: "SKU 空间" }, otherAdmin.userId);
+    await services.database.db.insert(schema.spaceMember).values({ spaceId: spaceA, userId: memberA.userId });
+    await setupType(spaceA, typeA, "project", "项目", admin.userId);
+    await setupType(spaceB, typeB, "sku", "SKU", otherAdmin.userId);
+  });
+
+  const create = async (typeId: string, name: string, userId: string) => {
+    const id = randomUUID();
+    await run("workItem.create", { id, typeId, name, fields: {}, roles: { owner: [userId] } }, userId);
+    return id;
+  };
+
+  it("needs an admin of both spaces to define a relation across them", async () => {
+    const args = { id: defId, fromTypeId: typeA, toTypeId: typeB, name: "关联SKU", cardinality: "many" };
+    await expect(run("relationDef.create", { ...args, reverseName: "所属项目" })).rejects.toThrow(
+      "跨空间关联要同时是两个空间的管理员才能建",
+    );
+    await services.database.db
+      .insert(schema.spaceMember)
+      .values({ spaceId: spaceB, userId: admin.userId, role: "admin" });
+    await run("relationDef.create", { ...args, reverseName: "所属项目" });
+    const [def] = await services.database.db.select().from(schema.relationDef).where(eq(schema.relationDef.id, defId));
+    expect(def).toMatchObject({ spaceId: spaceA, toSpaceId: spaceB });
+  });
+
+  it("links work items across the spaces for people who can see both", async () => {
+    const project = await create(typeA, "新品", admin.userId);
+    const sku = await create(typeB, "SKU-1", admin.userId);
+    // 只在项目空间的成员看不到 SKU，不能关联
+    await expect(
+      run("relation.add", { id: randomUUID(), relationDefId: defId, fromId: project, toId: sku }, memberA.userId),
+    ).rejects.toThrow("只能选对应类型的工作项");
+    const relationId = randomUUID();
+    await run("relation.add", { id: relationId, relationDefId: defId, fromId: project, toId: sku });
+    // SKU 空间的管理员（看不到项目）也能从 SKU 那一端取消
+    await run("relation.remove", { id: relationId }, otherAdmin.userId);
+    const left = await services.database.db.select().from(schema.relation).where(eq(schema.relation.id, relationId));
+    expect(left).toHaveLength(0);
+  });
+
+  it("link rules work across the spaces, wherever the rule is kept", async () => {
+    const project = await create(typeA, "新品", admin.userId);
+    const sku = await create(typeB, "SKU-2", admin.userId);
+    await run("relation.add", { id: randomUUID(), relationDefId: defId, fromId: project, toId: sku });
+    const rule = (spaceId: string, config: unknown) =>
+      run("linkRule.create", {
+        id: randomUUID(),
+        spaceId,
+        name: "规则",
+        relationDefId: defId,
+        sourceSide: "from",
+        config,
+      });
+    await expect(rule(randomUUID(), { kind: "field", sourceField: "brand", targetField: "brand" })).rejects.toThrow(
+      "这条关系不在这个空间里",
+    );
+    // 规则建在 SKU 空间：项目的品牌同步到 SKU，SKU 的设计要等项目的设计完成
+    await rule(spaceB, { kind: "field", sourceField: "brand", targetField: "brand" });
+    await rule(spaceB, { kind: "nodeDrive", sourceNode: "design", targetNode: "design", mode: "allow" });
+    await run("fieldValue.set", { workItemId: project, fieldKey: "brand", value: "示例品牌" });
+    const runner = createMutatorRunner(services.database);
+    for (const e of await services.database.db
+      .select()
+      .from(schema.eventLog)
+      .where(eq(schema.eventLog.workItemId, project)))
+      await cascadeLinks(runner, e.id);
+    const [value] = await services.database.db
+      .select()
+      .from(schema.fieldValue)
+      .where(and(eq(schema.fieldValue.workItemId, sku), eq(schema.fieldValue.fieldKey, "brand")));
+    expect(value?.value).toBe("示例品牌");
+    await expect(run("node.confirm", { workItemId: sku, nodeKey: "design" })).rejects.toThrow(
+      "要等「新品 · 设计」完成才能完成",
+    );
+    await run("node.confirm", { workItemId: project, nodeKey: "design" });
+    await run("node.confirm", { workItemId: sku, nodeKey: "design" });
+  });
+});

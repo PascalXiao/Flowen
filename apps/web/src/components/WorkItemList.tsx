@@ -24,6 +24,7 @@ import {
   type ListItem,
   listNeeds,
 } from "@/lib/list-columns";
+import { foreignTypes, type RelDef } from "@/lib/relations";
 import { cn } from "@/lib/utils";
 
 /** 列表的显示设置：列、排序、分组、行着色（和视图里存的一样）。 */
@@ -90,15 +91,12 @@ type SpaceLike = {
     fields: readonly ListField[];
     roles: readonly { key: string; name: string }[];
     flowTemplates: readonly { currentVersion?: { definition: unknown } | null | undefined }[];
-    relationDefs: readonly {
-      id: string;
-      fromTypeId: string;
-      toTypeId: string;
-      name: string;
-      reverseName: string | null;
-    }[];
+    relationDefs: readonly (RelDef & { toType?: ForeignTypeSource | null })[];
   }[];
+  /** 别的空间指向本空间类型的跨空间关联。 */
+  incomingRelationDefs?: readonly (RelDef & { fromType?: ForeignTypeSource | null })[];
 };
+type ForeignTypeSource = NonNullable<Parameters<typeof foreignTypes>[0]["incomingRelationDefs"]>[number]["fromType"];
 
 /**
  * 工作项列表（表格）：页签（全部、最近浏览、我创建的…）、筛选之外的
@@ -144,7 +142,11 @@ export function WorkItemList({
     typeName: (id) => space.workItemTypes.find((t) => t.id === id)?.name ?? "",
     ...columnSources(
       space.workItemTypes.filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id)),
-      space.workItemTypes.map((t) => ({ ...t, fields: withLineOptions(t.fields, space.businessLines) })),
+      // 跨空间关联另一端的类型也在里面：关联列、关联字段列要用它的字段
+      [
+        ...space.workItemTypes.map((t) => ({ ...t, fields: withLineOptions(t.fields, space.businessLines) })),
+        ...foreignTypes(space).map((t) => ({ ...t, fields: t.fields as readonly ListField[] })),
+      ],
     ),
   };
   const available = allColumns(ctx);

@@ -304,6 +304,10 @@ export const relationDef = pgTable("relation_def", {
   toTypeId: text("to_type_id")
     .notNull()
     .references(() => workItemType.id),
+  /** to 类型所在的空间。和 spaceId 不同时是跨空间关联，两个空间都能看到、都能用。 */
+  toSpaceId: text("to_space_id")
+    .notNull()
+    .references(() => space.id),
   /** 在 from 类型上承载这条关联的字段键，如“关联项目”。 */
   fieldKey: text("field_key").notNull(),
   name: text("name").notNull(),
@@ -1078,6 +1082,8 @@ export const spaceRelations = relations(space, ({ many }) => ({
   userGroups: many(userGroup),
   hierarchies: many(hierarchy),
   linkRules: many(linkRule),
+  /** 别的空间指向本空间类型的跨空间关联（也包含本空间自己的，查询时按 spaceId 去掉）。 */
+  incomingRelationDefs: many(relationDef, { relationName: "toSpace" }),
 }));
 
 export const linkRuleRelations = relations(linkRule, ({ one }) => ({
@@ -1122,6 +1128,8 @@ export const workItemTypeRelations = relations(workItemType, ({ one, many }) => 
   workItems: many(workItem),
   /** 从这个类型出发的自定义关联。 */
   relationDefs: many(relationDef, { relationName: "fromType" }),
+  /** 指向这个类型的自定义关联（可能来自别的空间）。 */
+  incomingRelationDefs: many(relationDef, { relationName: "toType" }),
   /** 用户组给的查看范围。 */
   access: many(typeAccess),
 }));
@@ -1134,7 +1142,9 @@ export const roleDefRelations = relations(roleDef, ({ one }) => ({
   type: one(workItemType, { fields: [roleDef.typeId], references: [workItemType.id] }),
 }));
 
-export const relationDefRelations = relations(relationDef, ({ one }) => ({
+export const relationDefRelations = relations(relationDef, ({ one, many }) => ({
+  toSpace: one(space, { fields: [relationDef.toSpaceId], references: [space.id], relationName: "toSpace" }),
+  linkRules: many(linkRule),
   fromType: one(workItemType, {
     fields: [relationDef.fromTypeId],
     references: [workItemType.id],

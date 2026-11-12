@@ -60,6 +60,7 @@ import { VoteField } from "@/components/VoteField";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { withLineOptions } from "@/lib/fields";
 import { nodeGanttRows } from "@/lib/gantt";
+import { spaceRelationDefs } from "@/lib/relations";
 import { cn, newId } from "@/lib/utils";
 
 /** 流程图节点的样式：进行中蓝色描边，已完成绿色，未开始灰色，被裁剪的虚线。 */
@@ -234,8 +235,18 @@ export function WorkItemView({ itemId }: { itemId: string }) {
     if (d.target?.workItemId === item.id)
       ownDependencies[d.nodeKey] = [...(ownDependencies[d.nodeKey] ?? []), { allow: d.allow, node: d.target.nodeKey }];
   /** 空间关联里「才允许完成」的联动：关联的源工作项和它的源节点。 */
+  // 联动规则：本空间建的，加上跨空间关联另一端的空间建的（挂在关联定义上）
+  const linkRules = [
+    ...new Map(
+      [
+        ...(space?.linkRules ?? []),
+        ...(space?.workItemTypes ?? []).flatMap((t) => t.relationDefs.flatMap((d) => d.linkRules)),
+        ...(space?.incomingRelationDefs ?? []).flatMap((d) => d.linkRules),
+      ].map((r) => [r.id, r]),
+    ).values(),
+  ];
   const linkedSources = (nodeKey: string) =>
-    (space?.linkRules ?? []).flatMap((rule) => {
+    linkRules.flatMap((rule) => {
       const c = rule.config;
       if (rule.enabled === false || c.kind !== "nodeDrive" || c.mode !== "allow" || c.targetNode !== nodeKey) return [];
       const sources =
@@ -613,12 +624,12 @@ export function WorkItemView({ itemId }: { itemId: string }) {
         );
       case "relation":
       case "relations": {
-        const defs = (item.type?.relationDefs ?? []).filter(
-          (d) => it.kind === "relations" || d.id === it.relationDefId,
-        );
-        // 别的工作项指向本工作项、并且在本端有字段名的互相关联
-        const reverseDefs = (space?.workItemTypes ?? [])
-          .flatMap((t) => t.relationDefs)
+        // 跨空间关联的候选工作项在另一端的空间里
+        const defs = (item.type?.relationDefs ?? [])
+          .filter((d) => it.kind === "relations" || d.id === it.relationDefId)
+          .map((d) => ({ ...d, otherSpaceId: d.toSpaceId }));
+        // 别的工作项（可能在别的空间）指向本工作项、并且在本端有字段名的互相关联
+        const reverseDefs = (space ? spaceRelationDefs(space) : [])
           .filter(
             (d) =>
               d.toTypeId === item.typeId && d.reverseName && (it.kind === "relations" || d.id === it.relationDefId),
@@ -627,6 +638,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             id: d.id,
             name: d.reverseName ?? d.name,
             fromTypeId: d.fromTypeId,
+            otherSpaceId: d.spaceId,
             cardinality: d.reverseCardinality ?? ("many" as const),
           }));
         return (
@@ -726,7 +738,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
         ].filter((w): w is Linked => !!w);
         const def =
           (item.type?.relationDefs ?? []).find((d) => d.id === it.relationDefId) ??
-          (space?.workItemTypes ?? []).flatMap((t) => t.relationDefs).find((d) => d.id === it.relationDefId);
+          (space ? spaceRelationDefs(space) : []).find((d) => d.id === it.relationDefId);
         const title =
           it.title ||
           (def && "reverseName" in def && def.toTypeId === item.typeId ? def.reverseName : def?.name) ||

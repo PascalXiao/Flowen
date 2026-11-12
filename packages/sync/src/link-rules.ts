@@ -21,6 +21,8 @@ const configArgs = z.discriminatedUnion("kind", [
 
 export const createLinkRuleArgs = z.object({
   id: z.string(),
+  /** 规则建在哪个空间（跨空间关联两端的空间都可以）；不传时是关联定义所在的空间。 */
+  spaceId: z.string().optional(),
   name: z.string().trim().min(1, "规则要有名称。").max(50),
   relationDefId: z.string(),
   sourceSide: z.enum(["from", "to"]),
@@ -43,8 +45,10 @@ async function typeNodes(tx: Transaction, typeId: string) {
 export async function createLinkRule(tx: Transaction, args: z.output<typeof createLinkRuleArgs>, userID: string) {
   const def = await tx.run(zql.relationDef.where("id", args.relationDefId).one());
   if (!def) throw new Error("关系不存在。");
-  await assertAdmin(tx, def.spaceId, userID);
-  const existing = await tx.run(zql.linkRule.where("spaceId", def.spaceId));
+  const spaceId = args.spaceId ?? def.spaceId;
+  if (spaceId !== def.spaceId && spaceId !== def.toSpaceId) throw new Error("这条关系不在这个空间里。");
+  await assertAdmin(tx, spaceId, userID);
+  const existing = await tx.run(zql.linkRule.where("spaceId", spaceId));
   if (existing.length >= MAX_LINK_RULES) throw new Error(`一个空间最多 ${MAX_LINK_RULES} 条联动规则。`);
   const [sourceType, targetType] =
     args.sourceSide === "from" ? [def.fromTypeId, def.toTypeId] : [def.toTypeId, def.fromTypeId];
@@ -63,9 +67,9 @@ export async function createLinkRule(tx: Transaction, args: z.output<typeof crea
     if (!sourceName || !targets.has(c.targetNode)) throw new Error("节点不存在。");
     if (c.kind === "nodeDrive") config = { ...c, sourceNodeName: sourceName };
   }
-  // 同一条关系、同一方向，同一个目标字段 / 节点只能有一条同类规则
+  // 同一条关系、同一方向，同一个目标字段 / 节点只能有一条同类规则（跨空间关联两边建的规则一起算）
   const target = c.kind === "field" ? c.targetField : c.targetNode;
-  const clash = existing.some(
+  const clash = (await tx.run(zql.linkRule.where("relationDefId", args.relationDefId))).some(
     (r) =>
       r.relationDefId === args.relationDefId &&
       r.sourceSide === args.sourceSide &&
@@ -75,7 +79,7 @@ export async function createLinkRule(tx: Transaction, args: z.output<typeof crea
   if (clash) throw new Error("这条关系上已经有同样目标的规则了。");
   await tx.mutate.linkRule.insert({
     id: args.id,
-    spaceId: def.spaceId,
+    spaceId,
     name: args.name,
     relationDefId: args.relationDefId,
     sourceSide: args.sourceSide,
@@ -114,8 +118,16 @@ export async function linkGates(
   item: { id: string; spaceId: string; typeId: string },
   userID: string,
 ): Promise<Record<string, InstanceDependency[]>> {
+  // 规则可能建在跨空间关联另一端的空间里，按关联两端的类型找
   const rules = (
-    await tx.run(zql.linkRule.where("spaceId", item.spaceId).where("enabled", true).related("def"))
+    await tx.run(
+      zql.linkRule
+        .where("enabled", true)
+        .whereExists("def", (d) =>
+          d.where(({ or, cmp }) => or(cmp("fromTypeId", item.typeId), cmp("toTypeId", item.typeId))),
+        )
+        .related("def"),
+    )
   ).filter((r) => r.config.kind === "nodeDrive" && r.config.mode === "allow");
   const gates: Record<string, InstanceDependency[]> = {};
   for (const rule of rules) {

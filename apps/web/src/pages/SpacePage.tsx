@@ -35,6 +35,7 @@ import { Segmented, Tabs } from "@/components/ui/tabs";
 import { type ListDisplay, WorkItemList } from "@/components/WorkItemList";
 import { env } from "@/lib/env";
 import { withLineOptions } from "@/lib/fields";
+import { foreignTypes, spaceRelationDefs } from "@/lib/relations";
 import { newId } from "@/lib/utils";
 import { WorkItemView } from "@/pages/WorkItemPage";
 
@@ -382,14 +383,11 @@ function WorkItems({
         <TreeView
           spaceId={space.id}
           filter={filter}
-          relationDefs={space.workItemTypes.flatMap((t) =>
-            t.relationDefs.map((d) => ({
-              id: d.id,
-              name: d.name,
-              fromType: t.name,
-              toType: space.workItemTypes.find((x) => x.id === d.toTypeId)?.name ?? "?",
-            })),
-          )}
+          relationDefs={spaceRelationDefs(space).map((d) => {
+            const name = (id: string) =>
+              [...space.workItemTypes, ...foreignTypes(space)].find((x) => x.id === id)?.name ?? "?";
+            return { id: d.id, name: d.name, fromType: name(d.fromTypeId), toType: name(d.toTypeId) };
+          })}
           hierarchies={space.hierarchies}
           typeId={type.id}
           timeZone={space.timezone ?? "Asia/Shanghai"}
