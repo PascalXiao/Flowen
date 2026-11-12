@@ -19,6 +19,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Tag } from "@/components/ui/tag";
 import { WebhooksCard } from "@/components/WebhooksCard";
 import { env } from "@/lib/env";
+import { foreignTypes } from "@/lib/relations";
 import { newId } from "@/lib/utils";
 import { AutomationsPanel } from "@/pages/AutomationsPage";
 import { ImportDemo } from "@/pages/SpacePage";
@@ -102,7 +103,12 @@ export function SpaceSettingsPage() {
           </>
         )}
         {tab === "spaceLink" && (
-          <LinkRulesCard types={space.workItemTypes} rules={space.linkRules} canManage={isAdmin} />
+          <LinkRulesCard
+            spaceId={space.id}
+            types={[...space.workItemTypes, ...foreignTypes(space)]}
+            rules={space.linkRules}
+            canManage={isAdmin}
+          />
         )}
         {tab === "automation" && (
           <>

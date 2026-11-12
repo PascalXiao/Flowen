@@ -1,5 +1,5 @@
 import { schema } from "@fp/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { MutatorRunner } from "./index.ts";
 
 type Rule = typeof schema.linkRule.$inferSelect;
@@ -17,8 +17,19 @@ export async function cascadeLinks(runner: MutatorRunner, eventId: number): Prom
   const payload = (event.payload ?? {}) as Record<string, unknown>;
   const item = await db.query.workItem.findFirst({ where: eq(schema.workItem.id, event.workItemId) });
   if (!item) return 0;
+  // 规则按关联定义找：跨空间关联的规则可能建在另一端的空间里
+  const defs = await db.query.relationDef.findMany({
+    where: or(eq(schema.relationDef.fromTypeId, item.typeId), eq(schema.relationDef.toTypeId, item.typeId)),
+  });
+  if (defs.length === 0) return 0;
   const rules = await db.query.linkRule.findMany({
-    where: and(eq(schema.linkRule.spaceId, event.spaceId), eq(schema.linkRule.enabled, true)),
+    where: and(
+      inArray(
+        schema.linkRule.relationDefId,
+        defs.map((d) => d.id),
+      ),
+      eq(schema.linkRule.enabled, true),
+    ),
     with: { def: true },
   });
   if (rules.length === 0) return 0;

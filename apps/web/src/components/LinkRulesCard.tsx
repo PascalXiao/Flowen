@@ -20,7 +20,7 @@ type Config =
 interface TypeInfo {
   id: string;
   name: string;
-  fields: readonly { key: string; name: string; dataType: string; formula: string | null }[];
+  fields: readonly { key: string; name: string; dataType: string; formula?: unknown }[];
   relationDefs: readonly {
     id: string;
     name: string;
@@ -56,10 +56,13 @@ function nodesOf(type: TypeInfo | undefined) {
  * 字段同步、节点驱动（完成即完成 / 才允许完成）、节点排期同步。只有空间管理员可以改。
  */
 export function LinkRulesCard({
+  spaceId,
   types,
   rules,
   canManage,
 }: {
+  spaceId: string;
+  /** 本空间的类型，加上跨空间关联另一端的类型（名称带空间名）。 */
   types: readonly TypeInfo[];
   rules: readonly LinkRuleRow[];
   canManage: boolean;
@@ -111,7 +114,7 @@ export function LinkRulesCard({
             联动以创建规则的管理员的身份执行。
           </CardDescription>
         </div>
-        {canManage && defs.length > 0 && <CreateRule types={types} onCreate={run} />}
+        {canManage && defs.length > 0 && <CreateRule spaceId={spaceId} types={types} onCreate={run} />}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -182,9 +185,11 @@ export function LinkRulesCard({
 }
 
 function CreateRule({
+  spaceId,
   types,
   onCreate,
 }: {
+  spaceId: string;
   types: readonly TypeInfo[];
   onCreate: (request: Parameters<ReturnType<typeof useZero>["mutate"]>[0]) => Promise<boolean>;
 }) {
@@ -228,7 +233,11 @@ function CreateRule({
         : kind === "nodeDrive"
           ? { kind, sourceNode: source, targetNode: target, mode }
           : { kind, sourceNode: source, targetNode: target };
-    if (await onCreate(mutators.linkRule.create({ id: newId(), name, relationDefId: defId, sourceSide: side, config })))
+    if (
+      await onCreate(
+        mutators.linkRule.create({ id: newId(), spaceId, name, relationDefId: defId, sourceSide: side, config }),
+      )
+    )
       setOpen(false);
   }
 
