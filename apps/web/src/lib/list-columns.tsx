@@ -576,3 +576,43 @@ export function defaultColumnKeys(fields: ReadonlyMap<string, ListField>): strin
     "creator",
   ];
 }
+
+/** 列表查询要带的数据（字段值、节点、关联），由用到的列键和条件里的字段算出来。 */
+export interface ListNeeds {
+  fields: string[];
+  nodes: "none" | "active" | "all";
+  relations: boolean;
+  relatedFields: string[];
+  roles: string[];
+}
+
+/** 进行中节点就够的系统列；节点列和预计完成要全部节点。 */
+const ACTIVE_NODE_COLUMNS = new Set(["owners", "nodes", "schedule", "delay", "stay"]);
+
+export function listNeeds(columnKeys: readonly string[], conditionFieldKeys: readonly string[] = []): ListNeeds {
+  const fields = new Set(conditionFieldKeys.filter((k) => !k.startsWith("$")));
+  const relatedFields = new Set<string>();
+  const roles = new Set<string>();
+  let nodes: ListNeeds["nodes"] = "none";
+  let relations = false;
+  for (const key of columnKeys) {
+    if (key.startsWith("field:")) fields.add(key.slice("field:".length));
+    else if (key.startsWith("role:")) roles.add(key.slice("role:".length));
+    else if (key.startsWith("node:") || key === "expectedEnd") nodes = "all";
+    else if (ACTIVE_NODE_COLUMNS.has(key)) nodes = nodes === "all" ? "all" : "active";
+    else if (key.startsWith("rel:")) relations = true;
+    else if (key.startsWith("relf:")) {
+      relations = true;
+      // relf:out|in:关联定义 id:字段键
+      const fieldKey = key.split(":").slice(3).join(":");
+      if (fieldKey && !fieldKey.startsWith("$")) relatedFields.add(fieldKey);
+    }
+  }
+  return {
+    fields: [...fields].sort(),
+    nodes,
+    relations,
+    relatedFields: [...relatedFields].sort(),
+    roles: [...roles].sort(),
+  };
+}

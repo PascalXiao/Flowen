@@ -1,5 +1,5 @@
 import { Checkbox, Dropdown, Popover, Input as SemiInput, Table, Toast } from "@douyinfe/semi-ui";
-import { type Condition, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
+import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
@@ -10,6 +10,7 @@ import { ConditionEditor, type ConditionField } from "@/components/ConditionEdit
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
+import { env } from "@/lib/env";
 import { exportListXlsx } from "@/lib/export-xlsx";
 import { withLineOptions } from "@/lib/fields";
 import {
@@ -21,6 +22,7 @@ import {
   type ListContext,
   type ListField,
   type ListItem,
+  listNeeds,
 } from "@/lib/list-columns";
 import { cn } from "@/lib/utils";
 
@@ -120,18 +122,9 @@ export function WorkItemList({
   onRows?: (ids: readonly string[]) => void;
 }) {
   const zero = useZero();
-  const me = String(zero.userID);
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [items, result] = useQuery(queries.workItems.list({ spaceId: space.id, filter, tab }));
-  const [all] = useQuery(
-    queries.workItems.list({
-      spaceId: space.id,
-      filter: filter.typeIds ? { typeIds: filter.typeIds } : {},
-      tab: "all",
-    }),
-  );
 
   // 字段：筛了类型时只用这些类型的字段，同键字段合成一列；业务线字段补上空间的业务线树作为选项
   const fields = useMemo(() => {
@@ -161,26 +154,66 @@ export function WorkItemList({
   ).filter((c) => byKey.has(c.key));
   const setColumns = (columns: { key: string; width?: number }[]) => onDisplay({ ...display, columns });
 
-  // 搜索、排序、着色、分组都在已经同步下来的行上做
+  // 只同步要用的数据：显示的列、排序、分组、着色条件用到的字段、节点和关联
+  const needs = listNeeds(
+    [
+      ...shown.map((c) => c.key),
+      ...(display.sort ?? []).map((s) => s.key),
+      ...(display.groupBy ? [display.groupBy] : []),
+    ],
+    (display.colors ?? []).flatMap((c) => conditionFields(c.when)),
+  );
+  // 只按创建、更新时间排序，不分组、不汇总时，排序在服务端做，一次加载 PAGE 条，往下点「加载更多」；
+  // 其余情况要拿到全部行才能在前端排序、分组、汇总
+  const sort = display.sort ?? [];
+  const paged =
+    tab !== "recent" &&
+    !display.groupBy &&
+    Object.keys(display.summary ?? {}).length === 0 &&
+    sort.every((s) => SERVER_SORT.has(s.key));
+  const keyword = useDebounced(search.trim(), 250);
+  const [limit, setLimit] = useState(PAGE);
+  const listArgs = {
+    spaceId: space.id,
+    filter,
+    tab,
+    needs,
+    ...(keyword && { search: keyword }),
+    ...(paged && {
+      order: sort.map((s) => ({ key: s.key as "createdAt" | "updatedAt", desc: s.desc })),
+    }),
+  };
+  const argsKey = JSON.stringify(listArgs);
+  // 换了筛选、页签、排序、搜索时从第一批重新开始
+  const [limitFor, setLimitFor] = useState(argsKey);
+  if (limitFor !== argsKey) {
+    setLimitFor(argsKey);
+    setLimit(PAGE);
+  }
+  const [items, result] = useQuery(queries.workItems.list({ ...listArgs, ...(paged && { limit }) }));
+  const more = paged && items.length >= limit;
+  const stats = useListStats(space.id, filter.typeIds ?? [], items);
+
+  // 排序（不在服务端排的）、着色、分组在已经同步下来的行上做
   const rows = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    let out = keyword ? items.filter((i) => i.name.toLowerCase().includes(keyword)) : [...items];
+    let out = [...items];
     if (tab === "recent") out.sort((a, b) => (b.visits[0]?.visitedAt ?? 0) - (a.visits[0]?.visitedAt ?? 0));
-    for (const s of [...(display.sort ?? [])].reverse()) {
-      const col = byKey.get(s.key);
-      if (!col) continue;
-      out = [...out].sort((a, b) => {
-        const x = col.value(a);
-        const y = col.value(b);
-        if (x === y) return 0;
-        if (x === null) return 1;
-        if (y === null) return -1;
-        const cmp = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "zh");
-        return s.desc ? -cmp : cmp;
-      });
-    }
+    if (!paged)
+      for (const s of [...sort].reverse()) {
+        const col = byKey.get(s.key);
+        if (!col) continue;
+        out = [...out].sort((a, b) => {
+          const x = col.value(a);
+          const y = col.value(b);
+          if (x === y) return 0;
+          if (x === null) return 1;
+          if (y === null) return -1;
+          const cmp = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "zh");
+          return s.desc ? -cmp : cmp;
+        });
+      }
     return out;
-  }, [items, search, display.sort, tab, byKey]);
+  }, [items, sort, tab, byKey, paged]);
   const rowKey = rows.map((r) => r.id).join(",");
   useEffect(() => {
     onRows?.(rowKey ? rowKey.split(",") : []);
@@ -385,11 +418,11 @@ export function WorkItemList({
     },
   ];
 
-  const stats = [
-    ["总数", all.length],
-    ["已完成", all.filter((i) => i.status === "completed").length],
+  const statCells = [
+    ["总数", stats?.total],
+    ["已完成", stats?.completed],
     ["成员", space.members.length],
-    ["我参与的", all.filter((i) => i.roleMembers.some((m) => m.userId === me)).length],
+    ["我参与的", stats?.involved],
   ] as const;
 
   return (
@@ -398,10 +431,10 @@ export function WorkItemList({
         aria-label="统计"
         className="grid grid-cols-4 divide-x divide-line-subtle rounded-lg border border-line-subtle bg-surface py-3"
       >
-        {stats.map(([label, n]) => (
+        {statCells.map(([label, n]) => (
           <div key={label} className="flex flex-col items-center gap-1">
             <span className="text-xs text-fg-muted">{label}</span>
-            <span className="text-xl font-semibold tabular-nums">{n}</span>
+            <span className="text-xl font-semibold tabular-nums">{n ?? "—"}</span>
           </div>
         ))}
       </section>
@@ -459,17 +492,21 @@ export function WorkItemList({
             disabled={rows.length === 0}
             title="按当前的列、筛选、排序导出"
             className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm text-fg hover:bg-hover disabled:cursor-not-allowed disabled:text-fg-disabled"
-            onClick={() => {
+            onClick={async () => {
               const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
               const day = new Date().toLocaleDateString("sv-SE");
-              exportListXlsx(
-                `${space.name}-${typeName}-${day}`,
-                shown.map((c) => byKey.get(c.key) as ListColumn),
-                rows,
-              ).then(
-                () => Toast.success({ content: `已导出 ${rows.length} 条`, duration: 2 }),
-                (e: unknown) => Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` }),
-              );
+              try {
+                // 分批加载时还有没加载的行，导出前把全部取下来
+                const out = more ? await zero.run(queries.workItems.list(listArgs), { type: "complete" }) : rows;
+                await exportListXlsx(
+                  `${space.name}-${typeName}-${day}`,
+                  shown.map((c) => byKey.get(c.key) as ListColumn),
+                  out,
+                );
+                Toast.success({ content: `已导出 ${out.length} 条`, duration: 2 });
+              } catch (e) {
+                Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` });
+              }
             }}
           >
             <Download className="size-4" />
@@ -511,7 +548,7 @@ export function WorkItemList({
             rowKey="id"
             columns={columns}
             dataSource={rows}
-            pagination={rows.length > 50 ? { pageSize: 50 } : false}
+            pagination={!paged && rows.length > 50 ? { pageSize: 50 } : false}
             resizable={{
               // 拖完列宽记进显示设置（名称列和加列按钮不记）
               onResizeStop: ((column: { key?: string; width?: number | string }) => {
@@ -548,6 +585,7 @@ export function WorkItemList({
                     { key: "__add", width: 56 },
                   ]}
                   rows={rows}
+                  partial={more}
                   value={display.summary ?? {}}
                   onChange={(summary) =>
                     onDisplay({ ...display, summary: Object.keys(summary).length ? summary : undefined })
@@ -577,10 +615,65 @@ export function WorkItemList({
               )
             }
           />
+          {more && (
+            <div className="flex justify-center pt-3">
+              <Button variant="ghost" onClick={() => setLimit(limit + PAGE)}>
+                加载更多
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+/** 分批加载时每批几条。 */
+const PAGE = 100;
+/** 能在服务端排序的列。 */
+const SERVER_SORT = new Set(["createdAt", "updatedAt"]);
+
+/** 输入停下一会儿后才变的值（搜索框用，不用每敲一个字就查一次）。 */
+function useDebounced<T>(value: T, ms: number): T {
+  const [current, setCurrent] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setCurrent(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return current;
+}
+
+/**
+ * 列表上方的统计数字，在服务端数（不用为了几个数字同步整个空间）。
+ * 列表里的工作项新建、删除、改了状态时再数一次。
+ */
+function useListStats(
+  spaceId: string,
+  typeIds: readonly string[],
+  items: readonly { id: string; status: string | null }[],
+) {
+  const [stats, setStats] = useState<{ total: number; completed: number; involved: number } | null>(null);
+  const signal = useMemo(() => items.map((i) => `${i.id}:${i.status}`).join(","), [items]);
+  const query = typeIds.map((id) => `type=${encodeURIComponent(id)}`).join("&");
+  useEffect(() => {
+    void signal;
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${env.apiUrl}/api/spaces/${spaceId}/list-stats${query ? `?${query}` : ""}`, {
+          credentials: "include",
+        });
+        if (res.ok && live) setStats(await res.json());
+      } catch {
+        // 统计数字拿不到时显示「—」，不影响列表
+      }
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [spaceId, query, signal]);
+  return stats;
 }
 
 /** 表头最右边的「+」：勾选要显示的列，调顺序。 */
@@ -674,11 +767,14 @@ function ColumnPicker({
 function SummaryRow({
   cells,
   rows,
+  partial = false,
   value,
   onChange,
 }: {
   cells: { key: string; width: number; col?: ListColumn }[];
   rows: readonly ListItem[];
+  /** 分批加载还没加载完（选了统计方式后会改成加载全部）。 */
+  partial?: boolean;
   value: Record<string, SummaryKind>;
   onChange: (summary: Record<string, SummaryKind>) => void;
 }) {
@@ -747,7 +843,9 @@ function SummaryRow({
           );
           return (
             <div key={key} style={{ width }} className="shrink-0 px-2 py-1.5">
-              {key === "name" && <span className="text-fg-muted">共 {rows.length} 条</span>}
+              {key === "name" && (
+                <span className="text-fg-muted">{partial ? `已加载 ${rows.length} 条` : `共 ${rows.length} 条`}</span>
+              )}
               {col && (
                 <Dropdown
                   trigger="click"

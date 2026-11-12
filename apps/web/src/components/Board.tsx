@@ -1,6 +1,7 @@
 import { Checkbox, Popover } from "@douyinfe/semi-ui";
-import { nodeFlowOf, optionLabel, type StatusCategory, statusFlowOf } from "@fp/engine";
+import { conditionFields, nodeFlowOf, optionLabel, type StatusCategory, statusFlowOf } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
+import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, LayoutList } from "lucide-react";
@@ -32,6 +33,9 @@ const NO_STAGE = "\u0000none";
 const OTHER = "\u0000other";
 const NO_LANE = "\u0000nolane";
 
+/** 每列先加载几张卡片，「加载更多」每次再加这么多。 */
+const COLUMN_PAGE = 30;
+
 /** 能当泳道的字段类型：单选、多选、人员、布尔。多值的工作项会出现在多条泳道里。 */
 const LANE_FIELD_TYPES = ["select", "radio", "multiSelect", "businessLine", "user", "singleUser", "bool"];
 /** 卡片上不显示的字段类型。 */
@@ -50,6 +54,7 @@ export function Board({
   userName = (id) => id,
   display = {},
   onDisplay,
+  guest = false,
 }: {
   spaceId: string;
   filter: WorkItemFilterArgs;
@@ -61,9 +66,10 @@ export function Board({
   /** 泳道和卡片字段（记在列表的显示设置里）。 */
   display?: BoardDisplay;
   onDisplay?: (display: BoardDisplay) => void;
+  /** 访客不能拖卡片流转。 */
+  guest?: boolean;
 }) {
   const zero = useZero();
-  const [items] = useQuery(queries.workItems.boardBySpace({ spaceId, filter }));
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [folded, setFolded] = useState<string[]>([]);
@@ -72,8 +78,23 @@ export function Board({
 
   const only = filter.typeIds?.length === 1 ? types.find((t) => t.id === filter.typeIds?.[0]) : undefined;
   const statusFlow = only?.definitions.map(statusFlowOf).find((d) => d !== null);
-  const isGuest = items[0]?.space?.members[0]?.role === "guest";
-  const draggable = statusFlow !== undefined && !isGuest;
+  const draggable = statusFlow !== undefined && !guest;
+
+  // 只同步卡片要用的字段：卡片上显示的、当泳道的、状态流流转条件里的（拖动时在前端判断）
+  const wanted = [
+    ...new Set([
+      ...(display.cardFields ?? []),
+      ...(laneBy?.startsWith("field:") ? [laneBy.slice(6)] : []),
+      ...(statusFlow?.transitions.flatMap((t) => (t.gate ? conditionFields(t.gate) : [])) ?? []),
+    ]),
+  ].sort();
+  // 分列和每列的数量只要工作项本身；不分泳道时每列各自分批加载卡片，分泳道时一次取全部卡片
+  const [items, indexResult] = useQuery(queries.workItems.boardIndex({ spaceId, filter }));
+  // 本地缓存里先有的只是一部分，服务端数完之前列上的数字不准
+  const counted = laneBy !== null || indexResult.type === "complete";
+  const [laneCards] = useQuery(queries.workItems.boardBySpace({ spaceId, filter, fields: wanted }), {
+    enabled: laneBy !== null,
+  });
 
   // 列：状态流取状态；否则取各类型流程里的阶段（节点到达时设置的阶段、状态流的状态名），再补上工作项里出现过的
   const columns: Column[] = statusFlow
@@ -129,9 +150,8 @@ export function Board({
       : {};
 
   /** 工作项属于哪些泳道。 */
-  const fieldOf = (item: (typeof items)[number], key: string) =>
-    item.fieldValues.find((v) => v.fieldKey === key)?.value;
-  const lanesOf = (item: (typeof items)[number]): string[] => {
+  const fieldOf = (item: Card, key: string) => item.fieldValues.find((v) => v.fieldKey === key)?.value;
+  const lanesOf = (item: Card): string[] => {
     if (!laneBy) return [NO_LANE];
     let keys: string[] = [];
     if (laneBy === "creator") keys = item.createdBy ? [item.createdBy] : [];
@@ -159,7 +179,7 @@ export function Board({
     );
   };
   // 泳道顺序：选项字段按选项顺序，其余按名称；「未分配 / 未填写」放最后
-  const laneKeys = [...new Set(items.flatMap(lanesOf))].sort((a, b) => {
+  const laneKeys = [...new Set(laneCards.flatMap(lanesOf))].sort((a, b) => {
     if (a === NO_LANE) return 1;
     if (b === NO_LANE) return -1;
     const order = laneField?.options?.map((o) => String(o.value)) ?? [];
@@ -178,7 +198,7 @@ export function Board({
   ];
   const cardOptions = fields.filter((f) => !NO_CARD_TYPES.includes(f.dataType));
 
-  const cardList = (cards: typeof items): ReactNode => (
+  const cardList = (cards: readonly Card[]): ReactNode => (
     <ul className="flex flex-col gap-2">
       {cards.map((item) => {
         const people = [...new Map(item.roleMembers.map((m) => [m.userId, m.user?.name ?? m.userId]))];
@@ -232,10 +252,26 @@ export function Board({
     </ul>
   );
 
+  const statusKeys = statusFlow?.statuses.map((s) => s.key) ?? [];
+  /** 一列在服务端怎么筛（和 columnOf 的规则一样）。 */
+  const columnQuery = (key: string) =>
+    statusFlow
+      ? key === OTHER
+        ? { kind: "other" as const, keys: statusKeys, names: statusFlow.statuses.map((s) => s.name) }
+        : {
+            kind: "status" as const,
+            key,
+            name: statusFlow.statuses.find((s) => s.key === key)?.name ?? key,
+            keys: statusKeys,
+          }
+      : { kind: "stage" as const, stage: key === NO_STAGE ? null : key };
+
   const columnsRow = (lane: string) => (
     <div className="flex min-h-[200px] gap-3 overflow-x-auto pb-2">
       {[...columns, ...extra].map((column) => {
-        const cards = items.filter((i) => columnOf(i) === column.key && lanesOf(i).includes(lane));
+        const count = laneBy
+          ? laneCards.filter((i) => columnOf(i) === column.key && lanesOf(i).includes(lane)).length
+          : items.filter((i) => columnOf(i) === column.key).length;
         return (
           <section
             key={column.key}
@@ -249,9 +285,22 @@ export function Board({
             <header className="flex h-7 items-center gap-2 px-1.5 text-sm">
               {column.category && <span className={cn("size-2 rounded-full", CATEGORY_DOT[column.category])} />}
               <span className="font-medium">{column.name}</span>
-              <span className="text-fg-subtle">{cards.length}</span>
+              <span className="text-fg-subtle">{counted ? count : "…"}</span>
             </header>
-            {cardList(cards)}
+            {laneBy ? (
+              <ShowMore
+                cards={laneCards.filter((i) => columnOf(i) === column.key && lanesOf(i).includes(lane))}
+                render={cardList}
+              />
+            ) : (
+              (count > 0 || !counted) && (
+                <ColumnCards
+                  args={{ spaceId, filter, fields: wanted, column: columnQuery(column.key) }}
+                  total={counted ? count : Number.POSITIVE_INFINITY}
+                  render={cardList}
+                />
+              )
+            )}
           </section>
         );
       })}
@@ -323,7 +372,7 @@ export function Board({
       {laneBy
         ? laneKeys.map((lane) => {
             const open = !folded.includes(lane);
-            const count = items.filter((i) => lanesOf(i).includes(lane)).length;
+            const count = laneCards.filter((i) => lanesOf(i).includes(lane)).length;
             return (
               <section key={lane} aria-label={`泳道 ${laneName(lane)}`} className="flex flex-col gap-2">
                 <button
@@ -342,5 +391,47 @@ export function Board({
           })
         : columnsRow(NO_LANE)}
     </div>
+  );
+}
+
+type Card = QueryResultType<ReturnType<typeof queries.workItems.boardBySpace>>[number];
+type ColumnArgs = Parameters<typeof queries.workItems.boardColumn>[0];
+
+/** 不分泳道时的一列：最近更新的先加载 COLUMN_PAGE 张，「加载更多」再往下取。 */
+function ColumnCards({
+  args,
+  total,
+  render,
+}: {
+  args: Omit<ColumnArgs, "limit">;
+  total: number;
+  render: (cards: readonly Card[]) => ReactNode;
+}) {
+  const [limit, setLimit] = useState(COLUMN_PAGE);
+  const [cards] = useQuery(queries.workItems.boardColumn({ ...args, limit }));
+  return (
+    <>
+      {render(cards)}
+      {total > cards.length && cards.length >= limit && (
+        <Button size="sm" variant="ghost" onClick={() => setLimit(limit + COLUMN_PAGE)}>
+          {Number.isFinite(total) ? `加载更多（还有 ${total - cards.length} 张）` : "加载更多"}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** 分泳道时卡片已经都在了，每格先显示 COLUMN_PAGE 张。 */
+function ShowMore({ cards, render }: { cards: readonly Card[]; render: (cards: readonly Card[]) => ReactNode }) {
+  const [limit, setLimit] = useState(COLUMN_PAGE);
+  return (
+    <>
+      {render(cards.slice(0, limit))}
+      {cards.length > limit && (
+        <Button size="sm" variant="ghost" onClick={() => setLimit(limit + COLUMN_PAGE)}>
+          显示更多（还有 {cards.length - limit} 张）
+        </Button>
+      )}
+    </>
   );
 }
