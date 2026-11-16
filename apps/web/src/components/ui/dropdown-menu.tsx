@@ -71,8 +71,15 @@ export function DropdownMenuItem({
         className,
       )}
     >
-      {children}
-      {active && !asChild && <Check aria-hidden className="ml-auto text-accent!" />}
+      {asChild ? (
+        // Slot 只接受一个元素：asChild 时原样交出 children，不能再拼别的节点（哪怕是 false）。
+        children
+      ) : (
+        <>
+          {children}
+          {active && <Check aria-hidden className="ml-auto text-accent!" />}
+        </>
+      )}
     </RadixMenu.Item>
   );
 }
