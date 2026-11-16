@@ -126,7 +126,7 @@ export function ApiTokensPage() {
             <CardTitle>怎么调用</CardTitle>
             <CardDescription>
               接口说明和在线调试见{" "}
-              <a href={docs} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
+              <a href={docs} target="_blank" rel="noreferrer" className="text-accent hover:underline">
                 接口文档
               </a>
               。

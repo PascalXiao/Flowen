@@ -22,12 +22,12 @@ export function NotificationsBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         aria-label={unread.length > 0 ? `通知（${unread.length} 条未读）` : "通知"}
-        className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-hover"
+        className="flex h-[30px] w-full cursor-pointer items-center gap-2.5 rounded-md px-2 text-fg-muted text-sm hover:bg-hover hover:text-fg"
       >
-        <Bell className="size-4 text-fg-muted" />
+        <Bell className="size-4 text-fg-subtle" />
         通知
         {unread.length > 0 && (
-          <span className="ml-auto min-w-5 rounded-full bg-danger-500 px-1.5 text-center text-xs leading-5 text-white">
+          <span className="ml-auto min-w-[18px] rounded-full bg-brand-500 px-1.5 text-center font-semibold text-[11px] text-white leading-[18px]">
             {unread.length > 99 ? "99+" : unread.length}
           </span>
         )}
@@ -38,7 +38,7 @@ export function NotificationsBell() {
           {unread.length > 0 && (
             <button
               type="button"
-              className="cursor-pointer text-xs text-brand-500 hover:text-brand-600"
+              className="cursor-pointer text-xs text-accent hover:text-accent"
               onClick={() => markRead(unread.map((n) => n.id))}
             >
               全部已读
@@ -60,7 +60,7 @@ export function NotificationsBell() {
                     if (n.workItemId) navigate({ to: "/items/$itemId", params: { itemId: n.workItemId } });
                   }}
                 >
-                  <span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", n.readAt == null && "bg-danger-500")} />
+                  <span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", n.readAt == null && "bg-accent")} />
                   <span className="flex flex-col gap-0.5">
                     <span className={n.readAt == null ? "text-fg" : "text-fg-muted"}>{n.text}</span>
                     <span className="text-xs text-fg-subtle">{new Date(n.createdAt ?? 0).toLocaleString("zh-CN")}</span>

@@ -1,8 +1,8 @@
-import { Checkbox as SemiCheckbox } from "@douyinfe/semi-ui";
+import { cn } from "@/lib/utils";
 
 /**
- * 勾选框（Semi Checkbox）。用法和原生 checkbox 一样：checked + onChange(e.target.checked)，
- * 外面包 label 写文字也照常可以点。
+ * 勾选框：原生 checkbox，外观在 index.css 的 .fl-checkbox。
+ * 用法和原生一样：checked + onChange(e.target.checked)，外面包 label 写文字也照常可以点。
  */
 export function Checkbox({
   checked,
@@ -18,12 +18,13 @@ export function Checkbox({
   "aria-label"?: string;
 }) {
   return (
-    <SemiCheckbox
-      checked={checked}
+    <input
+      type="checkbox"
+      checked={!!checked}
       disabled={disabled}
-      className={className}
       aria-label={ariaLabel}
-      onChange={(e) => onChange?.({ target: { checked: !!e.target.checked } })}
+      className={cn("fl-checkbox", className)}
+      onChange={(e) => onChange?.({ target: { checked: e.target.checked } })}
     />
   );
 }

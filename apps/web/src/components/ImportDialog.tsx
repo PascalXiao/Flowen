@@ -1,4 +1,3 @@
-import { Toast } from "@douyinfe/semi-ui";
 import {
   type FieldConfig,
   type FieldDataType,
@@ -20,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Toast } from "@/components/ui/toast";
 import { downloadTemplate, readSheet } from "@/lib/export-xlsx";
 import { withLineOptions } from "@/lib/fields";
 import { newId } from "@/lib/utils";

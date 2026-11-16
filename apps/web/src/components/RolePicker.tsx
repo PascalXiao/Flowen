@@ -53,7 +53,7 @@ export function RolePicker({
             <div key={role.key} className="group flex min-h-9 items-start gap-3 py-1">
               <dt className="flex w-28 shrink-0 items-center gap-1 pt-1.5 text-fg-muted" title={role.name}>
                 <span className="truncate">{role.name}</span>
-                {role.isOwner && <span className="shrink-0 text-xs text-brand-500">负责人</span>}
+                {role.isOwner && <span className="shrink-0 text-xs text-accent">负责人</span>}
               </dt>
               <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 pt-1">
                 {chosen.map((id) => (
@@ -85,7 +85,7 @@ export function RolePicker({
                           >
                             <Avatar id={m.userId} name={m.name} size={20} />
                             <span className="flex-1 truncate">{m.name}</span>
-                            <Check className={cn("size-4 text-brand-500", !selected && "invisible")} />
+                            <Check className={cn("size-4 text-accent", !selected && "invisible")} />
                           </button>
                         );
                       })}
@@ -111,7 +111,7 @@ export function RolePicker({
       </dl>
       {onAdd && addable.length > 0 && (
         <Popover>
-          <PopoverTrigger className="mt-1 inline-flex w-fit cursor-pointer items-center gap-1 rounded-md px-1 py-1 text-sm text-brand-500 hover:bg-hover">
+          <PopoverTrigger className="mt-1 inline-flex w-fit cursor-pointer items-center gap-1 rounded-md px-1 py-1 text-sm text-accent hover:bg-hover">
             <Plus className="size-4" />
             添加角色
           </PopoverTrigger>

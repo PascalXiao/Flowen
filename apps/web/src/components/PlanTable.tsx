@@ -1,4 +1,3 @@
-import { Popconfirm, Toast } from "@douyinfe/semi-ui";
 import {
   baselineSlip,
   criticalPath,
@@ -18,7 +17,9 @@ import { GanttChart, type GanttRow } from "@/components/GanttChart";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Select } from "@/components/ui/input";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { Tag } from "@/components/ui/tag";
+import { Toast } from "@/components/ui/toast";
 import { nodeGanttRows, type PlannedNode } from "@/lib/gantt";
 import { cn, newId } from "@/lib/utils";
 

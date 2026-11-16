@@ -19,7 +19,7 @@ test("an admin hands over a member's work to someone else", async ({ page }) => 
   await expect(page.getByText("Pascal 在 2 个进行中的工作项里担任角色")).toBeVisible();
   await choose(page.getByLabel("接手人"), { label: "Lin" });
   await page.getByRole("button", { name: "移交", exact: true }).click();
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "移交" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "移交" }).click();
   await expect(page.getByText("已把 Pascal 的工作移交给 Lin")).toBeVisible();
 
   await openItems(page, "项目");

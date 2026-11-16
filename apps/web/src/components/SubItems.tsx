@@ -63,11 +63,7 @@ export function SubItems({
       <ul aria-label={`${nodeName}的子工作项`} className="flex flex-col gap-1">
         {items.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-2">
-            <Link
-              to="/items/$itemId"
-              params={{ itemId: c.id }}
-              className="truncate text-brand-500 hover:text-brand-600"
-            >
+            <Link to="/items/$itemId" params={{ itemId: c.id }} className="truncate text-accent hover:text-accent">
               {c.name}
             </Link>
             <StatusTag status={c.status} />

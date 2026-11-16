@@ -1,4 +1,3 @@
-import { Popconfirm } from "@douyinfe/semi-ui";
 import {
   CHART_KIND_LABEL,
   CHART_KINDS,
@@ -29,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { Segmented } from "@/components/ui/tabs";
 import { cn, newId } from "@/lib/utils";
 
@@ -176,7 +176,7 @@ function DrillDialog({
                 {rows.map((w) => (
                   <tr key={w.id} className="border-b border-line-subtle last:border-0">
                     <td className="h-9 max-w-64 truncate pr-3">
-                      <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-brand-500 hover:underline">
+                      <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-accent hover:underline">
                         {w.name}
                       </Link>
                     </td>
@@ -258,7 +258,7 @@ export function MetricChartCard({
               variant="ghost"
               aria-label={`${pinned ? "移出仪表盘" : "放到仪表盘"} ${chart.name}`}
               title={pinned ? "移出仪表盘" : "放到仪表盘"}
-              className={cn(pinned && "text-brand-500")}
+              className={cn(pinned && "text-accent")}
               onClick={() => zero.mutate(mutators.chart.update({ id: chart.id, onDashboard: !pinned }))}
             >
               <LayoutDashboard />

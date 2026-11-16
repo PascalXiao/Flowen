@@ -164,7 +164,7 @@ export function NodeDependencies({
         {canEdit && !finished && !adding && (
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-0.5 rounded px-1 text-xs text-brand-500 hover:bg-hover"
+            className="flex cursor-pointer items-center gap-0.5 rounded px-1 text-xs text-accent hover:bg-hover"
             onClick={() => setAdding(true)}
           >
             <Plus className="size-3" />
@@ -192,11 +192,7 @@ export function NodeDependencies({
           {linked.map((l) => (
             <li key={l.key} className="flex h-8 items-center gap-2 px-1">
               <span className="min-w-0 truncate">
-                <Link
-                  to="/items/$itemId"
-                  params={{ itemId: l.item.id }}
-                  className="text-brand-500 hover:text-brand-600"
-                >
+                <Link to="/items/$itemId" params={{ itemId: l.item.id }} className="text-accent hover:text-accent">
                   {l.item.name}
                 </Link>
                 {` · ${l.name}`}
@@ -213,11 +209,7 @@ export function NodeDependencies({
               <span className="min-w-0 truncate">
                 {d.item &&
                   (d.item.id ? (
-                    <Link
-                      to="/items/$itemId"
-                      params={{ itemId: d.item.id }}
-                      className="text-brand-500 hover:text-brand-600"
-                    >
+                    <Link to="/items/$itemId" params={{ itemId: d.item.id }} className="text-accent hover:text-accent">
                       {d.item.name}
                     </Link>
                   ) : (
@@ -272,7 +264,7 @@ export function NodeDependencies({
                   d.nodeKey
                 )
               ) : d.workItem ? (
-                <Link to="/items/$itemId" params={{ itemId: d.workItem.id }} className="text-brand-500">
+                <Link to="/items/$itemId" params={{ itemId: d.workItem.id }} className="text-accent">
                   {d.workItem.name}
                 </Link>
               ) : (

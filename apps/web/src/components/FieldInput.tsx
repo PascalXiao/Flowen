@@ -185,7 +185,7 @@ export function FieldInput({
       target="_blank"
       rel="noreferrer"
       aria-label={`打开${field.name}`}
-      className="shrink-0 text-fg-subtle hover:text-brand-500"
+      className="shrink-0 text-fg-subtle hover:text-accent"
     >
       {icon}
     </a>
@@ -546,7 +546,7 @@ function FieldGroupInput({
       {!readOnly && (
         <button
           type="button"
-          className="flex w-full items-center gap-1 border-t border-line px-2 py-1.5 text-left text-brand-500 text-sm hover:bg-canvas"
+          className="flex w-full items-center gap-1 border-t border-line px-2 py-1.5 text-left text-accent text-sm hover:bg-canvas"
           onClick={() => setExtra((n) => n + 1)}
         >
           <Plus className="size-4" />
@@ -583,7 +583,7 @@ function SignalView({ value, label }: { value: unknown; label: string }) {
             <Tag tone={SIGNAL_TONE[state] ?? "neutral"}>{SIGNAL_STATE_LABEL[state] ?? state}</Tag>
             {typeof s.text === "string" && <span className="truncate text-fg-muted">{s.text}</span>}
             {typeof s.url === "string" && (
-              <a href={s.url} target="_blank" rel="noreferrer" className="shrink-0 text-brand-500 hover:underline">
+              <a href={s.url} target="_blank" rel="noreferrer" className="shrink-0 text-accent hover:underline">
                 查看
               </a>
             )}
@@ -643,10 +643,7 @@ function AttachmentField({
         {files.map((f) => (
           <li key={f.id} className="flex min-w-0 items-center gap-1.5">
             <Paperclip className="size-3.5 shrink-0 text-fg-subtle" />
-            <a
-              href={`${env.apiUrl}/api/attachments/${f.id}`}
-              className="min-w-0 truncate text-brand-500 hover:underline"
-            >
+            <a href={`${env.apiUrl}/api/attachments/${f.id}`} className="min-w-0 truncate text-accent hover:underline">
               {f.name}
             </a>
             {!readOnly && (
@@ -664,7 +661,7 @@ function AttachmentField({
       </ul>
       {!readOnly &&
         (workItemId ? (
-          <label className="inline-flex w-fit cursor-pointer items-center gap-1 text-brand-500 hover:underline">
+          <label className="inline-flex w-fit cursor-pointer items-center gap-1 text-accent hover:underline">
             <Upload className="size-3.5" />
             {busy ? "上传中…" : "上传附件"}
             <input
@@ -710,7 +707,7 @@ function MultiPicker({
         disabled={readOnly}
         className={cn(
           "flex h-8 w-full min-w-0 items-center gap-1 rounded-md border border-line bg-surface px-2.5 text-left text-sm",
-          "hover:border-brand-300 disabled:cursor-default disabled:bg-canvas disabled:hover:border-line",
+          "hover:border-accent disabled:cursor-default disabled:bg-canvas disabled:hover:border-line",
         )}
       >
         <span className={cn("min-w-0 flex-1 truncate", !display && "text-fg-subtle")}>{display || "未选择"}</span>
@@ -728,7 +725,7 @@ function MultiPicker({
                   className="flex h-8 w-full items-center gap-2 rounded px-2 text-left hover:bg-hover"
                   onClick={() => onChange(on ? value.filter((v) => v !== o.value) : [...value, o.value])}
                 >
-                  <Check className={cn("size-3.5 text-brand-500", !on && "invisible")} />
+                  <Check className={cn("size-3.5 text-accent", !on && "invisible")} />
                   {o.label}
                 </button>
               </li>

@@ -125,7 +125,7 @@ export function MultiPersonField({
       {(canJoin || addable.length > 0) && (
         <div className="flex items-center gap-3 border-t border-line px-2 py-1.5">
           {canJoin && (
-            <button type="button" className="flex items-center gap-1 text-brand-500 text-sm" onClick={() => add(me)}>
+            <button type="button" className="flex items-center gap-1 text-accent text-sm" onClick={() => add(me)}>
               <Plus className="size-4" />
               我来填写
             </button>

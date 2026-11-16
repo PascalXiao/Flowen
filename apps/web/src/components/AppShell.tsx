@@ -5,13 +5,18 @@ import {
   CalendarRange,
   ChartColumn,
   ChartPie,
+  Check,
   ChevronsUpDown,
   House,
   Inbox,
   KeyRound,
   LogOut,
+  Monitor,
+  Moon,
   Settings,
+  Sun,
   Telescope,
+  Workflow,
 } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { NotificationsBell } from "@/components/NotificationsBell";
@@ -27,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth";
 import { visibleTypes } from "@/lib/permissions";
+import { setThemeMode, type ThemeMode, useThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 /** 当前所在的空间。工作项、类型这些页面没有空间参数，加载后把自己的空间报上来，左侧导航跟着切换。 */
@@ -40,16 +46,26 @@ export function useActiveSpace(spaceId: string | null | undefined) {
   }, [spaceId, set]);
 }
 
-/** 应用外框：左侧导航（空间切换、空间内的功能入口、通知和账号），右侧是页面。 */
+/**
+ * 应用外框：左侧导航（空间切换、空间内的功能入口、通知和账号）沉在应用底色里，
+ * 右侧的页面是一块浮起的圆角面板。
+ */
 export function AppShell({ user, children }: { user: { id: string; name: string }; children: ReactNode }) {
   const [spaceId, setSpaceId] = useState<string | undefined>();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const fullScreen = /\/setting\/(workObject\/[^/]+|advanced)/.test(pathname);
   return (
     <ActiveSpace.Provider value={setSpaceId}>
-      <div className="flex h-full">
+      <div className="flex h-full bg-chrome">
         {!fullScreen && <Sidebar spaceId={spaceId} user={user} pathname={pathname} />}
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-auto">{children}</main>
+        <main
+          className={cn(
+            "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-auto rounded-xl bg-surface shadow-panel",
+            fullScreen && "ml-2",
+          )}
+        >
+          {children}
+        </main>
       </div>
     </ActiveSpace.Provider>
   );
@@ -57,7 +73,13 @@ export function AppShell({ user, children }: { user: { id: string; name: string 
 
 /** 导航项；当前页由 Link 标上 data-status="active"。 */
 const navItem =
-  "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-fg hover:bg-hover [&_svg]:size-4 [&_svg]:text-fg-muted data-[status=active]:bg-brand-50 data-[status=active]:font-medium data-[status=active]:text-brand-500 data-[status=active]:[&_svg]:text-brand-500";
+  "flex h-[30px] shrink-0 items-center gap-2.5 rounded-md px-2 text-fg-muted text-sm hover:bg-hover hover:text-fg [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-subtle data-[status=active]:bg-surface data-[status=active]:font-medium data-[status=active]:text-fg data-[status=active]:shadow-panel data-[status=active]:[&_svg]:text-accent";
+
+const THEMES: [ThemeMode, string, typeof Sun][] = [
+  ["light", "浅色", Sun],
+  ["dark", "深色", Moon],
+  ["system", "跟随系统", Monitor],
+];
 
 function Sidebar({
   spaceId,
@@ -71,18 +93,19 @@ function Sidebar({
   const [spaces] = useQuery(queries.spaces.mine());
   const [space] = useQuery(spaceId ? queries.spaces.byId({ id: spaceId }) : undefined);
   const navigate = useNavigate();
+  const themeMode = useThemeMode();
 
   return (
-    <nav aria-label="主导航" className="flex w-56 shrink-0 flex-col border-r border-line-subtle bg-surface">
-      <div className="flex h-14 items-center gap-2 px-4">
-        <span className="flex size-6 items-center justify-center rounded-md bg-brand-500 text-xs font-bold text-white">
-          F
+    <nav aria-label="主导航" className="flex w-57 shrink-0 flex-col pt-3 pb-2">
+      <div className="flex h-8 items-center gap-2 px-4.5 pb-1">
+        <span className="flex size-[22px] items-center justify-center rounded-md bg-fg text-chrome">
+          <Workflow className="size-3.5" strokeWidth={2.2} />
         </span>
-        <span className="font-semibold">Flowen</span>
+        <span className="font-semibold text-[14px] tracking-[-0.01em]">Flowen</span>
       </div>
 
-      <div className="flex flex-col gap-0.5 px-3 pb-2">
-        <SearchDialog className={cn(navItem, "w-full cursor-pointer")} />
+      <div className="flex flex-col gap-0.5 px-3 pt-2 pb-2">
+        <SearchDialog className="mb-2 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg bg-surface px-2 text-fg-subtle text-sm shadow-panel hover:text-fg-muted [&_svg]:size-[15px]" />
         <Link to="/my-work" className={navItem}>
           <Inbox />
           我的工作
@@ -97,11 +120,11 @@ function Sidebar({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label="切换空间"
-            className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-line-subtle px-2 text-left hover:bg-hover"
+            className="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-lg border border-line px-2 text-left hover:bg-hover"
           >
             {space ? (
               <>
-                <span className="flex size-5 shrink-0 items-center justify-center rounded bg-violet-50 text-xs text-violet-600">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-pressed font-semibold text-[11px] text-fg-muted">
                   {space.name.slice(0, 1)}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium">{space.name}</span>
@@ -152,7 +175,7 @@ function Sidebar({
               className={cn(
                 navItem,
                 pathname.startsWith(`/spaces/${space.id}/setting`) &&
-                  "bg-brand-50 font-medium text-brand-500 [&_svg]:text-brand-500",
+                  "bg-surface font-medium text-fg shadow-panel [&_svg]:text-accent",
               )}
             >
               <Settings />
@@ -170,7 +193,7 @@ function Sidebar({
                 >
                   <span
                     aria-hidden
-                    className="flex size-4 shrink-0 items-center justify-center rounded bg-brand-500 text-[10px] font-medium text-white"
+                    className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-pressed font-semibold text-[10px] text-fg-muted"
                   >
                     {t.name.slice(0, 1)}
                   </span>
@@ -187,14 +210,24 @@ function Sidebar({
         )}
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-line-subtle p-3">
+      <div className="flex flex-col gap-0.5 px-3 pt-2">
         <NotificationsBell />
         <DropdownMenu>
-          <DropdownMenuTrigger aria-label="账号" className={cn(navItem, "w-full cursor-pointer")}>
+          <DropdownMenuTrigger aria-label="账号" className={cn(navItem, "w-full cursor-pointer text-fg")}>
             <Avatar name={user.name} id={user.id} size={20} />
-            <span className="truncate">{user.name}</span>
+            <span className="min-w-0 flex-1 truncate text-left">{user.name}</span>
+            <ChevronsUpDown className="size-3.5!" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="end">
+          <DropdownMenuContent side="right" align="end" className="w-44">
+            <DropdownMenuLabel>外观</DropdownMenuLabel>
+            {THEMES.map(([mode, label, Icon]) => (
+              <DropdownMenuItem key={mode} onSelect={() => setThemeMode(mode)}>
+                <Icon />
+                <span className="flex-1">{label}</span>
+                {themeMode === mode && <Check aria-label="当前" className="text-accent!" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => navigate({ to: "/settings/api" })}>
               <KeyRound />
               开放接口

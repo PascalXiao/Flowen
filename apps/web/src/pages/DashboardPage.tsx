@@ -193,7 +193,7 @@ function DashboardBody({ data }: { data: Dashboard }) {
               {data.overdue.map((row) => (
                 <tr key={`${row.workItemId}/${row.nodeKey}`} className="border-b border-line-subtle last:border-b-0">
                   <td className="py-2 pr-4">
-                    <Link to="/items/$itemId" params={{ itemId: row.workItemId }} className="hover:text-brand-500">
+                    <Link to="/items/$itemId" params={{ itemId: row.workItemId }} className="hover:text-accent">
                       {row.workItemName}
                     </Link>
                   </td>

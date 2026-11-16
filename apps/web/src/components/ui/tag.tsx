@@ -1,15 +1,15 @@
-import { Tag as SemiTag } from "@douyinfe/semi-ui";
 import type * as React from "react";
+import { cn } from "@/lib/utils";
 
-/** 标签颜色；brand 是品牌蓝，其余用 Semi 的调色板。 */
+/** 标签颜色：浅底加同色系文字。brand 是强调色。 */
 const TONES = {
-  neutral: "grey",
-  brand: "blue",
-  success: "green",
-  warning: "orange",
-  danger: "red",
-  violet: "violet",
-  teal: "teal",
+  neutral: "bg-pressed text-fg-muted",
+  brand: "bg-brand-50 text-accent",
+  success: "bg-success-50 text-success-600",
+  warning: "bg-warning-50 text-warning-600",
+  danger: "bg-danger-50 text-danger-600",
+  violet: "bg-violet-50 text-violet-600",
+  teal: "bg-teal-50 text-teal-600",
 } as const;
 
 export type TagTone = keyof typeof TONES;
@@ -24,22 +24,33 @@ export function Tag({
   children?: React.ReactNode;
 }) {
   return (
-    <SemiTag size="small" shape="square" type="light" color={TONES[tone ?? "neutral"]} className={className}>
+    <span
+      className={cn(
+        "inline-flex h-5 max-w-full shrink-0 items-center whitespace-nowrap rounded-[5px] px-1.5 font-medium text-xs",
+        TONES[tone ?? "neutral"],
+        className,
+      )}
+    >
       {children}
-    </SemiTag>
+    </span>
   );
 }
 
-const STATUS: Record<string, [string, TagTone]> = {
-  inProgress: ["进行中", "brand"],
-  completed: ["已完成", "success"],
-  terminated: ["已终止", "neutral"],
+const STATUS: Record<string, [string, TagTone, string]> = {
+  inProgress: ["进行中", "brand", "bg-accent"],
+  completed: ["已完成", "success", "bg-success-500"],
+  terminated: ["已终止", "neutral", "bg-fg-subtle"],
 };
 
-/** 工作项状态。 */
+/** 工作项状态：圆点加文字的胶囊。 */
 export function StatusTag({ status }: { status: string | null | undefined }) {
-  const [label, tone] = STATUS[status ?? "inProgress"] ?? [status ?? "", "neutral"];
-  return <Tag tone={tone}>{label}</Tag>;
+  const [label, tone, dot] = STATUS[status ?? "inProgress"] ?? [status ?? "", "neutral", "bg-fg-subtle"];
+  return (
+    <Tag tone={tone} className="gap-1.5 rounded-full px-2">
+      <span aria-hidden className={cn("size-1.5 rounded-full", dot)} />
+      {label}
+    </Tag>
+  );
 }
 
 /** 阶段：按名称固定配一个颜色，同一阶段在各处颜色一致。 */

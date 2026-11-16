@@ -1,4 +1,3 @@
-import { Popconfirm } from "@douyinfe/semi-ui";
 import { type HierarchyLayerArgs, MAX_HIERARCHIES, MAX_HIERARCHY_DEPTH, mutators, nextSteps } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
 import { ChevronRight } from "lucide-react";
@@ -8,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { Tag } from "@/components/ui/tag";
 import { newId } from "@/lib/utils";
 

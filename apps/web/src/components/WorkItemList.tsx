@@ -1,4 +1,4 @@
-import { Checkbox, Dropdown, Popover, Input as SemiInput, Table, Toast } from "@douyinfe/semi-ui";
+import { Checkbox, Dropdown, Popover, Input as SemiInput, Table } from "@douyinfe/semi-ui";
 import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
@@ -10,6 +10,7 @@ import { ConditionEditor, type ConditionField } from "@/components/ConditionEdit
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
+import { Toast } from "@/components/ui/toast";
 import { env } from "@/lib/env";
 import { exportListXlsx } from "@/lib/export-xlsx";
 import { withLineOptions } from "@/lib/fields";
@@ -369,7 +370,7 @@ export function WorkItemList({
         <span className="flex min-w-0 items-center gap-1.5">
           {/* 点名称在右侧抽屉里打开，列表留在后面，可以连续看 */}
           <Link
-            className="min-w-0 truncate font-medium text-fg hover:text-brand-500"
+            className="min-w-0 truncate font-medium text-fg hover:text-accent"
             from="/spaces/$spaceId/$typeKey"
             to="."
             search={(prev) => ({ ...prev, item: item.id })}
@@ -404,7 +405,7 @@ export function WorkItemList({
               }}
               className={cn(
                 rowHeight === "low" ? "min-w-0 truncate" : "line-clamp-3 min-w-0 break-all",
-                selected && "bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-500",
+                selected && "bg-brand-50 outline outline-2 -outline-offset-2 outline-accent",
               )}
             >
               {col.render(item)}
@@ -453,7 +454,7 @@ export function WorkItemList({
               className={cn(
                 "-mb-px border-b-2 pb-2 text-sm",
                 tab === key
-                  ? "border-brand-500 font-medium text-brand-500"
+                  ? "border-accent font-medium text-accent"
                   : "border-transparent text-fg-muted hover:text-fg",
               )}
             >
@@ -918,7 +919,7 @@ function FreezeButton({
         type="button"
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          value ? "text-brand-500" : "text-fg",
+          value ? "text-accent" : "text-fg",
         )}
       >
         <Pin className="size-4" />
@@ -975,7 +976,7 @@ function ToolButton({
         type="button"
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          active ? "text-brand-500" : "text-fg",
+          active ? "text-accent" : "text-fg",
         )}
       >
         {icon}
@@ -1075,7 +1076,7 @@ function GroupButton({
         type="button"
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          value ? "text-brand-500" : "text-fg",
+          value ? "text-accent" : "text-fg",
         )}
       >
         <Group className="size-4" />

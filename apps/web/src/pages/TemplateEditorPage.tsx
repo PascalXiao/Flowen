@@ -205,7 +205,7 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
           <Link
             to="/spaces/$spaceId/setting/$tab"
             params={{ spaceId: type.spaceId, tab: "workObjectSetting" }}
-            className="hover:text-brand-500"
+            className="hover:text-accent"
           >
             空间配置
           </Link>
@@ -214,7 +214,7 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
             to="/spaces/$spaceId/setting/workObject/$typeKey"
             params={{ spaceId: type.spaceId, typeKey: type.key }}
             search={{ menuTab: "workflow" }}
-            className="hover:text-brand-500"
+            className="hover:text-accent"
           >
             {type.name}
           </Link>
@@ -249,7 +249,7 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
               className: cn(
                 "!w-[200px] !rounded-lg !border !border-line !bg-surface !px-3 !py-2 !text-left !shadow-card",
                 n.data.completion === "auto" ? "!border-dashed" : "",
-                n.selected && "!border-brand-500 !ring-3 !ring-brand-100",
+                n.selected && "!border-accent !ring-3 !ring-brand-100",
               ),
             }))}
             edges={edges}
@@ -385,7 +385,7 @@ function NodeLabel({ data, type }: { data: NodeData; type: TypeConfig }) {
         {data.ownerRoles.map(roleName).join("、") || COMPLETION.find((c) => c.value === data.completion)?.label}
       </div>
       {(data.visibility || data.gate || data.stageOnArrival || data.form || data.tasks) && (
-        <div className="truncate text-xs text-brand-500">
+        <div className="truncate text-xs text-accent">
           {[
             data.visibility && "有出现条件",
             data.gate && "有卡点",

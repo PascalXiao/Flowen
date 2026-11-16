@@ -280,7 +280,7 @@ function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
                   <Link
                     to="/spaces/$spaceId/setting/workObject/$typeKey"
                     params={{ spaceId: space.id, typeKey: t.key }}
-                    className="flex h-16 items-center gap-3 rounded-lg border border-line-subtle px-3 hover:border-brand-500 hover:bg-hover/50"
+                    className="flex h-16 items-center gap-3 rounded-lg border border-line-subtle px-3 hover:border-accent hover:bg-hover/50"
                   >
                     <span
                       aria-hidden

@@ -122,7 +122,7 @@ export function AttachmentsCard({
                 </span>
               )}
               <div className="flex min-w-0 flex-1 flex-col">
-                <a href={url(a.id)} className="truncate font-medium hover:text-brand-500" title={a.name}>
+                <a href={url(a.id)} className="truncate font-medium hover:text-accent" title={a.name}>
                   {a.name}
                 </a>
                 <span className="truncate text-xs text-fg-subtle">

@@ -112,7 +112,7 @@ export function VoteField({
               onClick={() => toggle(o.value)}
               className={cn(
                 "h-7 cursor-pointer rounded-md border px-2.5 text-sm transition-colors",
-                on ? "border-brand-500 bg-brand-50 text-brand-600" : "border-line hover:bg-hover",
+                on ? "border-accent bg-brand-50 text-accent" : "border-line hover:bg-hover",
               )}
             >
               {o.label ?? o.value}
@@ -167,7 +167,7 @@ export function VoteField({
               </span>
               {mine.remark && <span className="text-fg-muted">（{mine.remark}）</span>}
               {!readOnly && (
-                <button type="button" className="cursor-pointer text-brand-500" onClick={() => setEditing(true)}>
+                <button type="button" className="cursor-pointer text-accent" onClick={() => setEditing(true)}>
                   改票
                 </button>
               )}

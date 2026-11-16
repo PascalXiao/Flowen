@@ -123,7 +123,7 @@ export function AdvancedConfigPage() {
                       </td>
                       <td className="px-4 py-2 text-fg-muted">
                         {d.reverseName ? "互相关联" : "单向关联"}
-                        {isCrossSpace(d) && <span className="ml-1 text-xs text-brand-500">跨空间</span>}
+                        {isCrossSpace(d) && <span className="ml-1 text-xs text-accent">跨空间</span>}
                       </td>
                       <td className="px-4 py-2">{[d.name, d.reverseName].filter(Boolean).join("；")}</td>
                       <td className="px-4 py-2 text-right">

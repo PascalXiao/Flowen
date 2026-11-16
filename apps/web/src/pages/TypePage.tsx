@@ -245,7 +245,7 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
                   <Link
                     to="/spaces/$spaceId/setting/workObject/$typeKey/workflow/$templateId"
                     params={{ spaceId: type.spaceId, typeKey: type.key, templateId: t.id }}
-                    className="font-medium text-brand-500 hover:underline"
+                    className="font-medium text-accent hover:underline"
                   >
                     {t.name}
                   </Link>
@@ -692,7 +692,7 @@ function FieldRow({
             aria-label={`${field.name}${label}：${r.name}`}
             className={
               on
-                ? "h-6 rounded-full border border-brand-500 bg-brand-50 px-2.5 text-xs text-brand-500"
+                ? "h-6 rounded-full border border-accent bg-brand-50 px-2.5 text-xs text-accent"
                 : "h-6 rounded-full border border-line px-2.5 text-xs text-fg-muted hover:bg-hover"
             }
             onClick={() => onChange(toggle(list, r.key))}

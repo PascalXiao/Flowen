@@ -18,7 +18,7 @@ test("create several items in a row, then step through them in the drawer", asyn
   }
   await dialog.getByRole("button", { name: "取消" }).click();
   // 「已创建」提示叠在抽屉右上角的翻页按钮上，鼠标停在提示上它就不消失，等它们自己消失再点
-  await expect(page.locator(".semi-toast-content")).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.locator("[data-fl-toast]")).toHaveCount(0, { timeout: 15_000 });
 
   // 列表按创建时间倒序：D3、D2、D1；点开 D3，在抽屉里往下翻
   const grid = page.getByRole("grid");

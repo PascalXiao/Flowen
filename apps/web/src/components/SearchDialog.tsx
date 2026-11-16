@@ -79,7 +79,9 @@ export function SearchDialog({ className }: { className?: string }) {
       <DialogTrigger className={className}>
         <Search />
         <span className="flex-1 text-left">搜索</span>
-        <kbd className="text-xs text-fg-subtle">⌘K</kbd>
+        <kbd className="rounded-[4px] border border-line px-1 font-medium font-sans text-[10.5px] text-fg-subtle">
+          {/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}
+        </kbd>
       </DialogTrigger>
       <DialogContent title="搜索工作项" className="max-w-xl">
         <div className="flex flex-col gap-3">

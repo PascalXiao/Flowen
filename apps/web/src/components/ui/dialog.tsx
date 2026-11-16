@@ -1,15 +1,14 @@
-import { Modal } from "@douyinfe/semi-ui";
-import * as React from "react";
+import * as RadixDialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
+import type * as React from "react";
+import { cn } from "@/lib/utils";
 
 /**
- * 弹窗（Semi Modal），沿用 Dialog / DialogTrigger / DialogContent / DialogClose 的组合写法：
- * Dialog 管开关，Trigger 打开，Close 关上，Content 是弹窗本身。
+ * 弹窗，组合写法：Dialog 管开关，DialogTrigger 打开，DialogClose 关上，DialogContent 是弹窗本身。
+ *
+ * 迁移期间弹窗里还会用到 Semi 的日期、级联等浮层，它们挂在 body 上；所以这里不锁页面其他区域的点击和焦点
+ * （modal={false}），遮罩自己画。Semi 全部换掉后改回默认的模态行为。
  */
-const DialogState = React.createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
-  open: false,
-  setOpen: () => {},
-});
-
 export function Dialog({
   open,
   onOpenChange,
@@ -19,30 +18,10 @@ export function Dialog({
   onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const [own, setOwn] = React.useState(false);
-  const value = {
-    open: open ?? own,
-    setOpen: (next: boolean) => {
-      if (open === undefined) setOwn(next);
-      onOpenChange?.(next);
-    },
-  };
-  return <DialogState.Provider value={value}>{children}</DialogState.Provider>;
-}
-
-/** 给子元素加上点击行为；asChild 时直接用子元素，否则包一个按钮。 */
-function withClick(children: React.ReactNode, asChild: boolean | undefined, onClick: () => void, className?: string) {
-  if (asChild && React.isValidElement<{ onClick?: (e: React.MouseEvent) => void }>(children))
-    return React.cloneElement(children, {
-      onClick: (e: React.MouseEvent) => {
-        children.props.onClick?.(e);
-        onClick();
-      },
-    });
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <RadixDialog.Root modal={false} {...(open !== undefined && { open })} {...(onOpenChange && { onOpenChange })}>
       {children}
-    </button>
+    </RadixDialog.Root>
   );
 }
 
@@ -55,14 +34,23 @@ export function DialogTrigger({
   className?: string;
   children: React.ReactNode;
 }) {
-  const { setOpen } = React.useContext(DialogState);
-  return withClick(children, asChild, () => setOpen(true), className);
+  return (
+    <RadixDialog.Trigger asChild={asChild} className={className} type={asChild ? undefined : "button"}>
+      {children}
+    </RadixDialog.Trigger>
+  );
 }
 
 export function DialogClose({ asChild, children }: { asChild?: boolean; children: React.ReactNode }) {
-  const { setOpen } = React.useContext(DialogState);
-  return withClick(children, asChild, () => setOpen(false));
+  return (
+    <RadixDialog.Close asChild={asChild} type={asChild ? undefined : "button"}>
+      {children}
+    </RadixDialog.Close>
+  );
 }
+
+/** 还开着的 Semi 浮层（日期面板、级联、下拉）：Esc 先收它们，不关弹窗。 */
+const SEMI_POPUP = '.semi-portal [role="listbox"], .semi-portal .semi-popover-wrapper, .semi-portal .semi-datepicker';
 
 export function DialogContent({
   className,
@@ -70,37 +58,47 @@ export function DialogContent({
   title,
   description,
 }: {
+  /** 宽度用 max-w-xl、max-w-2xl 这类写法，默认 max-w-lg。 */
   className?: string;
   children: React.ReactNode;
   title: React.ReactNode;
   description?: React.ReactNode;
 }) {
-  const { open, setOpen } = React.useContext(DialogState);
-  // 宽度：调用方用 max-w-2xl 这类写法表示宽弹窗
-  const width = className?.includes("max-w-2xl") ? 672 : className?.includes("max-w-xl") ? 576 : 512;
-  // Esc 先收起弹窗里打开的气泡、下拉，没有打开的才关弹窗（Semi 自带的 Esc 会连弹窗一起关掉）
-  React.useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (document.querySelector('[role="dialog"]:not([aria-modal="true"]), [role="listbox"]')) return;
-      setOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  });
   return (
-    <Modal
-      visible={open}
-      title={title}
-      width={width}
-      footer={null}
-      onCancel={() => setOpen(false)}
-      closeOnEsc={false}
-      bodyStyle={{ maxHeight: "70vh", overflowY: "auto", paddingBottom: 24 }}
-    >
-      {description && <p className="mb-4 text-sm text-fg-subtle">{description}</p>}
-      {children}
-    </Modal>
+    <RadixDialog.Portal>
+      <div className="fixed inset-0 z-[1000] bg-overlay" />
+      <RadixDialog.Content
+        aria-modal="true"
+        {...(!description && { "aria-describedby": undefined })}
+        onEscapeKeyDown={(e) => {
+          if (document.querySelector(SEMI_POPUP)) e.preventDefault();
+        }}
+        // 点遮罩关闭；点到别的浮层（气泡、下拉、提示）不算点在外面
+        onInteractOutside={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest(".semi-portal, [data-radix-popper-content-wrapper], [data-fl-toast]")) e.preventDefault();
+        }}
+        className={cn(
+          "-translate-x-1/2 fixed top-[12vh] left-1/2 z-[1000] flex max-h-[76vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-xl bg-popover shadow-popover outline-none",
+          className,
+        )}
+      >
+        <header className="flex shrink-0 items-start gap-3 px-5 pt-4 pb-3">
+          <div className="min-w-0 flex-1">
+            <RadixDialog.Title className="font-semibold text-base">{title}</RadixDialog.Title>
+            {description && (
+              <RadixDialog.Description className="mt-1 text-fg-subtle text-sm">{description}</RadixDialog.Description>
+            )}
+          </div>
+          <RadixDialog.Close
+            aria-label="关闭"
+            className="-mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-hover hover:text-fg"
+          >
+            <X className="size-4" />
+          </RadixDialog.Close>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
+      </RadixDialog.Content>
+    </RadixDialog.Portal>
   );
 }

@@ -1,4 +1,4 @@
-import { Popconfirm, Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@douyinfe/semi-ui";
 import {
   availableOptions,
   canEditRoleMembers,
@@ -54,8 +54,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ErrorBanner, Panel } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { Tabs } from "@/components/ui/tabs";
 import { StageTag, StatusTag, Tag } from "@/components/ui/tag";
+import { Toast } from "@/components/ui/toast";
 import { VoteField } from "@/components/VoteField";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { withLineOptions } from "@/lib/fields";
@@ -66,14 +68,14 @@ import { cn, newId } from "@/lib/utils";
 /** 流程图节点的样式：进行中蓝色描边，已完成绿色，未开始灰色，被裁剪的虚线。 */
 const STATE_STYLE: Record<NodeState, string> = {
   notStarted: "!border-line",
-  inProgress: "!border-brand-500 !ring-3 !ring-brand-100",
+  inProgress: "!border-accent !ring-3 !ring-brand-100",
   completed: "!border-success-500/50",
   skipped: "!border-dashed !border-line !bg-canvas !text-fg-subtle",
 };
 
 const STATE_ICON: Record<NodeState, ReactNode> = {
   notStarted: <CircleDashed className="size-4 shrink-0 text-fg-subtle" />,
-  inProgress: <CircleDot className="size-4 shrink-0 text-brand-500" />,
+  inProgress: <CircleDot className="size-4 shrink-0 text-accent" />,
   completed: <CircleCheck className="size-4 shrink-0 text-success-600" />,
   skipped: <CircleDashed className="size-4 shrink-0 text-fg-disabled" />,
 };
@@ -423,7 +425,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             const span = spanOf(w);
             return (
               <li key={w.id} className="flex items-center gap-2">
-                <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-brand-500 hover:underline">
+                <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-accent hover:underline">
                   {w.name}
                 </Link>
                 <StatusTag status={w.status} />
@@ -616,7 +618,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             role="note"
             className={cn(
               "col-span-full rounded-md px-3 py-2 text-sm",
-              it.tone === "warning" ? "bg-warning-50 text-warning-600" : "bg-brand-50 text-brand-600",
+              it.tone === "warning" ? "bg-warning-50 text-warning-600" : "bg-brand-50 text-accent",
             )}
           >
             {it.text}
@@ -764,11 +766,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                       if (c === "名称")
                         return (
                           <td key={c} className="h-9 px-1.5">
-                            <Link
-                              to="/items/$itemId"
-                              params={{ itemId: w.id }}
-                              className="text-brand-500 hover:underline"
-                            >
+                            <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-accent hover:underline">
                               {w.name}
                             </Link>
                           </td>
@@ -853,7 +851,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
     <div className="flex h-full flex-col overflow-y-auto bg-canvas">
       <header className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-6 pt-4 pb-3">
         <nav aria-label="位置" className="flex items-center gap-1 text-xs text-fg-subtle">
-          <Link to="/spaces/$spaceId" params={{ spaceId: item.spaceId }} className="hover:text-brand-500">
+          <Link to="/spaces/$spaceId" params={{ spaceId: item.spaceId }} className="hover:text-accent">
             {space?.name ?? "空间"}
           </Link>
           {typeName && (
@@ -862,7 +860,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
               <Link
                 to="/spaces/$spaceId/$typeKey"
                 params={{ spaceId: item.spaceId, typeKey: item.type?.key ?? "" }}
-                className="hover:text-brand-500"
+                className="hover:text-accent"
               >
                 {typeName}
               </Link>
@@ -871,7 +869,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
           {parent && (
             <>
               <ChevronRight className="size-3" />
-              <Link to="/items/$itemId" params={{ itemId: parent.id }} className="hover:text-brand-500">
+              <Link to="/items/$itemId" params={{ itemId: parent.id }} className="hover:text-accent">
                 上级工作项：{parent.name}
               </Link>
             </>
@@ -1598,7 +1596,7 @@ function SubItemsTable({
         {items.map((i) => (
           <tr key={i.id} className="border-b border-line-subtle last:border-0">
             <td className="h-9">
-              <Link to="/items/$itemId" params={{ itemId: i.id }} className="text-brand-500 hover:underline">
+              <Link to="/items/$itemId" params={{ itemId: i.id }} className="text-accent hover:underline">
                 {i.name}
               </Link>
             </td>
@@ -1789,7 +1787,7 @@ function Diagram({
         STATE_STYLE[state],
         delayOf(n.key)?.kind === "overdue" && "!border-danger-500 !ring-danger-50",
         delayOf(n.key)?.kind === "late" && "!border-warning-500/60",
-        selected === n.key && "!border-brand-500",
+        selected === n.key && "!border-accent",
       ),
     };
   });

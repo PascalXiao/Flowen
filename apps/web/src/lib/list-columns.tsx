@@ -134,7 +134,7 @@ export function renderFieldValue(field: ListField, value: unknown, name: (id: st
     case "link":
     case "docLink":
       return (
-        <a href={String(value)} target="_blank" rel="noreferrer" className="truncate text-brand-500 hover:underline">
+        <a href={String(value)} target="_blank" rel="noreferrer" className="truncate text-accent hover:underline">
           {String(value)}
         </a>
       );
@@ -298,7 +298,7 @@ export function relationColumn(rel: ListRelation): ListColumn {
           {linked.map((w) => (
             <Link
               key={w.id}
-              className="truncate text-brand-500 hover:underline"
+              className="truncate text-accent hover:underline"
               from="/spaces/$spaceId/$typeKey"
               to="."
               search={(prev) => ({ ...prev, item: w.id })}

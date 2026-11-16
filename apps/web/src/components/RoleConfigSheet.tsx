@@ -279,7 +279,7 @@ export function RoleConfigSheet({
                     aria-pressed={on}
                     className={cn(
                       "h-6 rounded-full border px-2.5 text-xs",
-                      on ? "border-brand-500 bg-brand-50 text-brand-500" : "border-line text-fg-muted hover:bg-hover",
+                      on ? "border-accent bg-brand-50 text-accent" : "border-line text-fg-muted hover:bg-hover",
                     )}
                     onClick={() =>
                       setEditorRoles(on ? editorRoles.filter((k) => k !== r.key) : [...editorRoles, r.key])

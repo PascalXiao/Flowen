@@ -114,7 +114,7 @@ export function RichTextEditor({
   };
   if (readOnly) return value ? <RichTextView html={value} /> : <span className="text-sm text-fg-subtle">未填写</span>;
   return (
-    <div className="rounded-md border border-line bg-surface focus-within:border-brand-500">
+    <div className="rounded-md border border-line bg-surface focus-within:border-accent">
       <div className="flex items-center gap-0.5 border-b border-line-subtle px-1 py-0.5">
         {TOOLS.map(({ command, icon: Icon, label: name }) => (
           <button

@@ -116,7 +116,7 @@ export function TreeView({
               onClick={() => setSchedule(on)}
               className={cn(
                 "h-7 rounded px-3 text-sm",
-                schedule === on ? "bg-surface text-brand-500 shadow-card" : "text-fg-muted hover:text-fg",
+                schedule === on ? "bg-surface text-accent shadow-card" : "text-fg-muted hover:text-fg",
               )}
             >
               {label}
@@ -561,7 +561,7 @@ function Row({
           ) : (
             <span className="size-5" />
           )}
-          <Link to="/items/$itemId" params={{ itemId: item.id }} className="font-medium hover:text-brand-500">
+          <Link to="/items/$itemId" params={{ itemId: item.id }} className="font-medium hover:text-accent">
             {item.name}
           </Link>
           {count > 0 && <span className="text-xs text-fg-subtle">{count}</span>}

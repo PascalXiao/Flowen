@@ -269,11 +269,7 @@ function PersonRow({
             <ul aria-label={`${name}的未排期节点`} className="flex flex-col gap-1 text-sm">
               {p.unscheduled.map((e) => (
                 <li key={`${e.workItemId}/${e.nodeKey}`} className="flex gap-2">
-                  <Link
-                    to="/items/$itemId"
-                    params={{ itemId: e.workItemId }}
-                    className="text-brand-500 hover:underline"
-                  >
+                  <Link to="/items/$itemId" params={{ itemId: e.workItemId }} className="text-accent hover:underline">
                     {e.workItemName}
                   </Link>
                   <span className="text-fg-muted">· {e.nodeName}</span>

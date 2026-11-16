@@ -1,4 +1,3 @@
-import { Popconfirm, Toast } from "@douyinfe/semi-ui";
 import { mutators, queries } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { useState } from "react";
@@ -6,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorBanner } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
+import { Toast } from "@/components/ui/toast";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const formatTime = (ms: number | null | undefined) => {

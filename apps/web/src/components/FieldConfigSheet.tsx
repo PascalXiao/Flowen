@@ -799,7 +799,7 @@ function OptionsEditor({
               )}
               <button
                 type="button"
-                className="text-brand-500 hover:underline"
+                className="text-accent hover:underline"
                 onClick={() => setOpen(open === o.value ? null : o.value)}
               >
                 {optionWhen[o.value] ? "按条件展示（已设置）" : "按条件展示"}
