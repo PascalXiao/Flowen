@@ -140,6 +140,8 @@
   --color-brand-500: var(--fl-accent-solid);
   --color-brand-600: var(--fl-accent-solid-hover);
   --color-brand-700: var(--fl-accent-solid-active);
+  /* 图表数据色（中性/青/紫），见 :root 的 --fl-chart-*。 */
+  --color-chart-1: var(--fl-chart-1);
 
   /* 文字 */
   --color-fg: var(--fl-fg);

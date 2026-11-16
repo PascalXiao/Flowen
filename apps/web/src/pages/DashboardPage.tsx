@@ -256,7 +256,7 @@ function BarList({
           <span className="truncate text-sm text-fg-muted">{r.label}</span>
           <span className="flex items-center gap-2">
             <span
-              className="h-4 rounded-r-[4px] bg-brand-500 group-hover:bg-brand-600"
+              className="h-4 rounded-r-[4px] bg-chart-1 group-hover:opacity-80"
               style={{ width: `${(r.value / max) * 75}%`, minWidth: 2 }}
             />
             <span className="text-sm tabular-nums">{r.value}</span>
