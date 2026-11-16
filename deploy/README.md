@@ -12,8 +12,8 @@
 
 ```sh
 # 仓库是私有的，用有权限的账号或部署密钥克隆
-git clone https://github.com/PascalXiao/Flowen.git /opt/feishu-project
-cd /opt/feishu-project
+git clone https://github.com/PascalXiao/Flowen.git /opt/flowen
+cd /opt/flowen
 
 cp deploy/.env.example deploy/.env
 # 编辑 deploy/.env：填 DOMAIN，三个密钥分别用 openssl rand -hex 32 生成
@@ -35,7 +35,7 @@ fp logs -f api # 看 API 日志
 ## 升级
 
 ```sh
-cd /opt/feishu-project
+cd /opt/flowen
 git pull
 fp up -d --build
 ```
@@ -49,17 +49,17 @@ fp up -d --build
 ```sh
 crontab -e
 # 加一行：每天凌晨 3 点备份
-0 3 * * * cd /opt/feishu-project && sh deploy/backup.sh >> backups/backup.log 2>&1
+0 3 * * * cd /opt/flowen && sh deploy/backup.sh >> backups/backup.log 2>&1
 ```
 
 恢复步骤（假设备份在 `backups/20261021-030000`）：
 
 ```sh
 fp stop api worker relay zero-cache
-fp exec -T postgres pg_restore -U feishu -d feishu --clean --if-exists < backups/20261021-030000/feishu.dump
+fp exec -T postgres pg_restore -U flowen -d flowen --clean --if-exists < backups/20261021-030000/flowen.dump
 fp exec -T api sh -c 'rm -rf /data/files && tar -C /data -xzf -' < backups/20261021-030000/files.tar.gz
 # Zero 的本地副本按恢复后的数据重建
-fp rm -sf zero-cache && docker volume rm feishu-project_zerodata
+fp rm -sf zero-cache && docker volume rm flowen_zerodata
 fp up -d
 ```
 
@@ -70,4 +70,5 @@ Temporal 的库没有备份。恢复后，备份时还在重试中的 Webhook �
 - **查看 Temporal**：Temporal UI 只监听服务器本机。先在自己电脑上运行 `ssh -L 8080:localhost:8080 服务器`，再打开 http://localhost:8080 。
 - **没有域名，先在内网试用**：在 `deploy/.env` 里设 `SITE_ADDRESS=:80`、`PUBLIC_URL=http://服务器IP`，`DOMAIN` 填服务器 IP。这时只走 HTTP，不要用于正式环境。
 - **Webhook 推送到内网**：默认会拦截内网和本机地址。全内网部署时设 `WEBHOOK_ALLOW_PRIVATE=true`。
-- **改数据库密码**：`POSTGRES_PASSWORD` 只在数据库第一次初始化时生效。之后要改，先执行 `fp exec postgres psql -U feishu -c "alter user feishu password '新密码'"`，再改 `deploy/.env`，然后执行 `fp up -d`。
+- **从旧名称 feishu-project 迁过来**：compose 项目名、数据库名和用户名都已改成 flowen，旧部署直接 `up` 会建一套空的新卷。迁移步骤：先 `pg_dumpall` 备份；`down` 掉旧容器；把 `feishu-project_pgdata`、`_files`、`_caddy_data`、`_caddy_config` 逐个复制到对应的 `flowen_*` 卷（`docker run --rm -v 旧卷:/from:ro -v 新卷:/to alpine cp -a /from/. /to/`），zerodata 不用复制；用新卷临时起一个 postgres（带 `-c wal_level=logical`），删掉 Zero 的复制槽并重建 zero 库，建一个临时超级用户，用它执行 `alter database feishu rename to flowen`、`alter role feishu rename to flowen` 和重设密码，再删掉临时用户；最后 `fp up -d --build`。确认数据无误后再删旧卷。
+- **改数据库密码**：`POSTGRES_PASSWORD` 只在数据库第一次初始化时生效。之后要改，先执行 `fp exec postgres psql -U flowen -c "alter user flowen password '新密码'"`，再改 `deploy/.env`，然后执行 `fp up -d`。

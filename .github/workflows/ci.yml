@@ -27,7 +27,7 @@ jobs:
           ZERO_ADMIN_PASSWORD: ci
         run: |
           docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile app config -q
-          docker build -f deploy/web.Dockerfile -t feishu-project/web .
+          docker build -f deploy/web.Dockerfile -t flowen/web .
       - name: Start Postgres and Temporal
         run: |
           docker compose up -d --wait postgres temporal
