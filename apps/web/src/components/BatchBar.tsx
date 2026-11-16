@@ -112,7 +112,7 @@ export function BatchBar({
     <div
       role="group"
       aria-label="批量操作"
-      className="fixed bottom-6 left-1/2 z-[900] flex h-10 -translate-x-1/2 items-center gap-0.5 rounded-[11px] bg-inverse pr-1.5 pl-3.5 text-sm text-inverse-fg shadow-float"
+      className="fixed bottom-6 left-[calc(50%+7.125rem)] z-[900] flex h-10 -translate-x-1/2 items-center gap-0.5 rounded-[11px] bg-inverse pr-1.5 pl-3.5 text-sm text-inverse-fg shadow-float"
     >
       <span className="mr-2 font-medium whitespace-nowrap">已选 {items.length} 项</span>
       <span aria-hidden className="mx-1 h-4 w-px bg-inverse-fg/20" />

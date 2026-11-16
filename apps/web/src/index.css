@@ -368,3 +368,10 @@
   padding-left: 0.75rem;
   color: var(--color-fg-muted);
 }
+
+@keyframes fl-sheet-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}

@@ -102,7 +102,7 @@ export function TreeView({
             ))}
           </optgroup>
         </Select>
-        <fieldset aria-label="显示模式" className="m-0 ml-auto flex min-w-0 rounded-md border-0 bg-canvas p-0.5">
+        <fieldset aria-label="显示模式" className="m-0 ml-auto flex min-w-0 gap-px rounded-lg border-0 bg-raised p-0.5">
           {(
             [
               [false, "表格"],
@@ -115,8 +115,8 @@ export function TreeView({
               aria-pressed={schedule === on}
               onClick={() => setSchedule(on)}
               className={cn(
-                "h-7 rounded px-3 text-sm",
-                schedule === on ? "bg-surface text-accent shadow-card" : "text-fg-muted hover:text-fg",
+                "h-6 cursor-pointer rounded-md px-2.5 text-[12.5px]",
+                schedule === on ? "bg-surface font-medium text-fg shadow-panel" : "text-fg-muted hover:text-fg",
               )}
             >
               {label}

@@ -260,37 +260,56 @@ function NodeTrack({ item, today }: { item: ListItem; today: string }) {
   if (!nodes.length) return none;
   const done = item.status === "completed";
   const current = nodes.filter((d) => stateOf.get(d.key)?.state === "inProgress");
-  const segment = Math.max(4, Math.min(13, Math.floor(110 / nodes.length)));
+  const passed = nodes.filter((d) => stateOf.get(d.key)?.state === "completed").length;
   const late = (key: string) => {
     const end = stateOf.get(key)?.plannedEnd;
     return end != null && daysBetween(today, dayOf(end) as string) < 0;
   };
   return (
     <span className="inline-flex min-w-0 items-center gap-2.5">
-      <span className="flex shrink-0 gap-0.5" aria-hidden>
-        {nodes.map((d) => {
-          const state = stateOf.get(d.key)?.state;
-          return (
+      {nodes.length <= 12 ? (
+        <span className="flex shrink-0 gap-0.5" aria-hidden>
+          {nodes.map((d) => {
+            const state = stateOf.get(d.key)?.state;
+            return (
+              <span
+                key={d.key}
+                title={d.name}
+                style={{ width: Math.min(13, Math.floor(96 / nodes.length)) }}
+                className={cn(
+                  "h-[5px] rounded-[2px]",
+                  done
+                    ? "bg-success-500"
+                    : state === "inProgress"
+                      ? late(d.key)
+                        ? "bg-danger-500"
+                        : "bg-accent"
+                      : state === "completed"
+                        ? "bg-track-done"
+                        : "bg-track",
+                )}
+              />
+            );
+          })}
+        </span>
+      ) : (
+        // 节点太多时画成一根进度条：灰色是走过的比例，当前位置一小段强调色
+        <span aria-hidden className="relative h-[5px] w-24 shrink-0 overflow-hidden rounded-[2px] bg-track">
+          <span
+            className={cn("absolute inset-y-0 left-0", done ? "bg-success-500" : "bg-track-done")}
+            style={{ width: `${done ? 100 : (passed / nodes.length) * 100}%` }}
+          />
+          {!done && current[0] && (
             <span
-              key={d.key}
-              title={d.name}
-              style={{ width: segment }}
               className={cn(
-                "h-[5px] rounded-[2px]",
-                done
-                  ? "bg-success-500"
-                  : state === "inProgress"
-                    ? late(d.key)
-                      ? "bg-danger-500"
-                      : "bg-accent"
-                    : state === "completed"
-                      ? "bg-track-done"
-                      : "bg-track",
+                "absolute inset-y-0 w-1.5 rounded-[2px]",
+                late(current[0].key) ? "bg-danger-500" : "bg-accent",
               )}
+              style={{ left: `calc(${(nodes.indexOf(current[0]) / nodes.length) * 100}% )` }}
             />
-          );
-        })}
-      </span>
+          )}
+        </span>
+      )}
       {done ? (
         <span className="truncate text-fg-muted">已完成</span>
       ) : current[0] ? (
