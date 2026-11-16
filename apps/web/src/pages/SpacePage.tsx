@@ -17,7 +17,7 @@ import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, Columns3, GanttChartSquare, List, ListTree, Plus } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { Board } from "@/components/Board";
 import { FieldInput, type FieldInputValue, FieldLabel } from "@/components/FieldInput";
@@ -361,7 +361,7 @@ function WorkItems({
       ]}
     />
   );
-  const filterBar = (
+  const filterBar = (slots?: { tools: ReactNode; search: ReactNode }) => (
     <FilterBar
       spaceId={space.id}
       filter={filter}
@@ -374,12 +374,14 @@ function WorkItems({
       display={view === "table" ? display : undefined}
       onView={(v) => view === "table" && v.display && setDisplay(v.display as ListDisplay)}
       actions={viewSwitch}
+      tools={slots?.tools}
+      search={slots?.search}
     />
   );
 
   return (
     <div className="flex min-h-0 flex-col">
-      {view !== "table" && <div className="mb-3">{filterBar}</div>}
+      {view !== "table" && <div className="mb-3">{filterBar()}</div>}
       {view === "tree" ? (
         <TreeView
           spaceId={space.id}

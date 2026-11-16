@@ -53,8 +53,14 @@ export function StatusTag({ status }: { status: string | null | undefined }) {
   );
 }
 
+/**
+ * 分类用的颜色：只用不带含义的色。蓝（当前）、红（逾期）、黄（临期）、绿（完成）留给状态，
+ * 阶段、选项这类分类不占用，免得「概念阶段」看着像快到期。
+ */
+export const CATEGORY_TONES: TagTone[] = ["neutral", "violet", "teal"];
+
 /** 阶段：按名称固定配一个颜色，同一阶段在各处颜色一致。 */
-const STAGE_TONES: TagTone[] = ["violet", "teal", "warning", "brand", "success"];
+const STAGE_TONES = CATEGORY_TONES;
 export function StageTag({ stage }: { stage: string | null | undefined }) {
   if (!stage) return <span className="text-fg-subtle">—</span>;
   let hash = 0;

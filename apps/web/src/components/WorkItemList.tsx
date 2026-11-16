@@ -127,7 +127,7 @@ export function WorkItemList({
   display: ListDisplay;
   onDisplay: (display: ListDisplay) => void;
   /** 筛选栏（放在排序、分组前面）。 */
-  toolbar: ReactNode;
+  toolbar: (slots: { tools: ReactNode; search: ReactNode }) => ReactNode;
   /** 当前显示的行（排序、搜索之后）的工作项 id，抽屉里切上一条、下一条用。 */
   onRows?: (ids: readonly string[]) => void;
 }) {
@@ -500,64 +500,67 @@ export function WorkItemList({
         </section>
       </div>
 
-      {toolbar}
-
-      <div className="flex flex-wrap items-center gap-0.5">
-        <SortButton
-          columns={available}
-          value={display.sort ?? []}
-          onChange={(sort) => onDisplay({ ...display, sort })}
-        />
-        <GroupButton
-          columns={available}
-          value={display.groupBy ?? null}
-          onChange={(groupBy) => onDisplay({ ...display, groupBy })}
-        />
-        <ColorButton
-          fields={[...fields.values()]}
-          value={display.colors ?? []}
-          onChange={(colors) => onDisplay({ ...display, colors })}
-        />
-        <FreezeButton
-          columns={shown.map((c) => byKey.get(c.key) as ListColumn)}
-          value={frozen}
-          onChange={(n) => onDisplay({ ...display, frozen: n || undefined })}
-        />
-        <RowHeightButton
-          value={rowHeight}
-          density={density}
-          onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
-        />
-        <button
-          type="button"
-          disabled={rows.length === 0}
-          title="按当前的列、筛选、排序导出"
-          className={cn(toolButton(false), "disabled:cursor-not-allowed disabled:text-fg-disabled")}
-          onClick={async () => {
-            const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
-            const day = new Date().toLocaleDateString("sv-SE");
-            try {
-              // 分批加载时还有没加载的行，导出前把全部取下来
-              const out = more ? await zero.run(queries.workItems.list(listArgs), { type: "complete" }) : rows;
-              await exportListXlsx(
-                `${space.name}-${typeName}-${day}`,
-                shown.map((c) => byKey.get(c.key) as ListColumn),
-                out,
-              );
-              Toast.success({ content: `已导出 ${out.length} 条`, duration: 2 });
-            } catch (e) {
-              Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` });
-            }
-          }}
-        >
-          <Download />
-          导出
-        </button>
-        <span className="flex-1" />
-        <div className="w-56">
-          <SearchInput aria-label="搜索工作项" placeholder="搜索名称" value={search} onChange={setSearch} />
-        </div>
-      </div>
+      {toolbar({
+        search: (
+          <div className="w-52">
+            <SearchInput aria-label="搜索工作项" placeholder="搜索名称" value={search} onChange={setSearch} />
+          </div>
+        ),
+        tools: (
+          <>
+            <SortButton
+              columns={available}
+              value={display.sort ?? []}
+              onChange={(sort) => onDisplay({ ...display, sort })}
+            />
+            <GroupButton
+              columns={available}
+              value={display.groupBy ?? null}
+              onChange={(groupBy) => onDisplay({ ...display, groupBy })}
+            />
+            <ColorButton
+              fields={[...fields.values()]}
+              value={display.colors ?? []}
+              onChange={(colors) => onDisplay({ ...display, colors })}
+            />
+            <FreezeButton
+              columns={shown.map((c) => byKey.get(c.key) as ListColumn)}
+              value={frozen}
+              onChange={(n) => onDisplay({ ...display, frozen: n || undefined })}
+            />
+            <RowHeightButton
+              value={rowHeight}
+              density={density}
+              onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
+            />
+            <button
+              type="button"
+              disabled={rows.length === 0}
+              title="按当前的列、筛选、排序导出"
+              className={cn(toolButton(false), "disabled:cursor-not-allowed disabled:text-fg-disabled")}
+              onClick={async () => {
+                const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
+                const day = new Date().toLocaleDateString("sv-SE");
+                try {
+                  // 分批加载时还有没加载的行，导出前把全部取下来
+                  const out = more ? await zero.run(queries.workItems.list(listArgs), { type: "complete" }) : rows;
+                  await exportListXlsx(
+                    `${space.name}-${typeName}-${day}`,
+                    shown.map((c) => byKey.get(c.key) as ListColumn),
+                    out,
+                  );
+                  Toast.success({ content: `已导出 ${out.length} 条`, duration: 2 });
+                } catch (e) {
+                  Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` });
+                }
+              }}
+            >
+              <Download />
+              导出
+            </button>
+          </>
+        ),
+      })}
 
       {selected.length > 0 && (
         <BatchBar

@@ -51,6 +51,8 @@ export function FilterBar({
   views,
   isAdmin,
   actions,
+  tools,
+  search,
   display,
   onView,
   fixedTypeId,
@@ -65,6 +67,9 @@ export function FilterBar({
   isAdmin: boolean;
   /** 视图页签右边的操作，如切换列表和甘特图。 */
   actions?: ReactNode;
+  /** 接在筛选后面的列表工具（排序、分组…）和搜索框，只有列表视图有。 */
+  tools?: ReactNode;
+  search?: ReactNode;
   /** 当前列表的显示设置，保存视图时一起存。 */
   display?: unknown;
   /** 选中一个视图（除了筛选，还要套用它的显示设置）。 */
@@ -170,6 +175,7 @@ export function FilterBar({
             );
           })}
         </div>
+        {search}
         {actions}
       </div>
 
@@ -238,10 +244,18 @@ export function FilterBar({
           onChange={(next) => change({ ...filter, fields: next.length > 0 ? next : undefined })}
         />
         {!empty && (
+          <Button variant="ghost" onClick={() => change({})}>
+            清空
+          </Button>
+        )}
+        {tools && (
           <>
-            <Button variant="ghost" onClick={() => change({})}>
-              清空
-            </Button>
+            <span aria-hidden className="mx-1 h-4 w-px bg-line" />
+            <div className="flex flex-wrap items-center gap-0.5">{tools}</div>
+          </>
+        )}
+        {!empty && (
+          <>
             <form className="ml-auto flex items-center gap-2" onSubmit={save}>
               <Input name="name" aria-label="视图名称" placeholder="视图名称" className="w-36" />
               <Button type="submit" variant="outline">
