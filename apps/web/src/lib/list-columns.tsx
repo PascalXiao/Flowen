@@ -13,7 +13,7 @@ import type { QueryResultType } from "@rocicorp/zero";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
-import { StageTag, StatusTag, Tag, type TagTone } from "@/components/ui/tag";
+import { CATEGORY_TONES, StageTag, StatusTag, Tag, type TagTone } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 
 /** 列表查询返回的一行工作项。 */
@@ -75,7 +75,7 @@ export function cellText(col: ListColumn, item: ListItem): string {
   return v === null ? "" : String(v);
 }
 
-const TONES: TagTone[] = ["brand", "violet", "teal", "warning", "success", "danger"];
+const TONES = CATEGORY_TONES;
 /** 选项的标签颜色：按选项值固定，同一个选项在各处颜色一样。 */
 function toneOf(value: string): TagTone {
   let hash = 0;

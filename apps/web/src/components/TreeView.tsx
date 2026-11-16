@@ -292,7 +292,7 @@ function PlanCell({ item, t }: { item: TreeItem; t: Timeline }) {
   }
   return (
     <td className="relative p-0">
-      <div className="relative h-11" style={{ width }}>
+      <div className="relative h-9" style={{ width }}>
         <TodayLine t={t} />
         {bar}
         {!span && (
@@ -546,7 +546,7 @@ function Row({
   const t = useContext(TimelineContext);
   return (
     <tr className="border-b border-line-subtle hover:bg-hover/50">
-      <td className={cn("h-11 px-4", t && "sticky left-0 z-10 min-w-72 bg-surface")}>
+      <td className={cn("h-9 px-4", t && "sticky left-0 z-10 min-w-72 bg-surface")}>
         <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
           {expandable ? (
             <button
