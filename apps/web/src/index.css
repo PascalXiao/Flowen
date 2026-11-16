@@ -1,6 +1,3 @@
-/* 迁移期间保留的 Semi 主题样式放进自己的层，排在 Tailwind 的 base 之后、utilities 之前：盖过默认重置，又能被页面上的工具类覆盖。 */
-@layer theme, base, semi, components, utilities;
-@import "@semi-bot/semi-theme-doucreator/semi.min.css" layer(semi);
 @import "tailwindcss";
 
 /*
@@ -98,74 +95,6 @@
   --fl-shadow-popover:
     0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
   --fl-shadow-float: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-/*
- * 迁移期间还没换掉的 Semi 组件（表格、日期、级联、抽屉等）跟着上面的令牌走，亮暗两套都对得上。
- * 全部换成自建组件后，这一段和 Semi 的样式引入一起删掉。
- */
-@layer semi {
-  /* 勾选框、单选框的原生 input 盖在装饰层上面，点击和测试都落在真正的控件上 */
-  /* 浮层的叠放：Semi 的和自建的用同一个层级，后打开的自然盖在先打开的上面 */
-  .semi-portal {
-    z-index: 1000 !important;
-  }
-
-  .semi-checkbox-input,
-  .semi-radio-input {
-    z-index: 1;
-    cursor: pointer;
-  }
-
-  body,
-  body[theme-mode="dark"] {
-    --semi-color-primary: var(--fl-accent-solid);
-    --semi-color-primary-hover: var(--fl-accent-solid-hover);
-    --semi-color-primary-active: var(--fl-accent-solid-active);
-    --semi-color-primary-disabled: var(--fl-accent-line);
-    --semi-color-primary-light-default: var(--fl-accent-soft);
-    --semi-color-primary-light-hover: var(--fl-accent-soft-strong);
-    --semi-color-primary-light-active: var(--fl-accent-line);
-    --semi-color-focus-border: var(--fl-accent);
-    --semi-color-link: var(--fl-accent);
-    --semi-color-link-hover: var(--fl-accent);
-    --semi-color-link-active: var(--fl-accent);
-    --semi-color-link-visited: var(--fl-accent);
-    --semi-color-info: var(--fl-accent-solid);
-    --semi-color-text-0: var(--fl-fg);
-    --semi-color-text-1: var(--fl-fg-muted);
-    --semi-color-text-2: var(--fl-fg-subtle);
-    --semi-color-text-3: var(--fl-fg-disabled);
-    --semi-color-disabled-text: var(--fl-fg-disabled);
-    --semi-color-border: var(--fl-line);
-    --semi-color-bg-0: var(--fl-surface);
-    --semi-color-bg-1: var(--fl-surface);
-    --semi-color-bg-2: var(--fl-popover);
-    --semi-color-bg-3: var(--fl-popover);
-    --semi-color-bg-4: var(--fl-popover);
-    --semi-color-nav-bg: var(--fl-surface);
-    --semi-color-overlay-bg: var(--fl-overlay);
-    --semi-color-fill-0: var(--fl-hover);
-    --semi-color-fill-1: var(--fl-pressed);
-    --semi-color-fill-2: var(--fl-pressed);
-    --semi-color-success: var(--fl-success);
-    --semi-color-success-hover: var(--fl-success-text);
-    --semi-color-success-active: var(--fl-success-text);
-    --semi-color-success-light-default: var(--fl-success-soft);
-    --semi-color-success-light-hover: var(--fl-success-soft);
-    --semi-color-warning: var(--fl-warning);
-    --semi-color-warning-hover: var(--fl-warning-text);
-    --semi-color-warning-active: var(--fl-warning-text);
-    --semi-color-warning-light-default: var(--fl-warning-soft);
-    --semi-color-warning-light-hover: var(--fl-warning-soft);
-    --semi-color-danger: var(--fl-danger);
-    --semi-color-danger-hover: var(--fl-danger-text);
-    --semi-color-danger-active: var(--fl-danger-text);
-    --semi-color-danger-light-default: var(--fl-danger-soft);
-    --semi-color-danger-light-hover: var(--fl-danger-soft);
-    --semi-shadow-elevated: var(--fl-shadow-popover);
-    font-family: var(--font-sans);
-  }
 }
 
 /*

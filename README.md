@@ -9,7 +9,7 @@ Flowen 是一个项目管理平台：工作项、节点流程、排期、自动�
 | 路径 | 内容 |
 | --- | --- |
 | `packages/engine` | 流程引擎：零依赖纯 TypeScript，服务端和浏览器共用。`src/samples/demo-flow.ts` 是一套虚构的 48 节点示例流程，演示页、示例模板导入和测试都用它 |
-| `apps/web` | 前端：React 19 + Vite + Tailwind CSS v4 + Semi Design + React Flow。界面规范见下面的“界面” |
+| `apps/web` | 前端：React 19 + Vite + Tailwind CSS v4 + Radix（自建组件）+ React Flow。界面规范见下面的“界面” |
 | `apps/api` | 后端：Node.js 24 + Hono。Better Auth 登录（`/api/auth/*`）、Zero 的查询和写入接口（`/api/zero/*`）、流程校验 |
 | `apps/worker` | Temporal worker（每个工作项一个事件流 workflow，按顺序处理事件）和 Outbox 中继 |
 | `packages/db` | PostgreSQL 17 + Drizzle：表结构、迁移、`appendEvents`（业务写入和事件同一事务） |
@@ -18,12 +18,16 @@ Flowen 是一个项目管理平台：工作项、节点流程、排期、自动�
 
 ## 界面
 
-设计 token 都在 `apps/web/src/index.css` 的 `@theme` 里：品牌蓝 `brand-*`，文字 `fg` / `fg-muted` / `fg-subtle`，
-线 `line` / `line-subtle`，底色 `canvas` / `surface`，状态色 `success` / `warning` / `danger`。页面里只用这些语义类，不直接写 slate、sky 这类颜色。
-字号 12/14/16/20，控件高 32px，圆角 6px。
+界面风格叫「流线」：浅色、深色两套，默认跟随系统（头像菜单里切换）。设计令牌是 `apps/web/src/index.css` 里的 `--fl-*` 变量，
+在 `@theme` 里映射成语义类：文字 `fg` / `fg-muted` / `fg-subtle`，线 `line` / `line-subtle`，底色 `chrome`（导航）/ `surface`（内容面板）/ `raised` / `popover`，
+强调色 `accent`（文字、图标、边框）和 `brand-*`（填充），状态色 `success` / `warning` / `danger`，节点轨道 `track` / `track-done`。
+页面里只用这些语义类，不直接写 slate、sky 或十六进制颜色。
+颜色有含义：蓝色只表示「当前、选中、主操作」，红色只表示逾期和危险，琥珀色是快到期，绿色是完成。
+字体用系统界面字体（Segoe UI / 微软雅黑、苹方），正文 13px，行高 36px（列表可切紧凑），控件高 28px，圆角 7px。
 
-组件在 `apps/web/src/components/ui/`：`Button`、`Input` / `Select` / `Textarea` / `Field`、`Tag` / `StatusTag` / `StageTag`、`Avatar`、
-`Dialog`、`Popover`、`DropdownMenu`、`Tabs` / `Segmented`、`PageHeader` / `PageBody` / `Panel` / `EmptyState`。
+组件都是自己写的（Radix 加设计令牌），在 `apps/web/src/components/ui/`：`Button`、`Input` / `Select` / `Textarea` / `SearchInput` / `Field`、
+`Checkbox`、`Tag` / `StatusTag` / `StageTag`、`Avatar`、`Dialog`、`Sheet`（右侧抽屉）、`Popover`、`Popconfirm`、`DropdownMenu`、`Tooltip`、`Toast`、
+`Tabs` / `Segmented`、`PageHeader` / `PageBody` / `Panel` / `EmptyState`。工作项列表的表格是 `components/ListGrid.tsx`（按需渲染行、冻结列、吸附的表头和汇总行）。
 布局：`AppShell` 是左侧导航（空间切换、工作项类型、自动化、空间设置、通知、账号）加右侧页面；没有空间参数的页面用 `useActiveSpace` 报告自己所在的空间。
 新建类的操作用弹窗，详情页右侧是用细线分节的面板。
 

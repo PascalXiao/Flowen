@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 /**
  * 弹窗，组合写法：Dialog 管开关，DialogTrigger 打开，DialogClose 关上，DialogContent 是弹窗本身。
  *
- * 迁移期间弹窗里还会用到 Semi 的日期、级联等浮层，它们挂在 body 上；所以这里不锁页面其他区域的点击和焦点
- * （modal={false}），遮罩自己画。Semi 全部换掉后改回默认的模态行为。
+ * 弹窗里的下拉、气泡、提示都挂在 body 上，所以不锁页面其他区域的点击和焦点（modal={false}），遮罩自己画，
+ * 点遮罩关闭；点到这些浮层不算点在外面。
  */
 export function Dialog({
   open,
@@ -49,10 +49,6 @@ export function DialogClose({ asChild, children }: { asChild?: boolean; children
   );
 }
 
-/** 还开着的 Semi 浮层（日期面板、级联、下拉）：Esc 先收它们，不关弹窗。 */
-export const SEMI_POPUP =
-  '.semi-portal [role="listbox"], .semi-portal .semi-popover-wrapper, .semi-portal .semi-datepicker';
-
 export function DialogContent({
   className,
   children,
@@ -71,13 +67,10 @@ export function DialogContent({
       <RadixDialog.Content
         aria-modal="true"
         {...(!description && { "aria-describedby": undefined })}
-        onEscapeKeyDown={(e) => {
-          if (document.querySelector(SEMI_POPUP)) e.preventDefault();
-        }}
         // 点遮罩关闭；点到别的浮层（气泡、下拉、提示）不算点在外面
         onInteractOutside={(e) => {
           const target = e.target as HTMLElement | null;
-          if (target?.closest(".semi-portal, [data-radix-popper-content-wrapper], [data-fl-toast]")) e.preventDefault();
+          if (target?.closest("[data-radix-popper-content-wrapper], [data-fl-toast]")) e.preventDefault();
         }}
         className={cn(
           "-translate-x-1/2 fixed top-[12vh] left-1/2 z-[1000] flex max-h-[76vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-xl bg-popover shadow-popover outline-none",

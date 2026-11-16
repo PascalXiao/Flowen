@@ -1,7 +1,6 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useLayoutEffect, useState } from "react";
-import { SEMI_POPUP } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 /** 抽屉盖住的区域：within 给了就只盖那个元素（比如内容区，左侧导航还能看见），否则盖整个窗口。 */
@@ -28,7 +27,7 @@ function useBox(open: boolean, within?: () => HTMLElement | null): CSSProperties
 
 /**
  * 右侧抽屉：标题、右上角关闭、可滚动的内容区、可选的底部按钮栏。
- * 和弹窗一样迁移期间不锁焦点（里面还有 Semi 的浮层），遮罩自己画，点遮罩或按 Esc 关闭。
+ * 和弹窗一样不锁焦点（里面的下拉、气泡挂在 body 上），遮罩自己画，点遮罩或按 Esc 关闭。
  */
 export function Sheet({
   open,
@@ -65,13 +64,9 @@ export function Sheet({
             aria-modal="true"
             aria-describedby={undefined}
             {...(label && { "aria-label": label })}
-            onEscapeKeyDown={(e) => {
-              if (document.querySelector(SEMI_POPUP)) e.preventDefault();
-            }}
             onInteractOutside={(e) => {
               const target = e.target as HTMLElement | null;
-              if (target?.closest(".semi-portal, [data-radix-popper-content-wrapper], [data-fl-toast]"))
-                e.preventDefault();
+              if (target?.closest("[data-radix-popper-content-wrapper], [data-fl-toast]")) e.preventDefault();
             }}
             style={{ width }}
             className="absolute inset-y-0 right-0 flex max-w-full flex-col bg-surface shadow-float outline-none data-[state=open]:animate-[fl-sheet-in_180ms_cubic-bezier(0.2,0.8,0.2,1)]"

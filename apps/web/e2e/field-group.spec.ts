@@ -31,7 +31,7 @@ test("a field group is a small table with configurable columns", async ({ page }
 
   // 列：品牌（单选）、费率（数字）
   await page.getByRole("button", { name: "配置字段 费率维护" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await sheet.getByLabel("第 1 列名称").fill("品牌");
   await choose(sheet.getByLabel("第 1 列类型"), "select");
   for (const brand of ["晨曦", "ddg"]) {
@@ -101,7 +101,7 @@ test("a formula looks up a row in a related work item's field group", async ({ p
   await addField("品牌", "text");
   await addField("费率维护", "fieldGroup");
   await page.getByRole("button", { name: "配置字段 费率维护" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await sheet.getByLabel("第 1 列名称").fill("品牌");
   await sheet.getByRole("button", { name: "添加列" }).click();
   await sheet.getByLabel("第 2 列名称").fill("费率");

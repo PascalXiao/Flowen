@@ -1,6 +1,6 @@
 # @fp/web
 
-Flowen 的前端：React 19 + Vite + TanStack Router，界面组件用 Semi Design，数据通过 Zero 同步。整体说明见仓库根目录的 README。
+Flowen 的前端：React 19 + Vite + TanStack Router，界面组件是自己写的（Radix 加设计令牌，见 `src/components/ui/`），数据通过 Zero 同步。整体说明见仓库根目录的 README。
 
 ```bash
 pnpm --filter @fp/web dev        # http://localhost:5173，需要 API 和 zero-cache 在跑

@@ -18,11 +18,10 @@ export function resolvedTheme(): "light" | "dark" {
   return mode === "system" ? (systemDark().matches ? "dark" : "light") : mode;
 }
 
-/** 把外观写到页面上：<html data-theme> 给自己的令牌用，body 上的 theme-mode 给迁移期间还在用的 Semi 组件用。 */
+/** 把外观写到页面上：<html data-theme> 切换设计令牌。 */
 export function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
-  document.body?.setAttribute("theme-mode", theme);
   for (const notify of listeners) notify();
 }
 

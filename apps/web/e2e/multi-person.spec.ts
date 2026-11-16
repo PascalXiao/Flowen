@@ -29,7 +29,7 @@ test("a multi-person field: each person adds and fills their own group", async (
 
   // 每人填：结论（单选）、意见（文本）；填写人自行添加
   await page.getByRole("button", { name: "配置字段 评审意见" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await expect(sheet.getByLabel("填写人")).toBeVisible();
   await sheet.getByLabel("第 1 列名称").fill("结论");
   await choose(sheet.getByLabel("第 1 列类型"), "select");

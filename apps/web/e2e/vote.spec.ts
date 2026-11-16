@@ -30,7 +30,7 @@ test("a blind vote field: vote with a remark, then reveal the results", async ({
 
   // 设成盲投，赞成 2 分
   await page.getByRole("button", { name: "配置字段 立项评审" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await sheet.getByText("盲投（放榜前只看得到自己的票）").click();
   await sheet.getByLabel("赞成的分值").fill("2");
   await sheet.getByRole("button", { name: "保存" }).click();
