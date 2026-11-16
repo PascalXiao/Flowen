@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
  */
 export function Checkbox({
   checked,
+  indeterminate,
   disabled,
   className,
   onChange,
@@ -14,6 +15,8 @@ export function Checkbox({
   children,
 }: {
   checked?: boolean;
+  /** 部分选中（全选框在只勾了一部分行时）。 */
+  indeterminate?: boolean;
   disabled?: boolean;
   className?: string;
   onChange?: (e: { target: { checked: boolean } }) => void;
@@ -25,6 +28,9 @@ export function Checkbox({
     <input
       type="checkbox"
       checked={!!checked}
+      ref={(el) => {
+        if (el) el.indeterminate = !!indeterminate && !checked;
+      }}
       disabled={disabled}
       aria-label={ariaLabel}
       className={cn("fl-checkbox", !children && className)}

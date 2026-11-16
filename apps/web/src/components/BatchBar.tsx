@@ -1,6 +1,7 @@
 import type { FieldDataType } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
+import { Ban, Eye, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
@@ -111,35 +112,37 @@ export function BatchBar({
     <div
       role="group"
       aria-label="批量操作"
-      className="ml-auto flex items-center gap-1 rounded-md bg-brand-50 px-3 py-1 text-sm"
+      className="fixed bottom-6 left-1/2 z-[900] flex h-10 -translate-x-1/2 items-center gap-0.5 rounded-[11px] bg-inverse pr-1.5 pl-3.5 text-sm text-inverse-fg shadow-float"
     >
-      <span className="mr-1">已选 {items.length} 项</span>
+      <span className="mr-2 font-medium whitespace-nowrap">已选 {items.length} 项</span>
+      <span aria-hidden className="mx-1 h-4 w-px bg-inverse-fg/20" />
       {editable.length > 0 && (
         <Popover open={editOpen} onOpenChange={setEditOpen}>
-          <PopoverTrigger asChild>
-            <Button size="sm" variant="ghost">
-              修改字段
-            </Button>
+          <PopoverTrigger className={barButton}>
+            <Pencil />
+            修改字段
           </PopoverTrigger>
-          <PopoverContent align="end" className="p-0">
+          <PopoverContent align="center" side="top" className="p-0">
             {editPanel}
           </PopoverContent>
         </Popover>
       )}
-      <Button
-        size="sm"
-        variant="ghost"
+      <button
+        type="button"
+        className={barButton}
         onClick={() => each(items, "关注", (i) => mutators.mark.set({ workItemId: i.id, kind: "follow", on: true }))}
       >
+        <Eye />
         关注
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
+      </button>
+      <button
+        type="button"
+        className={barButton}
         onClick={() => each(items, "收藏", (i) => mutators.mark.set({ workItemId: i.id, kind: "star", on: true }))}
       >
+        <Star />
         收藏
-      </Button>
+      </button>
       {running.length > 0 && (
         <Popconfirm
           title={`终止 ${running.length} 个工作项？`}
@@ -163,19 +166,21 @@ export function BatchBar({
             setReason("");
           }}
         >
-          <Button size="sm" variant="ghost">
+          <button type="button" className={barButton}>
+            <Ban />
             终止
-          </Button>
+          </button>
         </Popconfirm>
       )}
       {terminated.length > 0 && (
-        <Button
-          size="sm"
-          variant="ghost"
+        <button
+          type="button"
+          className={barButton}
           onClick={() => each(terminated, "恢复", (i) => mutators.workItem.restore({ workItemId: i.id }))}
         >
+          <RotateCcw />
           恢复
-        </Button>
+        </button>
       )}
       <Popconfirm
         title={`删除 ${items.length} 个工作项？`}
@@ -188,13 +193,25 @@ export function BatchBar({
           onClear();
         }}
       >
-        <Button size="sm" variant="ghost">
+        <button type="button" className={barButton}>
+          <Trash2 />
           删除
-        </Button>
+        </button>
       </Popconfirm>
-      <Button size="sm" variant="ghost" onClick={onClear}>
-        取消选择
-      </Button>
+      <span aria-hidden className="mx-1 h-4 w-px bg-inverse-fg/20" />
+      <button
+        type="button"
+        aria-label="取消选择"
+        title="取消选择"
+        className={cn(barButton, "px-1.5")}
+        onClick={onClear}
+      >
+        <X />
+      </button>
     </div>
   );
 }
+
+/** 浮动批量栏里的按钮：反色底上的文字按钮。 */
+const barButton =
+  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 font-medium whitespace-nowrap hover:bg-inverse-fg/12 [&_svg]:size-[15px] [&_svg]:opacity-80";

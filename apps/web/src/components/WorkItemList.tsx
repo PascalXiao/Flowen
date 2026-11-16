@@ -1,4 +1,3 @@
-import { Table } from "@douyinfe/semi-ui";
 import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
@@ -7,18 +6,22 @@ import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, 
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BatchBar } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
+import { type GridColumn, type GridRow, ListGrid } from "@/components/ListGrid";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input, SearchInput, Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toast } from "@/components/ui/toast";
+import { type Density, setDensity, useDensity } from "@/lib/density";
 import { env } from "@/lib/env";
 import { exportListXlsx } from "@/lib/export-xlsx";
 import { withLineOptions } from "@/lib/fields";
@@ -68,7 +71,6 @@ const SUMMARY_TEXT: Record<SummaryKind, string> = {
 };
 const ROW_HEIGHTS = { low: ["低", 36], medium: ["中", 52], high: ["高", 72], xhigh: ["超高", 96] } as const;
 type RowHeight = keyof typeof ROW_HEIGHTS;
-const SELECTION_WIDTH = 48;
 type Cell = { r: number; c: number };
 
 type Tab = "all" | "recent" | "created" | "involved" | "followed" | "starred";
@@ -81,12 +83,13 @@ const TABS: readonly (readonly [Tab, string])[] = [
   ["starred", "我收藏的"],
 ];
 
+/** 行着色：存的值（老数据里的浅色）、名字、显示时用的色相。 */
 const ROW_COLORS = [
-  ["#fff3e0", "橙"],
-  ["#e8f5e9", "绿"],
-  ["#e3f2fd", "蓝"],
-  ["#fce4ec", "红"],
-  ["#f3e5f5", "紫"],
+  ["#fff3e0", "橙", "#f59e0b"],
+  ["#e8f5e9", "绿", "#22c55e"],
+  ["#e3f2fd", "蓝", "#3b82f6"],
+  ["#fce4ec", "红", "#ef4444"],
+  ["#f3e5f5", "紫", "#a855f7"],
 ] as const;
 
 type SpaceLike = {
@@ -205,6 +208,7 @@ export function WorkItemList({
   const more = paged && items.length >= limit;
   const stats = useListStats(space.id, filter.typeIds ?? [], items);
 
+  const groupCol = display.groupBy ? byKey.get(display.groupBy) : undefined;
   // 排序（不在服务端排的）、着色、分组在已经同步下来的行上做
   const rows = useMemo(() => {
     let out = [...items];
@@ -223,8 +227,17 @@ export function WorkItemList({
           return s.desc ? -cmp : cmp;
         });
       }
+    // 分组时同组的行排在一起（组按第一次出现的顺序，组内保持上面的排序）
+    if (groupCol) {
+      const order = new Map<string, number>();
+      for (const r of out) {
+        const key = groupOf(groupCol, r);
+        if (!order.has(key)) order.set(key, order.size);
+      }
+      out = [...out].sort((a, b) => (order.get(groupOf(groupCol, a)) ?? 0) - (order.get(groupOf(groupCol, b)) ?? 0));
+    }
     return out;
-  }, [items, sort, tab, byKey, paged]);
+  }, [items, sort, tab, byKey, paged, groupCol]);
   const rowKey = rows.map((r) => r.id).join(",");
   useEffect(() => {
     onRows?.(rowKey ? rowKey.split(",") : []);
@@ -232,17 +245,16 @@ export function WorkItemList({
   const valuesOf = (i: ListItem) => Object.fromEntries(i.fieldValues.map((v) => [v.fieldKey, v.value]));
   const colorOf = (i: ListItem) =>
     display.colors?.find((c) => evaluate(c.when, { ...valuesOf(i), $stage: i.stage, $status: i.status }))?.color;
-  const groupCol = display.groupBy ? byKey.get(display.groupBy) : undefined;
 
   const marks = (i: ListItem) => new Set(i.marks.map((m) => m.kind));
 
   const frozen = Math.min(display.frozen ?? 0, shown.length);
+  const density = useDensity();
   const rowHeight: RowHeight = display.rowHeight ?? "low";
 
   // 单元格选区（行是 rows 里的下标，列是 shown 里的下标）：点选、Shift 点选扩成矩形，Ctrl+C 复制、Ctrl+V 粘贴
   const [sel, setSel] = useState<{ anchor: Cell; focus: Cell } | null>(null);
   const copied = useRef<{ text: string; keys: string[][]; values: unknown[][] } | null>(null);
-  const rowIndex = new Map(rows.map((r, i) => [r.id, i]));
   const range = sel && {
     top: Math.min(sel.anchor.r, sel.focus.r),
     bottom: Math.max(sel.anchor.r, sel.focus.r),
@@ -367,38 +379,32 @@ export function WorkItemList({
       });
   }
 
-  const columns = [
-    {
-      title: "名称",
-      dataIndex: "name",
-      key: "name",
-      width: 240,
-      fixed: "left" as const,
-      render: (_: unknown, item: ListItem) => (
-        <span className="flex min-w-0 items-center gap-1.5">
-          {/* 点名称在右侧抽屉里打开，列表留在后面，可以连续看 */}
-          <Link
-            className="min-w-0 truncate font-medium text-fg hover:text-accent"
-            from="/spaces/$spaceId/$typeKey"
-            to="."
-            search={(prev) => ({ ...prev, item: item.id })}
-          >
-            {item.name}
-          </Link>
-          {marks(item).has("star") && <Star className="size-3.5 shrink-0 fill-warning-500 text-warning-500" />}
-        </span>
-      ),
-    },
-    ...shown.map((c, index) => {
+  const nameCell = (item: ListItem) => (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {/* 点名称在右侧抽屉里打开，列表留在后面，可以连续看 */}
+      <Link
+        className="min-w-0 truncate font-medium text-fg hover:text-accent"
+        from="/spaces/$spaceId/$typeKey"
+        to="."
+        search={(prev) => ({ ...prev, item: item.id })}
+      >
+        {item.name}
+      </Link>
+      {marks(item).has("star") && <Star className="size-3.5 shrink-0 fill-warning-500 text-warning-500" />}
+    </span>
+  );
+  const gridColumns: GridColumn<ListItem>[] = [
+    { key: "name", header: "名称", width: 260, frozen: true, cell: nameCell },
+    ...shown.map((c, index): GridColumn<ListItem> => {
       const col = byKey.get(c.key) as ListColumn;
       return {
-        title: col.title,
-        dataIndex: col.key,
         key: col.key,
+        header: col.title,
         width: c.width ?? col.width,
-        ...(index < frozen && { fixed: "left" as const }),
-        render: (_: unknown, item: ListItem) => {
-          const r = rowIndex.get(item.id) ?? -1;
+        frozen: index < frozen,
+        // 拖完列宽记进显示设置
+        onResize: (width) => setColumns(shown.map((x) => (x.key === c.key ? { ...x, width } : x))),
+        cell: (item, r) => {
           const selected = inRange(r, index);
           return (
             // biome-ignore lint/a11y/noStaticElementInteractions: 选中单元格用鼠标，复制粘贴走外层的键盘事件
@@ -412,8 +418,9 @@ export function WorkItemList({
                 if (e.shiftKey) e.preventDefault();
               }}
               className={cn(
-                rowHeight === "low" ? "min-w-0 truncate" : "line-clamp-3 min-w-0 break-all",
-                selected && "bg-brand-50 outline outline-2 -outline-offset-2 outline-accent",
+                "-mx-1 flex min-h-7 w-[calc(100%+0.5rem)] min-w-0 items-center rounded-[5px] px-1",
+                rowHeight === "low" ? "[&>*]:truncate" : "line-clamp-3 break-all",
+                selected && "bg-accent-soft outline outline-2 -outline-offset-2 outline-accent",
               )}
             >
               {col.render(item)}
@@ -423,35 +430,41 @@ export function WorkItemList({
       };
     }),
     {
-      title: <ColumnPicker available={available} shown={shown} onChange={setColumns} />,
       key: "__add",
-      width: 56,
+      header: <ColumnPicker available={available} shown={shown} onChange={setColumns} />,
+      width: 44,
+      cell: () => null,
     },
   ];
 
-  const statCells = [
-    ["总数", stats?.total],
-    ["已完成", stats?.completed],
-    ["成员", space.members.length],
-    ["我参与的", stats?.involved],
-  ] as const;
+  // 表体的行：分组时在每组前面插一行组标题（rows 已经按组排好）
+  const gridRows: GridRow<ListItem>[] = [];
+  rows.forEach((item, index) => {
+    if (groupCol) {
+      const key = groupOf(groupCol, item);
+      const prev = rows[index - 1];
+      if (!prev || groupOf(groupCol, prev) !== key)
+        gridRows.push({
+          kind: "group",
+          key,
+          label: (
+            <>
+              <span className="text-fg-muted">{groupCol.title}</span>
+              {key}
+            </>
+          ),
+          count: rows.filter((r) => groupOf(groupCol, r) === key).length,
+        });
+    }
+    gridRows.push({ kind: "item", item, index });
+  });
+
+  const filtered = !!search || Object.values(filter).some((v) => v?.length);
 
   return (
-    <div className="flex flex-col gap-4">
-      <section
-        aria-label="统计"
-        className="grid grid-cols-4 divide-x divide-line-subtle rounded-lg border border-line-subtle bg-surface py-3"
-      >
-        {statCells.map(([label, n]) => (
-          <div key={label} className="flex flex-col items-center gap-1">
-            <span className="text-xs text-fg-muted">{label}</span>
-            <span className="text-xl font-semibold tabular-nums">{n ?? "—"}</span>
-          </div>
-        ))}
-      </section>
-
-      <div className="flex min-h-0 flex-col gap-3 rounded-lg border border-line-subtle bg-surface p-4">
-        <div role="tablist" aria-label="列表页签" className="flex items-center gap-6 border-b border-line-subtle">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-4 border-b border-line-subtle">
+        <div role="tablist" aria-label="列表页签" className="-mb-px flex items-center gap-0.5">
           {TABS.map(([key, label]) => (
             <button
               key={key}
@@ -460,175 +473,178 @@ export function WorkItemList({
               aria-selected={tab === key}
               onClick={() => setTab(key)}
               className={cn(
-                "-mb-px border-b-2 pb-2 text-sm",
+                "relative h-9 cursor-pointer px-2 text-sm",
                 tab === key
-                  ? "border-accent font-medium text-accent"
-                  : "border-transparent text-fg-muted hover:text-fg",
+                  ? "font-medium text-fg after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-fg"
+                  : "text-fg-muted hover:text-fg",
               )}
             >
               {label}
             </button>
           ))}
         </div>
+        <span className="flex-1" />
+        <section aria-label="统计" className="flex items-center gap-4 text-xs text-fg-subtle">
+          {(
+            [
+              ["总数", stats?.total],
+              ["已完成", stats?.completed],
+              ["成员", space.members.length],
+              ["我参与的", stats?.involved],
+            ] as const
+          ).map(([label, n]) => (
+            <span key={label} className="whitespace-nowrap">
+              {label} <b className="font-medium text-fg-muted tabular-nums">{n ?? "—"}</b>
+            </span>
+          ))}
+        </section>
+      </div>
 
-        {toolbar}
+      {toolbar}
 
-        <div className="flex flex-wrap items-center gap-1">
-          <SortButton
-            columns={available}
-            value={display.sort ?? []}
-            onChange={(sort) => onDisplay({ ...display, sort })}
-          />
-          <GroupButton
-            columns={available}
-            value={display.groupBy ?? null}
-            onChange={(groupBy) => onDisplay({ ...display, groupBy })}
-          />
-          <ColorButton
-            fields={[...fields.values()]}
-            value={display.colors ?? []}
-            onChange={(colors) => onDisplay({ ...display, colors })}
-          />
-          <FreezeButton
-            columns={shown.map((c) => byKey.get(c.key) as ListColumn)}
-            value={frozen}
-            onChange={(n) => onDisplay({ ...display, frozen: n || undefined })}
-          />
-          <RowHeightButton
-            value={rowHeight}
-            onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
-          />
-          <button
-            type="button"
-            disabled={rows.length === 0}
-            title="按当前的列、筛选、排序导出"
-            className={cn(toolButton(false), "disabled:cursor-not-allowed disabled:text-fg-disabled")}
-            onClick={async () => {
-              const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
-              const day = new Date().toLocaleDateString("sv-SE");
-              try {
-                // 分批加载时还有没加载的行，导出前把全部取下来
-                const out = more ? await zero.run(queries.workItems.list(listArgs), { type: "complete" }) : rows;
-                await exportListXlsx(
-                  `${space.name}-${typeName}-${day}`,
-                  shown.map((c) => byKey.get(c.key) as ListColumn),
-                  out,
-                );
-                Toast.success({ content: `已导出 ${out.length} 条`, duration: 2 });
-              } catch (e) {
-                Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` });
-              }
-            }}
-          >
-            <Download />
-            导出
-          </button>
-          <SearchInput aria-label="搜索工作项" placeholder="搜索名称" value={search} onChange={setSearch} />
-          {selected.length > 0 && (
-            <BatchBar
-              items={items.filter((i) => selected.includes(i.id))}
-              fields={[...fields.values()]}
-              members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
-              onClear={() => setSelected([])}
-            />
-          )}
-        </div>
-
-        {/* 单元格选区的复制粘贴：点过单元格后焦点在这一层，Ctrl+C / Ctrl+V 走原生剪贴板事件 */}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: 只接住键盘和剪贴板事件，表格本身是 grid */}
-        <div
-          tabIndex={-1}
-          className="outline-none"
-          onCopy={onCopy}
-          onPaste={onPaste}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setSel(null);
+      <div className="flex flex-wrap items-center gap-0.5">
+        <SortButton
+          columns={available}
+          value={display.sort ?? []}
+          onChange={(sort) => onDisplay({ ...display, sort })}
+        />
+        <GroupButton
+          columns={available}
+          value={display.groupBy ?? null}
+          onChange={(groupBy) => onDisplay({ ...display, groupBy })}
+        />
+        <ColorButton
+          fields={[...fields.values()]}
+          value={display.colors ?? []}
+          onChange={(colors) => onDisplay({ ...display, colors })}
+        />
+        <FreezeButton
+          columns={shown.map((c) => byKey.get(c.key) as ListColumn)}
+          value={frozen}
+          onChange={(n) => onDisplay({ ...display, frozen: n || undefined })}
+        />
+        <RowHeightButton
+          value={rowHeight}
+          density={density}
+          onChange={(h) => onDisplay({ ...display, rowHeight: h === "low" ? undefined : h })}
+        />
+        <button
+          type="button"
+          disabled={rows.length === 0}
+          title="按当前的列、筛选、排序导出"
+          className={cn(toolButton(false), "disabled:cursor-not-allowed disabled:text-fg-disabled")}
+          onClick={async () => {
+            const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
+            const day = new Date().toLocaleDateString("sv-SE");
+            try {
+              // 分批加载时还有没加载的行，导出前把全部取下来
+              const out = more ? await zero.run(queries.workItems.list(listArgs), { type: "complete" }) : rows;
+              await exportListXlsx(
+                `${space.name}-${typeName}-${day}`,
+                shown.map((c) => byKey.get(c.key) as ListColumn),
+                out,
+              );
+              Toast.success({ content: `已导出 ${out.length} 条`, duration: 2 });
+            } catch (e) {
+              Toast.error({ content: `导出失败：${e instanceof Error ? e.message : e}` });
+            }
           }}
         >
-          <Table
-            size="small"
-            bordered
-            rowKey="id"
-            columns={columns}
-            dataSource={rows}
-            pagination={!paged && rows.length > 50 ? { pageSize: 50 } : false}
-            resizable={{
-              // 拖完列宽记进显示设置（名称列和加列按钮不记）
-              onResizeStop: ((column: { key?: string; width?: number | string }) => {
-                if (column.key && column.key !== "name" && column.key !== "__add")
-                  setColumns(
-                    shown.map((c) =>
-                      c.key === column.key ? { ...c, width: Math.round(Number(column.width) || 120) } : c,
-                    ),
-                  );
-                return column;
-              }) as never,
-            }}
-            scroll={{ x: "max-content" }}
-            rowSelection={{
-              width: SELECTION_WIDTH,
-              fixed: true,
-              selectedRowKeys: selected,
-              onChange: (keys?: (string | number)[]) => setSelected((keys ?? []).map(String)),
-            }}
-            onRow={(item?: ListItem) => {
-              const color = item && colorOf(item);
-              return { style: { height: ROW_HEIGHTS[rowHeight][1], ...(color && { background: color }) } };
-            }}
-            footer={
-              rows.length > 0 ? (
-                <SummaryRow
-                  cells={[
-                    { key: "__select", width: SELECTION_WIDTH },
-                    { key: "name", width: 240 },
-                    ...shown.map((c) => {
-                      const col = byKey.get(c.key) as ListColumn;
-                      return { key: c.key, width: c.width ?? col.width, col };
-                    }),
-                    { key: "__add", width: 56 },
-                  ]}
-                  rows={rows}
-                  partial={more}
-                  value={display.summary ?? {}}
-                  onChange={(summary) =>
-                    onDisplay({ ...display, summary: Object.keys(summary).length ? summary : undefined })
-                  }
-                />
-              ) : undefined
-            }
-            {...(groupCol && {
-              groupBy: (item?: ListItem) => (item ? String(groupCol.value(item) ?? "") : "") || "（空）",
-              renderGroupSection: (key?: string | number) => (
-                <strong>
-                  {groupCol.title}：{String(key)}
-                </strong>
-              ),
-              expandAllGroupRows: true,
-            })}
-            empty={
-              result.type === "complete" ? (
-                <EmptyState
-                  title={
-                    search || Object.values(filter).some((v) => v?.length) ? "没有符合条件的工作项" : "还没有工作项"
-                  }
-                  description={tab === "all" ? "点右上角的「新建」创建第一个工作项。" : "这个页签下还没有工作项。"}
-                />
-              ) : (
-                "加载中…"
-              )
-            }
-          />
-          {more && (
-            <div className="flex justify-center pt-3">
-              <Button variant="ghost" onClick={() => setLimit(limit + PAGE)}>
-                加载更多
-              </Button>
-            </div>
-          )}
+          <Download />
+          导出
+        </button>
+        <span className="flex-1" />
+        <div className="w-56">
+          <SearchInput aria-label="搜索工作项" placeholder="搜索名称" value={search} onChange={setSearch} />
         </div>
+      </div>
+
+      {selected.length > 0 && (
+        <BatchBar
+          items={items.filter((i) => selected.includes(i.id))}
+          fields={[...fields.values()]}
+          members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
+          onClear={() => setSelected([])}
+        />
+      )}
+
+      {/* 单元格选区的复制粘贴：点过单元格后焦点在这一层，Ctrl+C / Ctrl+V 走原生剪贴板事件 */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 只接住键盘和剪贴板事件，表格本身是 grid */}
+      <div
+        tabIndex={-1}
+        className="outline-none"
+        onCopy={onCopy}
+        onPaste={onPaste}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setSel(null);
+        }}
+      >
+        <ListGrid
+          label="工作项列表"
+          columns={gridColumns}
+          rows={gridRows}
+          rowHeight={rowHeight === "low" && density === "compact" ? 32 : ROW_HEIGHTS[rowHeight][1]}
+          compact={density === "compact"}
+          selected={selected}
+          onSelect={setSelected}
+          rowTint={(item) => tintOf(colorOf(item))}
+          footer={{
+            label: "汇总",
+            cell: (key) => {
+              if (key === "name")
+                return (
+                  <span className="px-1 text-fg-muted">
+                    {more ? `已加载 ${rows.length} 条` : `共 ${rows.length} 条`}
+                  </span>
+                );
+              const col = byKey.get(key);
+              if (!col) return null;
+              return (
+                <SummaryCell
+                  col={col}
+                  rows={rows}
+                  kind={display.summary?.[key]}
+                  onChange={(kind) => {
+                    const next = { ...display.summary };
+                    if (kind) next[key] = kind;
+                    else delete next[key];
+                    onDisplay({ ...display, summary: Object.keys(next).length ? next : undefined });
+                  }}
+                />
+              );
+            },
+          }}
+          empty={
+            result.type === "complete" ? (
+              <EmptyState
+                title={filtered ? "没有符合条件的工作项" : "还没有工作项"}
+                description={tab === "all" ? "点右上角的「新建」创建第一个工作项。" : "这个页签下还没有工作项。"}
+              />
+            ) : (
+              <span className="text-fg-subtle">加载中…</span>
+            )
+          }
+        />
+        {more && (
+          <div className="flex justify-center pt-3">
+            <Button variant="ghost" onClick={() => setLimit(limit + PAGE)}>
+              加载更多
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/** 分组的键：列的值，空的归到「（空）」。 */
+const groupOf = (col: ListColumn, item: ListItem) => String(col.value(item) ?? "") || "（空）";
+
+/** 着色规则里存的是浅色底色，按它找到色相，在当前主题的表面色上叠一层淡色（深色主题里也不刺眼）。 */
+function tintOf(color: string | undefined) {
+  if (!color) return undefined;
+  const hue = ROW_COLORS.find(([c]) => c === color)?.[2] ?? color;
+  return `color-mix(in srgb, ${hue} 14%, transparent)`;
 }
 
 /** 分批加载时每批几条。 */
@@ -763,53 +779,24 @@ function ColumnPicker({
   );
 }
 
-/**
- * 底部汇总行：每列下面选一种统计方式（计数、已填写、求和…），按当前筛选和搜索后的全部行算。
- * 和表格列宽对齐，横向跟着表格滚动。
- */
-function SummaryRow({
-  cells,
+/** 底部汇总行的一格：选一种统计方式（计数、已填写、求和…），按当前筛选和搜索后的全部行算。 */
+function SummaryCell({
+  col,
   rows,
-  partial = false,
-  value,
+  kind,
   onChange,
 }: {
-  cells: { key: string; width: number; col?: ListColumn }[];
+  col: ListColumn;
   rows: readonly ListItem[];
-  /** 分批加载还没加载完（选了统计方式后会改成加载全部）。 */
-  partial?: boolean;
-  value: Record<string, SummaryKind>;
-  onChange: (summary: Record<string, SummaryKind>) => void;
+  kind: SummaryKind | undefined;
+  onChange: (kind: SummaryKind | null) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  // 表格会把列撑满宽度，所以按表头单元格的实际宽度排，并跟着表体横向滚动
-  const [widths, setWidths] = useState<number[]>([]);
-  useEffect(() => {
-    const el = ref.current;
-    const table = el?.closest(".semi-table-wrapper");
-    const body = table?.querySelector<HTMLElement>(".semi-table-body");
-    const head = table?.querySelector("thead tr:last-child");
-    if (!el || !body || !head) return;
-    const measure = () => {
-      const next = [...head.children].map((th) => (th as HTMLElement).offsetWidth);
-      setWidths((prev) => (prev.join() === next.join() ? prev : next));
-      el.scrollLeft = body.scrollLeft;
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    for (const th of head.children) observer.observe(th);
-    body.addEventListener("scroll", measure);
-    return () => {
-      observer.disconnect();
-      body.removeEventListener("scroll", measure);
-    };
-  });
-  const compute = (col: ListColumn, kind: SummaryKind): string => {
+  const compute = (k: SummaryKind): string => {
     const values = rows.map((r) => col.value(r));
     const filled = values.filter((v) => v !== null && v !== "").length;
     const nums = values.filter((v): v is number => typeof v === "number");
     const round = (n: number) => String(Math.round(n * 100) / 100);
-    switch (kind) {
+    switch (k) {
       case "count":
         return String(values.length);
       case "filled":
@@ -828,55 +815,31 @@ function SummaryRow({
         return nums.length ? round(Math.min(...nums)) : "—";
     }
   };
-  const set = (key: string, kind: SummaryKind | null) => {
-    const next = { ...value };
-    if (kind) next[key] = kind;
-    else delete next[key];
-    onChange(next);
-  };
+  const kinds = (Object.keys(SUMMARY_TEXT) as SummaryKind[]).filter(
+    (k) => col.numeric || !["sum", "avg", "max", "min"].includes(k),
+  );
   return (
-    // biome-ignore lint/a11y/useSemanticElements: 汇总行是表格底部的一组格子，用 fieldset 会带上表单的默认样式
-    <div ref={ref} role="group" aria-label="汇总" className="-mx-4 -my-3 overflow-hidden">
-      <div className="flex w-max text-sm">
-        {cells.map(({ key, width: fallback, col }, index) => {
-          const width = widths.length === cells.length ? widths[index] : fallback;
-          const kind = value[key];
-          const kinds = (Object.keys(SUMMARY_TEXT) as SummaryKind[]).filter(
-            (k) => col?.numeric || !["sum", "avg", "max", "min"].includes(k),
-          );
-          return (
-            <div key={key} style={{ width }} className="shrink-0 px-2 py-1.5">
-              {key === "name" && (
-                <span className="text-fg-muted">{partial ? `已加载 ${rows.length} 条` : `共 ${rows.length} 条`}</span>
-              )}
-              {col && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    aria-label={`${col.title}的汇总`}
-                    className={cn(
-                      "w-full truncate rounded px-1 text-left hover:bg-hover",
-                      kind ? "text-fg" : "text-fg-subtle",
-                    )}
-                  >
-                    {kind ? `${SUMMARY_TEXT[kind]} ${compute(col, kind)}` : "统计"}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top">
-                    <DropdownMenuItem active={!kind} onSelect={() => set(key, null)}>
-                      不统计
-                    </DropdownMenuItem>
-                    {kinds.map((k) => (
-                      <DropdownMenuItem key={k} active={kind === k} onSelect={() => set(key, k)}>
-                        {SUMMARY_TEXT[k]}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`${col.title}的汇总`}
+        className={cn(
+          "h-6 w-full cursor-pointer truncate rounded px-1 text-left hover:bg-hover",
+          kind ? "text-fg" : "text-transparent hover:text-fg-subtle focus-visible:text-fg-subtle",
+        )}
+      >
+        {kind ? `${SUMMARY_TEXT[kind]} ${compute(kind)}` : "统计"}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top">
+        <DropdownMenuItem active={!kind} onSelect={() => onChange(null)}>
+          不统计
+        </DropdownMenuItem>
+        {kinds.map((k) => (
+          <DropdownMenuItem key={k} active={kind === k} onSelect={() => onChange(k)}>
+            {SUMMARY_TEXT[k]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -910,8 +873,16 @@ function FreezeButton({
   );
 }
 
-/** 行高：低、中、高、超高；高一些时单元格内容可以折行（最多 3 行）。 */
-function RowHeightButton({ value, onChange }: { value: RowHeight; onChange: (h: RowHeight) => void }) {
+/** 行高：低、中、高、超高；高一些时单元格内容可以折行（最多 3 行）。下面是本机的显示密度。 */
+function RowHeightButton({
+  value,
+  density,
+  onChange,
+}: {
+  value: RowHeight;
+  density: Density;
+  onChange: (h: RowHeight) => void;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={toolButton(false)}>
@@ -924,6 +895,14 @@ function RowHeightButton({ value, onChange }: { value: RowHeight; onChange: (h: 
             {ROW_HEIGHTS[h][0]}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>显示密度（本机）</DropdownMenuLabel>
+        <DropdownMenuItem active={density === "standard"} onSelect={() => setDensity("standard")}>
+          标准
+        </DropdownMenuItem>
+        <DropdownMenuItem active={density === "compact"} onSelect={() => setDensity("compact")}>
+          紧凑
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1079,7 +1058,10 @@ function ColorButton({
                 </option>
               ))}
             </Select>
-            <span className="size-5 rounded" style={{ background: rule.color }} />
+            <span
+              className="size-4 rounded"
+              style={{ background: ROW_COLORS.find(([c]) => c === rule.color)?.[2] ?? rule.color }}
+            />
             <span className="flex-1" />
             <button
               type="button"

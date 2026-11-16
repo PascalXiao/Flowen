@@ -95,7 +95,7 @@ test("the list freezes columns, changes row height and sums up columns at the bo
   await page.getByRole("button", { name: "冻结" }).click();
   await page.getByRole("menuitem").filter({ hasText: "冻结到" }).first().click();
   await expect(page.getByRole("button", { name: "冻结 2 列" })).toBeVisible();
-  await expect(grid.locator("thead th.semi-table-cell-fixed-left")).toHaveCount(3);
+  await expect(grid.locator("[role=columnheader][data-frozen]")).toHaveCount(3);
 
   // 行高改成「高」
   await page.getByRole("button", { name: "行高：低" }).click();
