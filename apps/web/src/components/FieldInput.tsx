@@ -1,4 +1,3 @@
-import { Cascader, DatePicker, Radio, RadioGroup } from "@douyinfe/semi-ui";
 import {
   applyExclusive,
   type FieldOption,
@@ -11,6 +10,7 @@ import {
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   CircleHelp,
   ExternalLink,
   Mail,
@@ -21,9 +21,9 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { RichTextEditor } from "@/components/RichText";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { fieldSurface, Input, Select, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tag, type TagTone } from "@/components/ui/tag";
 import { env } from "@/lib/env";
@@ -94,26 +94,6 @@ const text = (value: unknown) => (value === null || value === undefined ? "" : S
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** 级联选项转成 Semi Cascader 的树。 */
-function cascadeTree(options: readonly FieldOption[]) {
-  type Node = { label: string; value: string; disabled?: boolean; children?: Node[] };
-  const nodes = new Map<string, Node>(
-    options.map((o) => [o.value, { label: o.label || o.value, value: o.value, ...(o.disabled && { disabled: true }) }]),
-  );
-  const roots: Node[] = [];
-  for (const o of options) {
-    const node = nodes.get(o.value);
-    const parent = o.parent ? nodes.get(o.parent) : undefined;
-    if (!node) continue;
-    if (parent) parent.children = [...(parent.children ?? []), node];
-    else roots.push(node);
-  }
-  return roots;
-}
-
-/** Cascader 回传的是路径；我们只存最后一级的值。 */
-const lastOf = (v: unknown): string => (Array.isArray(v) ? String(v[v.length - 1] ?? "") : String(v));
-
 /**
  * 按字段类型编辑一个字段值。值原样交给 mutator，由它按类型校验、整理成规范形式。
  * live：每次输入都回调（表单里用）；否则文本类输入在失焦时才提交（详情页就地编辑用）。
@@ -146,9 +126,6 @@ export function FieldInput({
   attachments?: readonly FieldAttachment[];
 }) {
   const current = text(value);
-  // Semi 的弹出层默认挂在 body 上；在弹窗里时要挂进弹窗，否则被弹窗的遮罩挡住点不了
-  const anchor = useRef<HTMLSpanElement>(null);
-  const popupContainer = () => (anchor.current?.closest("[role=dialog]") as HTMLElement | null) ?? document.body;
   const textInput = (type: string, placeholder: string) =>
     live ? (
       <Input
@@ -223,19 +200,25 @@ export function FieldInput({
     }
     case "radio":
       return (
-        <RadioGroup
-          aria-label={label}
-          value={current || undefined}
-          disabled={readOnly}
-          onChange={(e) => onChange(String(e.target.value))}
-          className="flex flex-wrap gap-x-4 gap-y-1"
-        >
+        <div role="radiogroup" aria-label={label} className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-1">
           {options.map((o) => (
-            <Radio key={o.value} value={o.value} disabled={!!o.disabled && o.value !== current}>
+            <label
+              key={o.value}
+              className="inline-flex cursor-pointer items-center gap-2 text-sm has-disabled:cursor-default"
+            >
+              <input
+                type="radio"
+                className="fl-radio"
+                name={`${label}-${field.key}`}
+                value={o.value}
+                checked={current === o.value}
+                disabled={readOnly || (!!o.disabled && o.value !== current)}
+                onChange={() => onChange(o.value)}
+              />
               {optionLabel(o)}
-            </Radio>
+            </label>
           ))}
-        </RadioGroup>
+        </div>
       );
     case "multiSelect":
     case "user": {
@@ -286,33 +269,20 @@ export function FieldInput({
       const all = field.options ?? [];
       const path = (v: string) => optionPath(all, v);
       return (
-        <span ref={anchor} className="contents">
-          <Cascader
-            aria-label={label}
-            getPopupContainer={popupContainer}
-            className="w-full"
-            treeData={cascadeTree(options)}
-            multiple={multiple}
-            changeOnSelect={!field.config?.leafOnly}
-            disabled={readOnly}
-            showClear
-            separator=" / "
-            placeholder="未选择"
-            value={
-              multiple
-                ? (Array.isArray(value) ? value : []).map((v) => path(String(v)))
-                : current
-                  ? path(current)
-                  : undefined
-            }
-            onChange={(next) => {
-              if (multiple) {
-                const list = (Array.isArray(next) ? next : []).map(lastOf).filter(Boolean);
-                onChange(list.length > 0 ? list : null);
-              } else onChange(next === undefined || next === null ? null : lastOf(next) || null);
-            }}
-          />
-        </span>
+        <CascadePicker
+          label={label}
+          options={options}
+          multiple={multiple}
+          leafOnly={!!field.config?.leafOnly}
+          readOnly={readOnly}
+          value={multiple ? (Array.isArray(value) ? value.map(String) : []) : current ? [current] : []}
+          pathText={(v) =>
+            path(v)
+              .map((x) => optionLabel(all.find((o) => o.value === x) ?? { value: x, label: x }))
+              .join(" / ")
+          }
+          onChange={(next) => onChange(next.length ? (multiple ? next : (next[0] as string)) : null)}
+        />
       );
     }
     case "date":
@@ -340,22 +310,12 @@ export function FieldInput({
     case "dateRange": {
       const range = isObject(value) ? [String(value.start), String(value.end)] : undefined;
       return (
-        <span ref={anchor} className="contents">
-          <DatePicker
-            aria-label={label}
-            getPopupContainer={popupContainer}
-            type="dateRange"
-            className="w-full"
-            density="compact"
-            format="yyyy-MM-dd"
-            disabled={readOnly}
-            value={range}
-            onChange={(_date, strings) => {
-              const [start, end] = Array.isArray(strings) ? strings : [];
-              onChange(start && end ? { start: String(start), end: String(end) } : null);
-            }}
-          />
-        </span>
+        <DateRangeInput
+          label={label}
+          readOnly={readOnly}
+          value={range}
+          onChange={(next) => onChange(next ? { start: next[0], end: next[1] } : null)}
+        />
       );
     }
     case "number":
@@ -705,10 +665,7 @@ function MultiPicker({
       <PopoverTrigger
         aria-label={label}
         disabled={readOnly}
-        className={cn(
-          "flex h-8 w-full min-w-0 items-center gap-1 rounded-md border border-line bg-surface px-2.5 text-left text-sm",
-          "hover:border-accent disabled:cursor-default disabled:bg-canvas disabled:hover:border-line",
-        )}
+        className={cn(fieldSurface, "flex h-7 w-full min-w-0 cursor-pointer items-center gap-1 px-2 text-left")}
       >
         <span className={cn("min-w-0 flex-1 truncate", !display && "text-fg-subtle")}>{display || "未选择"}</span>
         <ChevronDown className="size-3.5 shrink-0 text-fg-subtle" />
@@ -735,5 +692,190 @@ function MultiPicker({
         </ul>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * 级联选择：点开后一列一级，点有下级的选项展开下一列。
+ * 单选时点中就关（不限只能选末级时，中间级也能选）；多选时每项前面有勾，点了不关。
+ */
+function CascadePicker({
+  label,
+  options,
+  multiple,
+  leafOnly,
+  readOnly,
+  value,
+  pathText,
+  onChange,
+}: {
+  label: string;
+  options: readonly FieldOption[];
+  multiple: boolean;
+  leafOnly: boolean;
+  readOnly: boolean;
+  value: readonly string[];
+  pathText: (value: string) => string;
+  onChange: (value: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // 展开到的路径：每一级展开的是哪一项
+  const [trail, setTrail] = useState<string[]>([]);
+  const childrenOf = (parent: string | null) => options.filter((o) => (o.parent ?? null) === parent);
+  const hasChildren = (v: string) => options.some((o) => o.parent === v);
+  const columns = [childrenOf(null), ...trail.map((v) => childrenOf(v))].filter((c) => c.length > 0);
+  const shown = value.map(pathText).join("、");
+
+  function pick(o: FieldOption, level: number) {
+    const branch = hasChildren(o.value);
+    if (branch) setTrail([...trail.slice(0, level), o.value]);
+    if (branch && leafOnly) return;
+    if (multiple) onChange(value.includes(o.value) ? value.filter((v) => v !== o.value) : [...value, o.value]);
+    else if (!branch) {
+      onChange([o.value]);
+      setOpen(false);
+    } else onChange([o.value]);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // 打开时展开到当前选中项所在的位置
+        if (next && value[0]) {
+          const path: string[] = [];
+          let at = options.find((o) => o.value === value[0])?.parent ?? null;
+          while (at) {
+            path.unshift(at);
+            at = options.find((o) => o.value === at)?.parent ?? null;
+          }
+          setTrail(path);
+        } else if (next) setTrail([]);
+      }}
+    >
+      <div className="relative w-full min-w-0">
+        <PopoverTrigger
+          role="combobox"
+          aria-label={label}
+          aria-expanded={open}
+          disabled={readOnly}
+          className={cn(fieldSurface, "flex h-7 w-full min-w-0 cursor-pointer items-center gap-1 px-2 text-left")}
+        >
+          <span className={cn("min-w-0 flex-1 truncate", !shown && "text-fg-subtle")}>{shown || "未选择"}</span>
+          <ChevronDown
+            className={cn("size-3.5 shrink-0 text-fg-subtle", value.length > 0 && !readOnly && "invisible")}
+          />
+        </PopoverTrigger>
+        {value.length > 0 && !readOnly && (
+          <button
+            type="button"
+            aria-label={`清空${label}`}
+            onClick={() => onChange([])}
+            className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-fg-subtle hover:bg-hover hover:text-fg"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
+      <PopoverContent align="start" className="flex max-w-[90vw] overflow-x-auto p-1">
+        {columns.map((col, level) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: 列按层级排，层级就是它的身份
+            key={level}
+            role="listbox"
+            aria-label={`${label}第 ${level + 1} 级`}
+            aria-multiselectable={multiple || undefined}
+            className="flex max-h-72 w-44 shrink-0 flex-col overflow-y-auto border-line-subtle not-first:border-l not-first:pl-1"
+          >
+            {col.map((o) => {
+              const on = value.includes(o.value);
+              const branch = hasChildren(o.value);
+              const expanded = trail[level] === o.value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  disabled={!!o.disabled && !on}
+                  onClick={() => pick(o, level)}
+                  className={cn(
+                    "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-hover disabled:cursor-not-allowed disabled:text-fg-disabled",
+                    expanded && "bg-hover",
+                    on && "font-medium text-accent",
+                  )}
+                >
+                  {multiple && (
+                    <input
+                      type="checkbox"
+                      tabIndex={-1}
+                      readOnly
+                      checked={on}
+                      className="fl-checkbox pointer-events-none"
+                    />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{o.label || o.value}</span>
+                  {branch ? (
+                    <ChevronRight className="size-3.5 shrink-0 text-fg-subtle" />
+                  ) : (
+                    !multiple && on && <Check className="size-3.5 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        {columns.length === 0 && <p className="px-2 py-1.5 text-fg-subtle text-sm">没有可选项。</p>}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** 日期范围：开始、结束两个日期框，两个都填了才提交。 */
+function DateRangeInput({
+  label,
+  readOnly,
+  value,
+  onChange,
+}: {
+  label: string;
+  readOnly: boolean;
+  value: string[] | undefined;
+  onChange: (value: [string, string] | null) => void;
+}) {
+  const [draft, setDraft] = useState<[string, string]>([value?.[0] ?? "", value?.[1] ?? ""]);
+  const [seen, setSeen] = useState(value?.join("~") ?? "");
+  // 外面的值变了（别人改了、或者清空了）就跟着变
+  const key = value?.join("~") ?? "";
+  if (key !== seen) {
+    setSeen(key);
+    setDraft([value?.[0] ?? "", value?.[1] ?? ""]);
+  }
+  const set = (i: 0 | 1, v: string) => {
+    const next: [string, string] = i === 0 ? [v, draft[1]] : [draft[0], v];
+    setDraft(next);
+    if (next[0] && next[1]) onChange(next[0] <= next[1] ? next : [next[1], next[0]]);
+    else if (!next[0] && !next[1]) onChange(null);
+  };
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: 只是给两个日期框起个共同的名字，fieldset 会带上表单的默认样式
+    <div role="group" aria-label={label} className="flex w-full min-w-0 items-center gap-1.5">
+      <Input
+        type="date"
+        aria-label={`${label}开始`}
+        value={draft[0]}
+        readOnly={readOnly}
+        onChange={(e) => set(0, e.target.value)}
+      />
+      <span className="shrink-0 text-fg-subtle">~</span>
+      <Input
+        type="date"
+        aria-label={`${label}结束`}
+        value={draft[1]}
+        readOnly={readOnly}
+        onChange={(e) => set(1, e.target.value)}
+      />
+    </div>
   );
 }

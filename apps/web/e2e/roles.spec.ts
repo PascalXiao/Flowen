@@ -80,10 +80,10 @@ test("business lines drive which roles appear and who is assigned by default", a
   await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator("[role=dialog][aria-modal=true]");
   await dialog.getByLabel("立项名称").fill("晨曦精华");
-  // 选「星河 / 晨曦」：Semi 级联选择
+  // 选「星河 / 晨曦」：级联选择，点星河展开下一级，再点晨曦
   await dialog.getByRole("combobox", { name: "业务线" }).click();
-  await page.locator(".semi-cascader-option").filter({ hasText: "星河" }).click();
-  await page.locator(".semi-cascader-option").filter({ hasText: "晨曦" }).click();
+  await page.getByRole("option", { name: "星河", exact: true }).click();
+  await page.getByRole("option", { name: "晨曦", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "业务线" })).toContainText("晨曦");
   await dialog.getByText("角色和负责人").click();
   const npd = dialog.locator("dl > div").filter({ hasText: "NPD" });

@@ -375,3 +375,31 @@
     opacity: 0;
   }
 }
+
+/* 单选框：原生 input，自己画外观。 */
+.fl-radio {
+  appearance: none;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1.5px solid var(--fl-line-strong);
+  border-radius: 50%;
+  background: var(--fl-surface);
+  cursor: pointer;
+  vertical-align: -2px;
+  transition:
+    border-color 0.1s,
+    box-shadow 0.1s;
+}
+.fl-radio:hover {
+  border-color: var(--fl-fg-subtle);
+}
+.fl-radio:checked {
+  border: 4.5px solid var(--fl-accent-solid);
+  background: #fff;
+}
+.fl-radio:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
