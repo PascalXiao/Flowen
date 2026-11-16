@@ -1,4 +1,3 @@
-import { Tooltip } from "@douyinfe/semi-ui";
 import {
   availableOptions,
   canEditRoleMembers,
@@ -58,6 +57,7 @@ import { Popconfirm } from "@/components/ui/popconfirm";
 import { Tabs } from "@/components/ui/tabs";
 import { StageTag, StatusTag, Tag } from "@/components/ui/tag";
 import { Toast } from "@/components/ui/toast";
+import { Tooltip } from "@/components/ui/tooltip";
 import { VoteField } from "@/components/VoteField";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { withLineOptions } from "@/lib/fields";
@@ -68,15 +68,15 @@ import { cn, newId } from "@/lib/utils";
 /** 流程图节点的样式：进行中蓝色描边，已完成绿色，未开始灰色，被裁剪的虚线。 */
 const STATE_STYLE: Record<NodeState, string> = {
   notStarted: "!border-line",
-  inProgress: "!border-accent !ring-3 !ring-brand-100",
-  completed: "!border-success-500/50",
+  inProgress: "!border-accent !ring-3 !ring-accent/15",
+  completed: "!border-line",
   skipped: "!border-dashed !border-line !bg-canvas !text-fg-subtle",
 };
 
 const STATE_ICON: Record<NodeState, ReactNode> = {
   notStarted: <CircleDashed className="size-4 shrink-0 text-fg-subtle" />,
   inProgress: <CircleDot className="size-4 shrink-0 text-accent" />,
-  completed: <CircleCheck className="size-4 shrink-0 text-success-600" />,
+  completed: <CircleCheck className="size-4 shrink-0 text-track-done" />,
   skipped: <CircleDashed className="size-4 shrink-0 text-fg-disabled" />,
 };
 
@@ -849,7 +849,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-canvas">
-      <header className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-6 pt-4 pb-3">
+      <header className="flex flex-col gap-1 border-b border-line-subtle bg-surface px-6 pt-4 pb-3.5">
         <nav aria-label="位置" className="flex items-center gap-1 text-xs text-fg-subtle">
           <Link to="/spaces/$spaceId" params={{ spaceId: item.spaceId }} className="hover:text-accent">
             {space?.name ?? "空间"}
@@ -875,9 +875,11 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             </>
           )}
         </nav>
-        <div className="flex min-h-8 items-center gap-2.5">
-          <h1 className="truncate text-xl font-semibold">{item.name}</h1>
+        <div className="flex min-h-8 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <h1 className="min-w-0 truncate font-semibold text-xl">{item.name}</h1>
           <StatusTag status={item.status} />
+          {item.stage && <StageTag stage={item.stage} />}
+          <span className="flex-1" />
           {(() => {
             const marked = new Set(item.marks.map((m) => m.kind));
             const toggle = (kind: "follow" | "star") =>
@@ -958,11 +960,60 @@ export function WorkItemView({ itemId }: { itemId: string }) {
               升级到模板最新版本
             </Button>
           )}
-          {item.stage && <StageTag stage={item.stage} />}
-          <span className="ml-auto text-xs text-fg-subtle">
-            创建于 {formatTime(item.createdAt)} · 更新于 {formatTime(item.updatedAt)}
-          </span>
         </div>
+        {(() => {
+          // 关键信息：当前节点、负责人、计划完成（逾期 / 剩几天）、创建和更新时间
+          const active = (definition?.nodes ?? []).filter((d) => states.get(d.key)?.state === "inProgress");
+          const owners = [...new Set(active.flatMap((d) => states.get(d.key)?.owners ?? []))];
+          const ends = active.flatMap((d) => {
+            const end = states.get(d.key)?.plannedEnd;
+            return end == null ? [] : [dayFromDate(end)];
+          });
+          const due = ends.length ? Math.max(...ends) : null;
+          const left = due === null ? 0 : due - today;
+          return (
+            <dl aria-label="关键信息" className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1 text-[12.5px]">
+              {active.length > 0 && (
+                <KeyInfo label="当前节点">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-fg">
+                    <span className="size-1.5 rounded-full bg-accent" />
+                    {active.map((d) => d.name).join("、")}
+                  </span>
+                </KeyInfo>
+              )}
+              {owners.length > 0 && (
+                <KeyInfo label="负责人">
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {owners.slice(0, 3).map((u) => (
+                      <UserChip key={u} id={u} name={nameOf(u)} />
+                    ))}
+                    {owners.length > 3 && <span className="text-fg-subtle">+{owners.length - 3}</span>}
+                  </span>
+                </KeyInfo>
+              )}
+              {due !== null && item.status === "inProgress" && (
+                <KeyInfo label="计划完成">
+                  <span className="inline-flex items-center gap-2 tabular-nums">
+                    <span className={left < 0 ? "text-danger-600" : "text-fg"}>{dayToIso(due as Day)}</span>
+                    {left < 0 ? (
+                      <span className="font-medium text-danger-600">逾期 {-left} 天</span>
+                    ) : left <= 14 ? (
+                      <span className={left <= 3 ? "font-medium text-warning-600" : "text-fg-subtle"}>
+                        {left === 0 ? "今天到期" : `剩 ${left} 天`}
+                      </span>
+                    ) : null}
+                  </span>
+                </KeyInfo>
+              )}
+              <KeyInfo label="创建">
+                <span className="tabular-nums">{formatTime(item.createdAt)}</span>
+              </KeyInfo>
+              <KeyInfo label="更新">
+                <span className="tabular-nums">{formatTime(item.updatedAt)}</span>
+              </KeyInfo>
+            </dl>
+          );
+        })()}
       </header>
 
       {error && (
@@ -1374,6 +1425,16 @@ function Card({ children }: { children: ReactNode }) {
   return <div className="overflow-hidden rounded-lg border border-line-subtle bg-surface">{children}</div>;
 }
 
+/** 标题下关键信息行的一项：灰色标签加值。 */
+function KeyInfo({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <dt className="shrink-0 text-fg-subtle">{label}</dt>
+      <dd className="m-0 min-w-0 text-fg-muted">{children}</dd>
+    </div>
+  );
+}
+
 const formatTime = (ms: number | null | undefined) =>
   ms
     ? new Date(ms).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -1738,7 +1799,7 @@ function Diagram({
       data: {
         label: (
           <Tooltip
-            position="bottom"
+            side="bottom"
             content={
               <NodeHoverCard
                 name={n.name}
@@ -1783,7 +1844,7 @@ function Diagram({
         ),
       },
       className: cn(
-        "!w-[184px] !rounded-lg !border !bg-surface !px-3 !py-2 !text-[13px] !text-fg !shadow-card",
+        "!w-[184px] !rounded-lg !border !bg-surface !px-3 !py-2 !text-[13px] !text-fg !shadow-panel",
         STATE_STYLE[state],
         delayOf(n.key)?.kind === "overdue" && "!border-danger-500 !ring-danger-50",
         delayOf(n.key)?.kind === "late" && "!border-warning-500/60",
@@ -1798,10 +1859,15 @@ function Diagram({
       source: e.from,
       target: e.to,
       type: "smoothstep",
-      style: { stroke: done ? "var(--color-success-500)" : "var(--color-fg-disabled)", strokeWidth: 1.5 },
+      // 走过的线是实线灰，还没走到的是浅色虚线；颜色只留给当前节点和逾期
+      style: {
+        stroke: done ? "var(--fl-track-done)" : "var(--fl-line-strong)",
+        strokeWidth: 1.5,
+        ...(!done && { strokeDasharray: "4 4" }),
+      },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: done ? "var(--color-success-500)" : "var(--color-fg-disabled)",
+        color: done ? "var(--fl-track-done)" : "var(--fl-line-strong)",
       },
     };
   });

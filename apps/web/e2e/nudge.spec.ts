@@ -22,7 +22,7 @@ test("flow diagram shows delays on hover and you can nudge a node's other owners
 
   // 悬停节点看到状态、负责人、计划和延期
   await node.getByText("立项提案", { exact: true }).hover();
-  const card = page.locator(".semi-tooltip-content");
+  const card = page.locator("[data-tooltip]");
   await expect(card).toContainText("进行中");
   await expect(card).toContainText("Lin");
   await expect(card).toContainText("2026-10-19 → 2026-10-20");
