@@ -6,7 +6,7 @@ import { runMigrations } from "./migrate.ts";
  * 默认连本机 docker compose 里的 Postgres。
  */
 export async function createTestDatabase(name: string): Promise<string> {
-  const base = new URL(process.env.TEST_DATABASE_URL ?? "postgresql://feishu:feishu@localhost:5432/postgres");
+  const base = new URL(process.env.TEST_DATABASE_URL ?? "postgresql://flowen:flowen@localhost:5432/postgres");
   const admin = postgres(base.toString(), { max: 1, onnotice: () => {} });
   try {
     await admin.unsafe(`drop database if exists "${name}" with (force)`);

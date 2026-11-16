@@ -45,7 +45,7 @@ services:
       # 相对路径按第一个 compose 文件（仓库根目录）算
       context: .
       dockerfile: deploy/web.Dockerfile
-    image: feishu-project/web
+    image: flowen/web
     restart: unless-stopped
     profiles: [app]
     environment:
