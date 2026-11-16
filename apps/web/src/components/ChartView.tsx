@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * 分类配色：固定顺序，按系列出现的先后取色，不循环；超过 8 个系列合并成「其他」。
- * 这组颜色用配色校验脚本检查过（相邻色的色盲区分度、正常视力区分度）。只有一个系列时用品牌蓝。
+ * 只用中性灰、青、紫（色值在 index.css 的 --fl-chart-*，亮暗各一套）：蓝色只表示「当前」，
+ * 红/橙/绿只表示逾期/临期/完成，图表不占用这些语义。只有一个系列时用中性灰。
  */
-const PALETTE = ["var(--fl-accent-solid)", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
+const PALETTE = Array.from({ length: 8 }, (_, i) => `var(--fl-chart-${i + 1})`);
 const MAX_SERIES = PALETTE.length;
-const SINGLE_COLOR = "var(--fl-accent-solid)";
+const SINGLE_COLOR = "var(--fl-chart-1)";
 
 /** 点图上的一格时回调（钻取看明细）；没有时图只能看不能点。 */
 const PickContext = createContext<((drill: ChartDrill) => void) | null>(null);
@@ -114,7 +115,7 @@ function ChartBody({
   className?: string;
 }) {
   const series = capSeries(data.series);
-  const colors = series.length === 1 ? [SINGLE_COLOR] : series.map((_, i) => PALETTE[i] ?? "#888");
+  const colors = series.length === 1 ? [SINGLE_COLOR] : series.map((_, i) => PALETTE[i] ?? "var(--fl-chart-4)");
   if (kind === "indicator") return <Indicator data={data} label={label} />;
   if (data.count === 0 || data.groups.length === 0)
     return <p className="py-10 text-center text-sm text-fg-subtle">暂无数据</p>;
@@ -416,7 +417,7 @@ function Ring({ data, label }: { data: ChartData; label: string }) {
   const r = 40;
   const circumference = 2 * Math.PI * r;
   let offset = 0;
-  const colors = groups.map((_, i) => PALETTE[i] ?? "#888");
+  const colors = groups.map((_, i) => PALETTE[i] ?? "var(--fl-chart-4)");
   return (
     <figure aria-label={label} className="flex flex-wrap items-center gap-6">
       <div className="relative size-40 shrink-0">

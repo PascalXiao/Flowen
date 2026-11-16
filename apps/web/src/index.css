@@ -43,6 +43,15 @@
   --fl-teal-soft: #e2f5f2;
   --fl-track: #e3e5e9;
   --fl-track-done: #8b8f99;
+  /* 图表分类色：中性灰 + 青 + 紫，避开蓝（当前）/红/橙/绿（状态）。单系列用 chart-1。 */
+  --fl-chart-1: #6b6f78;
+  --fl-chart-2: #1f9488;
+  --fl-chart-3: #7c5cd6;
+  --fl-chart-4: #a9adb6;
+  --fl-chart-5: #6ec7bc;
+  --fl-chart-6: #b6a3f0;
+  --fl-chart-7: #3f424a;
+  --fl-chart-8: #0e6159;
   --fl-inverse: #1b1c20;
   --fl-inverse-fg: #f3f3f5;
   --fl-overlay: rgba(20, 22, 28, 0.32);
@@ -88,6 +97,14 @@
   --fl-teal-soft: rgba(80, 200, 185, 0.13);
   --fl-track: #2b2d32;
   --fl-track-done: #7b7f89;
+  --fl-chart-1: #a5a8b0;
+  --fl-chart-2: #3fb3a6;
+  --fl-chart-3: #9d84f2;
+  --fl-chart-4: #6b6f78;
+  --fl-chart-5: #237a71;
+  --fl-chart-6: #6a50c0;
+  --fl-chart-7: #d4d6db;
+  --fl-chart-8: #8be0d5;
   --fl-inverse: #ededef;
   --fl-inverse-fg: #17181a;
   --fl-overlay: rgba(0, 0, 0, 0.55);
@@ -123,6 +140,8 @@
   --color-brand-500: var(--fl-accent-solid);
   --color-brand-600: var(--fl-accent-solid-hover);
   --color-brand-700: var(--fl-accent-solid-active);
+  /* 图表数据色（中性/青/紫），见 :root 的 --fl-chart-*。 */
+  --color-chart-1: var(--fl-chart-1);
 
   /* 文字 */
   --color-fg: var(--fl-fg);
