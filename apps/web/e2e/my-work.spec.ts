@@ -52,3 +52,19 @@ test("my work lists the nodes I own and the tasks assigned to me, grouped by due
   await node.getByRole("link", { name: /新品 W/ }).click();
   await expect(page.getByRole("heading", { name: "新品 W" })).toBeVisible();
 });
+
+test("space picker in the sidebar opens from My Work and switches space", async ({ page }) => {
+  const suffix = `${Date.now()}`;
+  const space = `切换空间 ${suffix}`;
+  await demoSpace(page, "Pascal", `picker-${suffix}@example.com`, space);
+
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "我的工作" }).click();
+  await expect(page.getByRole("heading", { name: "我的工作" })).toBeVisible();
+  // 菜单项用 asChild 包 Link：Slot 只能收一个子元素，多塞一个节点就会整页崩
+  await page.getByRole("button", { name: "切换空间" }).click();
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem", { name: "全部空间" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: space }).click();
+  await expect(page).toHaveURL(/\/spaces\/[^/]+/);
+  await expect(page.getByText("Something went wrong")).toHaveCount(0);
+});
