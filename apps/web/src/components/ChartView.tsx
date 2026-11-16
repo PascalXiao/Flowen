@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils";
  * 分类配色：固定顺序，按系列出现的先后取色，不循环；超过 8 个系列合并成「其他」。
  * 这组颜色用配色校验脚本检查过（相邻色的色盲区分度、正常视力区分度）。只有一个系列时用品牌蓝。
  */
-const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
+const PALETTE = ["var(--fl-accent-solid)", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
 const MAX_SERIES = PALETTE.length;
-const SINGLE_COLOR = "var(--semi-color-primary)";
+const SINGLE_COLOR = "var(--fl-accent-solid)";
 
 /** 点图上的一格时回调（钻取看明细）；没有时图只能看不能点。 */
 const PickContext = createContext<((drill: ChartDrill) => void) | null>(null);
