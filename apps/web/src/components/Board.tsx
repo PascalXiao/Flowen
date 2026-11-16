@@ -1,4 +1,3 @@
-import { Checkbox, Popover } from "@douyinfe/semi-ui";
 import { conditionFields, nodeFlowOf, optionLabel, type StatusCategory, statusFlowOf } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
@@ -8,8 +7,10 @@ import { ChevronDown, ChevronRight, LayoutList } from "lucide-react";
 import { type DragEvent, type ReactNode, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusTag, Tag } from "@/components/ui/tag";
 import type { BoardDisplay } from "@/components/WorkItemList";
 import { type ListField, renderFieldValue } from "@/lib/list-columns";
@@ -212,7 +213,7 @@ export function Board({
               e.dataTransfer.effectAllowed = "move";
             }}
             className={cn(
-              "flex flex-col gap-2 rounded-md border border-line-subtle bg-surface p-3 shadow-card",
+              "flex flex-col gap-2 rounded-lg border border-line-subtle bg-surface p-3 shadow-panel transition-colors hover:border-line",
               draggable && "cursor-grab active:cursor-grabbing",
             )}
           >
@@ -277,7 +278,7 @@ export function Board({
             key={column.key}
             aria-label={`${column.name}列`}
             className={cn(
-              "flex w-72 shrink-0 flex-col gap-2 rounded-lg bg-canvas p-2",
+              "flex w-72 shrink-0 flex-col gap-2 rounded-xl bg-raised p-2",
               over === column.key && "ring-2 ring-accent",
             )}
             {...dropProps(column.key)}
@@ -309,7 +310,7 @@ export function Board({
   );
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 p-4">
+    <div className="flex min-h-0 flex-col gap-3">
       {error && <ErrorBanner>{error}</ErrorBanner>}
       <div className="flex flex-wrap items-center gap-3">
         {!statusFlow && (
@@ -329,10 +330,14 @@ export function Board({
                 </option>
               ))}
             </Select>
-            <Popover
-              trigger="click"
-              position="bottomRight"
-              content={
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="ghost">
+                  <LayoutList />
+                  卡片字段{cardFields.length ? ` ${cardFields.length}` : ""}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="p-0">
                 <fieldset
                   aria-label="卡片字段"
                   className="m-0 flex max-h-80 w-56 min-w-0 flex-col gap-1 overflow-y-auto border-0 p-2"
@@ -359,12 +364,7 @@ export function Board({
                     );
                   })}
                 </fieldset>
-              }
-            >
-              <Button size="sm" variant="ghost">
-                <LayoutList />
-                卡片字段{cardFields.length ? ` ${cardFields.length}` : ""}
-              </Button>
+              </PopoverContent>
             </Popover>
           </div>
         )}

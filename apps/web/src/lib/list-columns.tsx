@@ -14,6 +14,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { StageTag, StatusTag, Tag, type TagTone } from "@/components/ui/tag";
+import { cn } from "@/lib/utils";
 
 /** 列表查询返回的一行工作项。 */
 export type ListItem = QueryResultType<ReturnType<typeof queries.workItems.list>>[number];
@@ -221,6 +222,108 @@ function expectedEnd(item: ListItem) {
   return ends.length ? (ends.sort()[ends.length - 1] as string) : null;
 }
 
+/**
+ * 离截止还有几天：逾期是红色「逾期 N 天」，三天内是琥珀色「剩 N 天」，两周内是灰色「剩 N 天」，再远就不提示。
+ * 红、琥珀只用在这里和延期上，看一眼就知道哪些要催。
+ */
+function DueHint({ end, today }: { end: string; today: string }) {
+  const days = daysBetween(today, end);
+  if (days < 0) return <span className="shrink-0 font-medium text-danger-600">逾期 {-days} 天</span>;
+  if (days > 14) return null;
+  return (
+    <span className={cn("shrink-0", days <= 3 ? "font-medium text-warning-600" : "text-fg-subtle")}>
+      {days === 0 ? "今天到期" : `剩 ${days} 天`}
+    </span>
+  );
+}
+
+/** 日期加上离截止的提示；已经完成的不提示。 */
+function DueDate({ date, today, done }: { date: string; today: string; done?: boolean }) {
+  const late = !done && daysBetween(today, date) < 0;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2 tabular-nums">
+      <span className={late ? "text-danger-600" : "text-fg-muted"}>{date}</span>
+      {!done && <DueHint end={date} today={today} />}
+    </span>
+  );
+}
+
+/**
+ * 节点轨道：流程里每个节点一小段，按流程顺序排。走过的是灰色，进行中的是强调色（逾期了是红色），
+ * 没到的是浅色底；整个工作项完成后全部变绿。后面跟当前节点的名字，几个节点并行时写「+N 并行」。
+ */
+function NodeTrack({ item, today }: { item: ListItem; today: string }) {
+  const def = nodeFlowOf(item.flowVersion?.definition);
+  if (!def) return none;
+  const stateOf = new Map(item.nodes.map((n) => [n.nodeKey, n]));
+  const nodes = def.nodes.filter((d) => stateOf.get(d.key)?.state !== "skipped");
+  if (!nodes.length) return none;
+  const done = item.status === "completed";
+  const current = nodes.filter((d) => stateOf.get(d.key)?.state === "inProgress");
+  const passed = nodes.filter((d) => stateOf.get(d.key)?.state === "completed").length;
+  const late = (key: string) => {
+    const end = stateOf.get(key)?.plannedEnd;
+    return end != null && daysBetween(today, dayOf(end) as string) < 0;
+  };
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2.5">
+      {nodes.length <= 12 ? (
+        <span className="flex shrink-0 gap-0.5" aria-hidden>
+          {nodes.map((d) => {
+            const state = stateOf.get(d.key)?.state;
+            return (
+              <span
+                key={d.key}
+                title={d.name}
+                style={{ width: Math.min(13, Math.floor(96 / nodes.length)) }}
+                className={cn(
+                  "h-[5px] rounded-[2px]",
+                  done
+                    ? "bg-success-500"
+                    : state === "inProgress"
+                      ? late(d.key)
+                        ? "bg-danger-500"
+                        : "bg-accent"
+                      : state === "completed"
+                        ? "bg-track-done"
+                        : "bg-track",
+                )}
+              />
+            );
+          })}
+        </span>
+      ) : (
+        // 节点太多时画成一根进度条：灰色是走过的比例，当前位置一小段强调色
+        <span aria-hidden className="relative h-[5px] w-24 shrink-0 overflow-hidden rounded-[2px] bg-track">
+          <span
+            className={cn("absolute inset-y-0 left-0", done ? "bg-success-500" : "bg-track-done")}
+            style={{ width: `${done ? 100 : (passed / nodes.length) * 100}%` }}
+          />
+          {!done && current[0] && (
+            <span
+              className={cn(
+                "absolute inset-y-0 w-1.5 rounded-[2px]",
+                late(current[0].key) ? "bg-danger-500" : "bg-accent",
+              )}
+              style={{ left: `calc(${(nodes.indexOf(current[0]) / nodes.length) * 100}% )` }}
+            />
+          )}
+        </span>
+      )}
+      {done ? (
+        <span className="truncate text-fg-muted">已完成</span>
+      ) : current[0] ? (
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <span className="truncate text-fg">{current[0].name}</span>
+          {current.length > 1 && <span className="shrink-0 text-xs text-fg-subtle">+{current.length - 1} 并行</span>}
+        </span>
+      ) : (
+        <span className="truncate text-fg-subtle">{item.status === "terminated" ? "已终止" : "—"}</span>
+      )}
+    </span>
+  );
+}
+
 const NODE_STATE_TEXT: Record<string, string> = {
   notStarted: "未开始",
   inProgress: "进行中",
@@ -229,7 +332,7 @@ const NODE_STATE_TEXT: Record<string, string> = {
 };
 
 /** 节点列：这个节点的状态和计划排期。按节点名对上（各流程里同名的节点算一列），键是 node:节点名。 */
-export function nodeColumn(node: { name: string }): ListColumn {
+export function nodeColumn(node: { name: string }, ctx: ListContext): ListColumn {
   const of = (i: ListItem) => {
     const key = nodeFlowOf(i.flowVersion?.definition)?.nodes.find((d) => d.name === node.name)?.key;
     return key ? i.nodes.find((n) => n.nodeKey === key) : undefined;
@@ -249,6 +352,9 @@ export function nodeColumn(node: { name: string }): ListColumn {
             {NODE_STATE_TEXT[n.state ?? "notStarted"] ?? n.state}
           </Tag>
           <span className="text-fg-muted tabular-nums">{span}</span>
+          {n.state === "inProgress" && n.plannedEnd != null && (
+            <DueHint end={dayOf(n.plannedEnd) as string} today={todayOf(ctx)} />
+          )}
         </span>
       );
     },
@@ -392,17 +498,23 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
     {
       key: "nodes",
       title: "进行中节点",
-      width: 160,
-      render: (i) => <span className="truncate">{inProgressNodes(i) || none}</span>,
+      width: 230,
+      render: (i) => <NodeTrack item={i} today={todayOf(ctx)} />,
       value: (i) => inProgressNodes(i),
     },
     {
       key: "schedule",
       title: "进行中节点排期",
-      width: 190,
+      width: 250,
       render: (i) => {
         const span = inProgressSpan(i);
-        return span ? <span className="tabular-nums">{`${span.start} ~ ${span.end}`}</span> : none;
+        if (!span) return none;
+        return (
+          <span className="inline-flex min-w-0 items-center gap-2 tabular-nums">
+            <span className="text-fg-muted">{span.start} ~</span>
+            <DueDate date={span.end} today={todayOf(ctx)} />
+          </span>
+        );
       },
       value: (i) => inProgressSpan(i)?.end ?? "",
     },
@@ -413,7 +525,7 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       width: 100,
       render: (i) => {
         const days = delayDays(i, todayOf(ctx));
-        return days > 0 ? <Tag tone="danger">延期 {days} 天</Tag> : none;
+        return days > 0 ? <span className="font-medium text-danger-600 tabular-nums">延期 {days} 天</span> : none;
       },
       value: (i) => delayDays(i, todayOf(ctx)),
       text: (i) => String(delayDays(i, todayOf(ctx)) || ""),
@@ -433,8 +545,11 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
     {
       key: "expectedEnd",
       title: "预计完成",
-      width: 120,
-      render: (i) => <span className="tabular-nums">{expectedEnd(i) ?? "—"}</span>,
+      width: 170,
+      render: (i) => {
+        const end = expectedEnd(i);
+        return end ? <DueDate date={end} today={todayOf(ctx)} done={i.status !== "inProgress"} /> : none;
+      },
       value: (i) => expectedEnd(i) ?? "",
     },
     {
@@ -527,7 +642,7 @@ export function allColumns(ctx: ListContext): ListColumn[] {
     ...systemColumns(ctx),
     ...[...ctx.fields.values()].map((f) => fieldColumn(f, ctx)),
     ...(ctx.roles ?? []).map((r) => roleColumn(r, ctx)),
-    ...(ctx.nodes ?? []).map((n) => nodeColumn(n)),
+    ...(ctx.nodes ?? []).map((n) => nodeColumn(n, ctx)),
     ...(ctx.relations ?? []).flatMap((r) => relationColumns(r, ctx)),
   ];
 }
@@ -567,6 +682,7 @@ export function defaultColumnKeys(fields: ReadonlyMap<string, ListField>): strin
   const priority = [...fields.values()].find((f) => f.name.includes("优先级"));
   return [
     "stage",
+    "nodes",
     "owners",
     ...(priority ? [`field:${priority.key}`] : []),
     ...(line ? [`field:${line.key}`] : []),
@@ -586,8 +702,8 @@ export interface ListNeeds {
   roles: string[];
 }
 
-/** 进行中节点就够的系统列；节点列和预计完成要全部节点。 */
-const ACTIVE_NODE_COLUMNS = new Set(["owners", "nodes", "schedule", "delay", "stay"]);
+/** 进行中节点就够的系统列；节点列、预计完成和进行中节点（画整条流程的轨道）要全部节点。 */
+const ACTIVE_NODE_COLUMNS = new Set(["owners", "schedule", "delay", "stay"]);
 
 export function listNeeds(columnKeys: readonly string[], conditionFieldKeys: readonly string[] = []): ListNeeds {
   const fields = new Set(conditionFieldKeys.filter((k) => !k.startsWith("$")));
@@ -598,7 +714,7 @@ export function listNeeds(columnKeys: readonly string[], conditionFieldKeys: rea
   for (const key of columnKeys) {
     if (key.startsWith("field:")) fields.add(key.slice("field:".length));
     else if (key.startsWith("role:")) roles.add(key.slice("role:".length));
-    else if (key.startsWith("node:") || key === "expectedEnd") nodes = "all";
+    else if (key.startsWith("node:") || key === "expectedEnd" || key === "nodes") nodes = "all";
     else if (ACTIVE_NODE_COLUMNS.has(key)) nodes = nodes === "all" ? "all" : "active";
     else if (key.startsWith("rel:")) relations = true;
     else if (key.startsWith("relf:")) {

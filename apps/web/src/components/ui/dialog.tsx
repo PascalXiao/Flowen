@@ -50,7 +50,8 @@ export function DialogClose({ asChild, children }: { asChild?: boolean; children
 }
 
 /** 还开着的 Semi 浮层（日期面板、级联、下拉）：Esc 先收它们，不关弹窗。 */
-const SEMI_POPUP = '.semi-portal [role="listbox"], .semi-portal .semi-popover-wrapper, .semi-portal .semi-datepicker';
+export const SEMI_POPUP =
+  '.semi-portal [role="listbox"], .semi-portal .semi-popover-wrapper, .semi-portal .semi-datepicker';
 
 export function DialogContent({
   className,

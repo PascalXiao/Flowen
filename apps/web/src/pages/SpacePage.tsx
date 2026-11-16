@@ -1,4 +1,3 @@
-import { Checkbox, SideSheet } from "@douyinfe/semi-ui";
 import {
   applyDefaults,
   availableOptions,
@@ -28,9 +27,11 @@ import { type PickerMember, RolePicker, toggled } from "@/components/RolePicker"
 import { SpaceGantt } from "@/components/SpaceGantt";
 import { TreeView } from "@/components/TreeView";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
+import { Sheet } from "@/components/ui/sheet";
 import { Segmented, Tabs } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
 import { type ListDisplay, WorkItemList } from "@/components/WorkItemList";
@@ -41,6 +42,7 @@ import { newId } from "@/lib/utils";
 import { WorkItemView } from "@/pages/WorkItemPage";
 
 const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
+const contentArea = () => document.querySelector("main");
 
 type Space = NonNullable<QueryResultType<ReturnType<typeof queries.spaces.byId>>>;
 type ItemType = Space["workItemTypes"][number];
@@ -105,12 +107,12 @@ export function WorkItemHomePage() {
         }
       />
       {openItem && (
-        <SideSheet
-          visible
+        <Sheet
+          open
           width="72%"
-          // 挂在内容区里（左侧导航不被盖住）
-          getPopupContainer={() => document.querySelector("main") ?? document.body}
-          bodyStyle={{ padding: 0 }}
+          label="工作项详情"
+          // 只盖住内容区，左侧导航还能看见、能点
+          within={contentArea}
           title={
             <span className="flex items-center gap-3 text-sm font-normal">
               <DrawerStepper
@@ -127,10 +129,10 @@ export function WorkItemHomePage() {
               </Link>
             </span>
           }
-          onCancel={() => navigate({ to: ".", search: (prev) => ({ ...prev, item: undefined }) })}
+          onClose={() => navigate({ to: ".", search: (prev) => ({ ...prev, item: undefined }) })}
         >
           <WorkItemView itemId={openItem} />
-        </SideSheet>
+        </Sheet>
       )}
       <PageBody className="max-w-none">
         {tab === "views" ? (
@@ -141,7 +143,7 @@ export function WorkItemHomePage() {
             onOpen={(id) => navigate({ to: ".", search: { view: id } })}
           />
         ) : !published ? (
-          <div className="rounded-lg border border-line-subtle bg-surface shadow-card">
+          <div className="rounded-xl border border-dashed border-line">
             <EmptyState
               title={`${type.name}还没有发布的流程`}
               description={
@@ -202,7 +204,7 @@ function ViewList({
     (v) => (scope === "all" || v.createdBy === zero.userID) && v.name.toLowerCase().includes(q.trim().toLowerCase()),
   );
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-line-subtle bg-surface p-4 shadow-card">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <Tabs
           label="视图范围"
@@ -377,9 +379,7 @@ function WorkItems({
 
   return (
     <div className="flex min-h-0 flex-col">
-      {view !== "table" && (
-        <div className="mb-3 rounded-lg border border-line-subtle bg-surface px-4 py-3">{filterBar}</div>
-      )}
+      {view !== "table" && <div className="mb-3">{filterBar}</div>}
       {view === "tree" ? (
         <TreeView
           spaceId={space.id}
@@ -721,7 +721,7 @@ function CreateWorkItemForm({
         </details>
       )}
       <div className="flex items-center justify-end gap-2 pt-2">
-        <Checkbox className="mr-auto" checked={keepCreating} onChange={(e) => setKeepCreating(!!e.target.checked)}>
+        <Checkbox className="mr-auto" checked={keepCreating} onChange={(e) => setKeepCreating(e.target.checked)}>
           连续新建
         </Checkbox>
         <Button variant="outline" onClick={onCancel}>

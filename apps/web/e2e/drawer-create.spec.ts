@@ -24,7 +24,7 @@ test("create several items in a row, then step through them in the drawer", asyn
   const grid = page.getByRole("grid");
   await expect(grid.getByRole("row").filter({ hasText: "新品 D" })).toHaveCount(3);
   await grid.getByRole("link", { name: "新品 D3" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await expect(sheet.getByRole("heading", { name: "新品 D3" })).toBeVisible();
   await expect(sheet.getByText("1 / 3")).toBeVisible();
   await expect(sheet.getByRole("button", { name: "上一条" })).toBeDisabled();
