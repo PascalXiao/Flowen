@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -10,21 +11,32 @@ export function Checkbox({
   className,
   onChange,
   "aria-label": ariaLabel,
+  children,
 }: {
   checked?: boolean;
   disabled?: boolean;
   className?: string;
   onChange?: (e: { target: { checked: boolean } }) => void;
   "aria-label"?: string;
+  /** 写在勾选框后面的文字，点文字也能勾选。 */
+  children?: React.ReactNode;
 }) {
-  return (
+  const box = (
     <input
       type="checkbox"
       checked={!!checked}
       disabled={disabled}
       aria-label={ariaLabel}
-      className={cn("fl-checkbox", className)}
+      className={cn("fl-checkbox", !children && className)}
       onChange={(e) => onChange?.({ target: { checked: e.target.checked } })}
     />
+  );
+  if (!children) return box;
+  return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: 勾选框就在这个 label 里面（上面的 box）
+    <label className={cn("inline-flex min-w-0 cursor-pointer items-center gap-2", className)}>
+      {box}
+      <span className="min-w-0 truncate">{children}</span>
+    </label>
   );
 }

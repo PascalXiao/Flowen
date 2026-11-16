@@ -1,4 +1,5 @@
 import * as RadixMenu from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 import { popupSurface } from "./popover";
@@ -49,11 +50,14 @@ export function DropdownMenuContent({
 export function DropdownMenuItem({
   asChild,
   onSelect,
+  active,
   className,
   children,
 }: {
   asChild?: boolean;
   onSelect?: () => void;
+  /** 当前选中的那一项：强调色加对勾。 */
+  active?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -63,10 +67,12 @@ export function DropdownMenuItem({
       onSelect={() => onSelect?.()}
       className={cn(
         "flex h-7 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-sm outline-none data-[highlighted]:bg-hover [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:text-fg-subtle",
+        active && "font-medium text-accent",
         className,
       )}
     >
       {children}
+      {active && !asChild && <Check aria-hidden className="ml-auto text-accent!" />}
     </RadixMenu.Item>
   );
 }

@@ -23,9 +23,9 @@ export function PopoverTrigger({ asChild, type, ...props }: React.ComponentProps
   return <RadixPopover.Trigger asChild={asChild} type={asChild ? undefined : (type ?? "button")} {...props} />;
 }
 
-/** 浮层的外观：气泡、菜单、下拉共用。层级压过迁移期间的 Semi 弹窗和抽屉（1000）及其浮层（1030）。 */
+/** 浮层的外观：气泡、菜单、下拉共用。层级和弹窗、Semi 的浮层相同，后打开的盖在先打开的上面。 */
 export const popupSurface =
-  "z-[1040] rounded-lg bg-popover text-fg text-sm shadow-popover outline-none data-[state=closed]:hidden";
+  "z-[1000] rounded-lg bg-popover text-fg text-sm shadow-popover outline-none data-[state=closed]:hidden";
 
 export function PopoverContent({
   className,

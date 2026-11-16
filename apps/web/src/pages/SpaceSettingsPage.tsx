@@ -141,14 +141,18 @@ function MembersCard({ space, canManage }: { space: Space; canManage: boolean })
     const role = String(data.get("role") ?? "member");
     if (!email) return;
     setError(null);
+    // 先清空输入框，接着就能填下一个；没加成再把邮箱放回去
+    const input = form.elements.namedItem("email") as HTMLInputElement;
+    input.value = "";
     const res = await fetch(`${env.apiUrl}/api/spaces/${space.id}/members`, {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, role }),
     });
-    if (!res.ok) return setError(((await res.json()) as { error: string }).error);
-    form.reset();
+    if (res.ok) return;
+    if (!input.value) input.value = email;
+    setError(((await res.json()) as { error: string }).error);
   }
 
   return (

@@ -1,4 +1,3 @@
-import { Popover } from "@douyinfe/semi-ui";
 import type { FieldDataType } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
@@ -7,6 +6,7 @@ import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } 
 import { Button } from "@/components/ui/button";
 import { fieldSurface, Select } from "@/components/ui/input";
 import { Popconfirm } from "@/components/ui/popconfirm";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
@@ -115,16 +115,15 @@ export function BatchBar({
     >
       <span className="mr-1">已选 {items.length} 项</span>
       {editable.length > 0 && (
-        <Popover
-          trigger="custom"
-          visible={editOpen}
-          onClickOutSide={() => setEditOpen(false)}
-          position="bottomRight"
-          content={editPanel}
-        >
-          <Button size="sm" variant="ghost" onClick={() => setEditOpen((v) => !v)}>
-            修改字段
-          </Button>
+        <Popover open={editOpen} onOpenChange={setEditOpen}>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="ghost">
+              修改字段
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="p-0">
+            {editPanel}
+          </PopoverContent>
         </Popover>
       )}
       <Button

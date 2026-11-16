@@ -1,5 +1,5 @@
 import * as RadixSelect from "@radix-ui/react-select";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { popupSurface } from "./popover";
@@ -11,6 +11,43 @@ export const fieldSurface =
 /** 输入框：原生 input。 */
 export function Input({ className, ...props }: Omit<React.ComponentProps<"input">, "size" | "prefix">) {
   return <input className={cn(fieldSurface, "h-7 w-full min-w-0 px-2 read-only:bg-raised", className)} {...props} />;
+}
+
+/** 搜索框：前面是放大镜，有内容时右边出现清除按钮。 */
+export function SearchInput({
+  value,
+  onChange,
+  className,
+  ...props
+}: Omit<React.ComponentProps<"input">, "value" | "onChange" | "size" | "prefix"> & {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span className={cn("relative inline-flex w-56 items-center", className)}>
+      <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-fg-subtle" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          fieldSurface,
+          "h-7 w-full min-w-0 border-transparent bg-raised pr-7 pl-7 hover:border-line focus:bg-surface",
+        )}
+        {...props}
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="清除"
+          className="absolute right-1.5 inline-flex size-4 items-center justify-center rounded-full text-fg-subtle hover:bg-pressed hover:text-fg"
+          onClick={() => onChange("")}
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </span>
+  );
 }
 
 /** 多行输入框：原生 textarea，至少三行，随内容长高。 */

@@ -1,15 +1,23 @@
-import { Checkbox, Dropdown, Popover, Input as SemiInput, Table } from "@douyinfe/semi-ui";
+import { Table } from "@douyinfe/semi-ui";
 import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
-import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Search, Star, Trash2, X } from "lucide-react";
+import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BatchBar } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input, SearchInput, Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toast } from "@/components/ui/toast";
 import { env } from "@/lib/env";
 import { exportListXlsx } from "@/lib/export-xlsx";
@@ -494,7 +502,7 @@ export function WorkItemList({
             type="button"
             disabled={rows.length === 0}
             title="按当前的列、筛选、排序导出"
-            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm text-fg hover:bg-hover disabled:cursor-not-allowed disabled:text-fg-disabled"
+            className={cn(toolButton(false), "disabled:cursor-not-allowed disabled:text-fg-disabled")}
             onClick={async () => {
               const typeName = filter.typeIds?.length === 1 ? ctx.typeName(filter.typeIds[0] as string) : "工作项";
               const day = new Date().toLocaleDateString("sv-SE");
@@ -512,18 +520,10 @@ export function WorkItemList({
               }
             }}
           >
-            <Download className="size-4" />
+            <Download />
             导出
           </button>
-          <SemiInput
-            aria-label="搜索工作项"
-            prefix={<Search className="ml-2 size-4 text-fg-subtle" />}
-            placeholder="搜索名称"
-            showClear
-            value={search}
-            onChange={(v) => setSearch(v)}
-            className="!w-56"
-          />
+          <SearchInput aria-label="搜索工作项" placeholder="搜索名称" value={search} onChange={setSearch} />
           {selected.length > 0 && (
             <BatchBar
               items={items.filter((i) => selected.includes(i.id))}
@@ -698,13 +698,21 @@ function ColumnPicker({
     onChange(next);
   };
   return (
-    <Popover
-      trigger="click"
-      motion={false}
-      position="bottomRight"
-      content={
+    <Popover>
+      <PopoverTrigger
+        aria-label="添加列"
+        className="flex size-6 items-center justify-center rounded text-fg-muted hover:bg-hover"
+      >
+        <Plus className="size-4" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="p-0">
         <div className="flex max-h-[420px] w-72 flex-col gap-2 p-3">
-          <SemiInput placeholder="搜索字段" value={keyword} onChange={(v) => setKeyword(v)} aria-label="搜索列" />
+          <Input
+            placeholder="搜索字段"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            aria-label="搜索列"
+          />
           <div className="text-xs text-fg-muted">显示的列（可调顺序）</div>
           <ul className="flex flex-col gap-0.5 overflow-y-auto">
             {shown.map((c, i) => {
@@ -750,15 +758,7 @@ function ColumnPicker({
               ))}
           </ul>
         </div>
-      }
-    >
-      <button
-        type="button"
-        aria-label="添加列"
-        className="flex size-6 items-center justify-center rounded text-fg-muted hover:bg-hover"
-      >
-        <Plus className="size-4" />
-      </button>
+      </PopoverContent>
     </Popover>
   );
 }
@@ -850,25 +850,8 @@ function SummaryRow({
                 <span className="text-fg-muted">{partial ? `已加载 ${rows.length} 条` : `共 ${rows.length} 条`}</span>
               )}
               {col && (
-                <Dropdown
-                  trigger="click"
-                  motion={false}
-                  position="top"
-                  render={
-                    <Dropdown.Menu>
-                      <Dropdown.Item active={!kind} onClick={() => set(key, null)}>
-                        不统计
-                      </Dropdown.Item>
-                      {kinds.map((k) => (
-                        <Dropdown.Item key={k} active={kind === k} onClick={() => set(key, k)}>
-                          {SUMMARY_TEXT[k]}
-                        </Dropdown.Item>
-                      ))}
-                    </Dropdown.Menu>
-                  }
-                >
-                  <button
-                    type="button"
+                <DropdownMenu>
+                  <DropdownMenuTrigger
                     aria-label={`${col.title}的汇总`}
                     className={cn(
                       "w-full truncate rounded px-1 text-left hover:bg-hover",
@@ -876,8 +859,18 @@ function SummaryRow({
                     )}
                   >
                     {kind ? `${SUMMARY_TEXT[kind]} ${compute(col, kind)}` : "统计"}
-                  </button>
-                </Dropdown>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top">
+                    <DropdownMenuItem active={!kind} onSelect={() => set(key, null)}>
+                      不统计
+                    </DropdownMenuItem>
+                    {kinds.map((k) => (
+                      <DropdownMenuItem key={k} active={kind === k} onSelect={() => set(key, k)}>
+                        {SUMMARY_TEXT[k]}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           );
@@ -898,61 +891,50 @@ function FreezeButton({
   onChange: (frozen: number) => void;
 }) {
   return (
-    <Dropdown
-      trigger="click"
-      motion={false}
-      position="bottomLeft"
-      render={
-        <Dropdown.Menu>
-          <Dropdown.Item active={value === 0} onClick={() => onChange(0)}>
-            只冻结名称列
-          </Dropdown.Item>
-          {columns.slice(0, 10).map((c, i) => (
-            <Dropdown.Item key={c.key} active={value === i + 1} onClick={() => onChange(i + 1)}>
-              冻结到「{c.title}」
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      }
-    >
-      <button
-        type="button"
-        className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          value ? "text-accent" : "text-fg",
-        )}
-      >
-        <Pin className="size-4" />
+    <DropdownMenu>
+      <DropdownMenuTrigger className={toolButton(!!value)}>
+        <Pin />
         {value ? `冻结 ${value + 1} 列` : "冻结"}
-      </button>
-    </Dropdown>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem active={value === 0} onSelect={() => onChange(0)}>
+          只冻结名称列
+        </DropdownMenuItem>
+        {columns.slice(0, 10).map((c, i) => (
+          <DropdownMenuItem key={c.key} active={value === i + 1} onSelect={() => onChange(i + 1)}>
+            冻结到「{c.title}」
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 /** 行高：低、中、高、超高；高一些时单元格内容可以折行（最多 3 行）。 */
 function RowHeightButton({ value, onChange }: { value: RowHeight; onChange: (h: RowHeight) => void }) {
   return (
-    <Dropdown
-      trigger="click"
-      motion={false}
-      position="bottomLeft"
-      render={
-        <Dropdown.Menu>
-          {(Object.keys(ROW_HEIGHTS) as RowHeight[]).map((h) => (
-            <Dropdown.Item key={h} active={value === h} onClick={() => onChange(h)}>
-              {ROW_HEIGHTS[h][0]}
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      }
-    >
-      <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover">
-        <Rows3 className="size-4" />
+    <DropdownMenu>
+      <DropdownMenuTrigger className={toolButton(false)}>
+        <Rows3 />
         行高：{ROW_HEIGHTS[value][0]}
-      </button>
-    </Dropdown>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {(Object.keys(ROW_HEIGHTS) as RowHeight[]).map((h) => (
+          <DropdownMenuItem key={h} active={value === h} onSelect={() => onChange(h)}>
+            {ROW_HEIGHTS[h][0]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
+
+/** 工具栏按钮（排序、分组、冻结…）：设置了内容时用强调色。 */
+const toolButton = (active: boolean) =>
+  cn(
+    "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm hover:bg-hover [&_svg]:size-[15px]",
+    active ? "text-accent" : "text-fg-muted hover:text-fg",
+  );
 
 function ToolButton({
   icon,
@@ -966,22 +948,12 @@ function ToolButton({
   children: ReactNode;
 }) {
   return (
-    <Popover
-      trigger="click"
-      motion={false}
-      position="bottomLeft"
-      content={<div className="flex w-80 flex-col gap-2 p-3">{children}</div>}
-    >
-      <button
-        type="button"
-        className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          active ? "text-accent" : "text-fg",
-        )}
-      >
+    <Popover>
+      <PopoverTrigger className={toolButton(active)}>
         {icon}
         {label}
-      </button>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-80 flex-col gap-2 p-3">{children}</PopoverContent>
     </Popover>
   );
 }
@@ -997,11 +969,7 @@ function SortButton({
 }) {
   const options = [{ key: "name", title: "名称" }, ...columns];
   return (
-    <ToolButton
-      icon={<ArrowDownUp className="size-4" />}
-      label={value.length ? `排序 ${value.length}` : "排序"}
-      active={value.length > 0}
-    >
+    <ToolButton icon={<ArrowDownUp />} label={value.length ? `排序 ${value.length}` : "排序"} active={value.length > 0}>
       {value.map((s, i) => (
         <div key={`${s.key}-${i}`} className="flex items-center gap-2">
           <Select
@@ -1057,32 +1025,20 @@ function GroupButton({
   onChange: (groupBy: string | null) => void;
 }) {
   return (
-    <Dropdown
-      trigger="click"
-      motion={false}
-      position="bottomLeft"
-      render={
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={() => onChange(null)}>不分组</Dropdown.Item>
-          {columns.map((c) => (
-            <Dropdown.Item key={c.key} active={value === c.key} onClick={() => onChange(c.key)}>
-              {c.title}
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      }
-    >
-      <button
-        type="button"
-        className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm hover:bg-hover",
-          value ? "text-accent" : "text-fg",
-        )}
-      >
-        <Group className="size-4" />
+    <DropdownMenu>
+      <DropdownMenuTrigger className={toolButton(!!value)}>
+        <Group />
         {value ? `分组：${columns.find((c) => c.key === value)?.title ?? ""}` : "分组"}
-      </button>
-    </Dropdown>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onSelect={() => onChange(null)}>不分组</DropdownMenuItem>
+        {columns.map((c) => (
+          <DropdownMenuItem key={c.key} active={value === c.key} onSelect={() => onChange(c.key)}>
+            {c.title}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1103,7 +1059,7 @@ function ColorButton({
   }));
   return (
     <ToolButton
-      icon={<Palette className="size-4" />}
+      icon={<Palette />}
       label={value.length ? `设置颜色 ${value.length}` : "设置颜色"}
       active={value.length > 0}
     >
