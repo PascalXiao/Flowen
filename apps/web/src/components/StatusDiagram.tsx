@@ -67,7 +67,7 @@ export function StatusDiagram({
       targetPosition: Position.Left,
       className: cn(
         "!w-[140px] !rounded-lg !border !border-line !bg-surface !px-3 !py-2 !text-left !text-[13px] !shadow-card",
-        s.key === current && "!border-brand-500 !font-medium !ring-3 !ring-brand-100",
+        s.key === current && "!border-accent !font-medium !ring-3 !ring-brand-100",
       ),
     };
   });

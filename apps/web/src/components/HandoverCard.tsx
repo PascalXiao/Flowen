@@ -1,4 +1,3 @@
-import { Popconfirm, Toast } from "@douyinfe/semi-ui";
 import { mutators, queries } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { useMemo, useState } from "react";
@@ -6,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
+import { Toast } from "@/components/ui/toast";
 
 type Member = { userId: string; name: string; role: string | null };
 type Fields = readonly { key: string; dataType: string }[];

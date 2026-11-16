@@ -1,116 +1,246 @@
-/* Semi 主题样式放进自己的层，排在 Tailwind 的 base 之后、utilities 之前：盖过默认重置，又能被页面上的工具类覆盖。 */
+/* 迁移期间保留的 Semi 主题样式放进自己的层，排在 Tailwind 的 base 之后、utilities 之前：盖过默认重置，又能被页面上的工具类覆盖。 */
 @layer theme, base, semi, components, utilities;
 @import "@semi-bot/semi-theme-doucreator/semi.min.css" layer(semi);
 @import "tailwindcss";
 
 /*
- * 配色：组件用 Semi，主题包只取字体、圆角这些，颜色在这里换成 Flowen 的蓝、灰和状态色。
- * 写在 semi 层里、排在主题包之后，同名变量以这里为准。
+ * 设计令牌（风格「流线」）。所有颜色只在这里定义一次，分亮色和暗色两套；
+ * <html data-theme="dark"> 时换成暗色（跟随系统或手动切换，见 lib/theme.ts）。
+ * 层次：chrome（应用底色，侧栏沉在里面）→ surface（浮起的工作区面板）→ popover（气泡、菜单、弹窗）。
+ * 强调色只表示「现在」：当前节点、选中、主按钮；红色只给逾期和危险操作，琥珀给临期，绿色给完成。
+ */
+:root {
+  color-scheme: light;
+  --fl-chrome: #f2f3f5;
+  --fl-surface: #ffffff;
+  --fl-canvas: #fafafb;
+  --fl-raised: #f4f5f7;
+  --fl-popover: #ffffff;
+  --fl-line: #e9eaed;
+  --fl-line-strong: #dcdee3;
+  --fl-fg: #15161a;
+  --fl-fg-muted: #5b5f68;
+  --fl-fg-subtle: #878b95;
+  --fl-fg-disabled: #b9bcc4;
+  --fl-hover: rgba(20, 22, 28, 0.05);
+  --fl-pressed: rgba(20, 22, 28, 0.09);
+  --fl-accent: #2f66e8;
+  --fl-accent-solid: #2f66e8;
+  --fl-accent-solid-hover: #2858cf;
+  --fl-accent-solid-active: #224bb3;
+  --fl-accent-soft: #edf2fe;
+  --fl-accent-soft-strong: #dde7fd;
+  --fl-accent-line: #b9cdfa;
+  --fl-success: #1c9a5e;
+  --fl-success-text: #17804e;
+  --fl-success-soft: #e7f6ee;
+  --fl-warning: #d98a1c;
+  --fl-warning-text: #a8620b;
+  --fl-warning-soft: #fdf3e2;
+  --fl-danger: #d5443b;
+  --fl-danger-text: #c13a32;
+  --fl-danger-soft: #fdecea;
+  --fl-violet-text: #6a45c9;
+  --fl-violet-soft: #f1ecfd;
+  --fl-teal-text: #0f7c72;
+  --fl-teal-soft: #e2f5f2;
+  --fl-track: #e3e5e9;
+  --fl-track-done: #8b8f99;
+  --fl-inverse: #1b1c20;
+  --fl-inverse-fg: #f3f3f5;
+  --fl-overlay: rgba(20, 22, 28, 0.32);
+  --fl-shadow-panel: 0 1px 2px rgba(20, 22, 28, 0.04), 0 0 0 1px rgba(20, 22, 28, 0.05);
+  --fl-shadow-popover:
+    0 10px 28px -6px rgba(20, 22, 28, 0.18), 0 2px 6px rgba(20, 22, 28, 0.08), 0 0 0 1px rgba(20, 22, 28, 0.06);
+  --fl-shadow-float: 0 12px 32px -8px rgba(20, 22, 28, 0.28), 0 2px 6px rgba(20, 22, 28, 0.12);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fl-chrome: #101113;
+  --fl-surface: #17181a;
+  --fl-canvas: #141517;
+  --fl-raised: #1d1e21;
+  --fl-popover: #1f2023;
+  --fl-line: #242529;
+  --fl-line-strong: #33353a;
+  --fl-fg: #ededef;
+  --fl-fg-muted: #a5a8b0;
+  --fl-fg-subtle: #73767f;
+  --fl-fg-disabled: #4d5057;
+  --fl-hover: rgba(255, 255, 255, 0.055);
+  --fl-pressed: rgba(255, 255, 255, 0.09);
+  --fl-accent: #7ea6ff;
+  --fl-accent-solid: #3f72ee;
+  --fl-accent-solid-hover: #4d7ef5;
+  --fl-accent-solid-active: #3766dc;
+  --fl-accent-soft: rgba(100, 146, 255, 0.13);
+  --fl-accent-soft-strong: rgba(100, 146, 255, 0.2);
+  --fl-accent-line: rgba(110, 155, 255, 0.5);
+  --fl-success: #3fb97f;
+  --fl-success-text: #4dc78d;
+  --fl-success-soft: rgba(77, 199, 141, 0.13);
+  --fl-warning: #e3a550;
+  --fl-warning-text: #e3a550;
+  --fl-warning-soft: rgba(227, 165, 80, 0.13);
+  --fl-danger: #e5645a;
+  --fl-danger-text: #f47c70;
+  --fl-danger-soft: rgba(244, 124, 112, 0.13);
+  --fl-violet-text: #b39cf5;
+  --fl-violet-soft: rgba(160, 130, 245, 0.15);
+  --fl-teal-text: #5cc9bd;
+  --fl-teal-soft: rgba(80, 200, 185, 0.13);
+  --fl-track: #2b2d32;
+  --fl-track-done: #7b7f89;
+  --fl-inverse: #ededef;
+  --fl-inverse-fg: #17181a;
+  --fl-overlay: rgba(0, 0, 0, 0.55);
+  --fl-shadow-panel: 0 0 0 1px rgba(255, 255, 255, 0.055);
+  --fl-shadow-popover:
+    0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --fl-shadow-float: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/*
+ * 迁移期间还没换掉的 Semi 组件（表格、日期、级联、抽屉等）跟着上面的令牌走，亮暗两套都对得上。
+ * 全部换成自建组件后，这一段和 Semi 的样式引入一起删掉。
  */
 @layer semi {
   /* 勾选框、单选框的原生 input 盖在装饰层上面，点击和测试都落在真正的控件上 */
+  /* 浮层的叠放：Semi 的和自建的用同一个层级，后打开的自然盖在先打开的上面 */
+  .semi-portal {
+    z-index: 1000 !important;
+  }
+
   .semi-checkbox-input,
   .semi-radio-input {
     z-index: 1;
     cursor: pointer;
   }
 
-  body {
-    --semi-color-primary: #3370ff;
-    --semi-color-primary-hover: #4e83fd;
-    --semi-color-primary-active: #245bdb;
-    --semi-color-primary-disabled: #bacefd;
-    --semi-color-primary-light-default: #f0f4ff;
-    --semi-color-primary-light-hover: #e1eaff;
-    --semi-color-primary-light-active: #bacefd;
-    --semi-color-focus-border: #3370ff;
-    --semi-color-link: #3370ff;
-    --semi-color-link-hover: #4e83fd;
-    --semi-color-link-active: #245bdb;
-    --semi-color-link-visited: #3370ff;
-    --semi-color-info: #3370ff;
-    --semi-color-text-0: #1f2329;
-    --semi-color-text-1: #646a73;
-    --semi-color-text-2: #8f959e;
-    --semi-color-text-3: #bbbfc4;
-    --semi-color-disabled-text: #bbbfc4;
-    --semi-color-border: #dee0e3;
-    --semi-color-fill-0: rgba(31, 35, 41, 0.05);
-    --semi-color-fill-1: rgba(31, 35, 41, 0.08);
-    --semi-color-fill-2: rgba(31, 35, 41, 0.12);
-    --semi-color-success: #34c724;
-    --semi-color-success-hover: #2ea121;
-    --semi-color-success-active: #278a1c;
-    --semi-color-success-light-default: #f0fbef;
-    --semi-color-success-light-hover: #d9f5d6;
-    --semi-color-warning: #ff8800;
-    --semi-color-warning-hover: #de7802;
-    --semi-color-warning-active: #b26206;
-    --semi-color-warning-light-default: #fff5eb;
-    --semi-color-warning-light-hover: #feead2;
-    --semi-color-danger: #f54a45;
-    --semi-color-danger-hover: #d83931;
-    --semi-color-danger-active: #ac2f28;
-    --semi-color-danger-light-default: #fef1f1;
-    --semi-color-danger-light-hover: #fde2e2;
+  body,
+  body[theme-mode="dark"] {
+    --semi-color-primary: var(--fl-accent-solid);
+    --semi-color-primary-hover: var(--fl-accent-solid-hover);
+    --semi-color-primary-active: var(--fl-accent-solid-active);
+    --semi-color-primary-disabled: var(--fl-accent-line);
+    --semi-color-primary-light-default: var(--fl-accent-soft);
+    --semi-color-primary-light-hover: var(--fl-accent-soft-strong);
+    --semi-color-primary-light-active: var(--fl-accent-line);
+    --semi-color-focus-border: var(--fl-accent);
+    --semi-color-link: var(--fl-accent);
+    --semi-color-link-hover: var(--fl-accent);
+    --semi-color-link-active: var(--fl-accent);
+    --semi-color-link-visited: var(--fl-accent);
+    --semi-color-info: var(--fl-accent-solid);
+    --semi-color-text-0: var(--fl-fg);
+    --semi-color-text-1: var(--fl-fg-muted);
+    --semi-color-text-2: var(--fl-fg-subtle);
+    --semi-color-text-3: var(--fl-fg-disabled);
+    --semi-color-disabled-text: var(--fl-fg-disabled);
+    --semi-color-border: var(--fl-line);
+    --semi-color-bg-0: var(--fl-surface);
+    --semi-color-bg-1: var(--fl-surface);
+    --semi-color-bg-2: var(--fl-popover);
+    --semi-color-bg-3: var(--fl-popover);
+    --semi-color-bg-4: var(--fl-popover);
+    --semi-color-nav-bg: var(--fl-surface);
+    --semi-color-overlay-bg: var(--fl-overlay);
+    --semi-color-fill-0: var(--fl-hover);
+    --semi-color-fill-1: var(--fl-pressed);
+    --semi-color-fill-2: var(--fl-pressed);
+    --semi-color-success: var(--fl-success);
+    --semi-color-success-hover: var(--fl-success-text);
+    --semi-color-success-active: var(--fl-success-text);
+    --semi-color-success-light-default: var(--fl-success-soft);
+    --semi-color-success-light-hover: var(--fl-success-soft);
+    --semi-color-warning: var(--fl-warning);
+    --semi-color-warning-hover: var(--fl-warning-text);
+    --semi-color-warning-active: var(--fl-warning-text);
+    --semi-color-warning-light-default: var(--fl-warning-soft);
+    --semi-color-warning-light-hover: var(--fl-warning-soft);
+    --semi-color-danger: var(--fl-danger);
+    --semi-color-danger-hover: var(--fl-danger-text);
+    --semi-color-danger-active: var(--fl-danger-text);
+    --semi-color-danger-light-default: var(--fl-danger-soft);
+    --semi-color-danger-light-hover: var(--fl-danger-soft);
+    --semi-shadow-elevated: var(--fl-shadow-popover);
+    font-family: var(--font-sans);
   }
 }
 
 /*
- * 设计规范：组件用 Semi Design（主题包见上），配色见上。
- * 页面里只用这里的语义 token（text-fg、bg-canvas、border-line、bg-brand-500 …），它们都指向 Semi 的主题变量，
- * 换主题或切暗色时自动跟着变。不直接写 slate/sky，也不直接写十六进制颜色。
- * 字号：12 辅助信息、14 正文和控件、16 卡片标题、20 页面标题。控件高度 32px，圆角 6px，间距以 4px 为单位。
+ * 页面里只用这里的语义 token（text-fg、bg-surface、border-line-subtle、text-accent、bg-brand-500 …），
+ * 不直接写 slate/sky，也不直接写十六进制颜色，换主题时自动跟着变。
+ * 字体用系统界面字体（Windows 是 Segoe UI + 微软雅黑，macOS 是苹方），不自带字体文件。
+ * 字号：12 辅助信息、13 正文和控件、15 小节标题、20 页面标题。控件高度 28px，圆角 7px，间距以 4px 为单位。
  */
 @theme inline {
   --font-sans:
-    Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", "Helvetica Neue", Helvetica,
-    Arial, sans-serif;
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
 
-  /* 品牌色：主按钮、链接、选中态（主题主色） */
-  --color-brand-50: var(--semi-color-primary-light-default);
-  --color-brand-100: var(--semi-color-primary-light-hover);
-  --color-brand-200: var(--semi-color-primary-light-active);
-  --color-brand-300: color-mix(in srgb, var(--semi-color-primary) 55%, transparent);
-  --color-brand-500: var(--semi-color-primary);
-  --color-brand-600: var(--semi-color-primary-hover);
-  --color-brand-700: var(--semi-color-primary-active);
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.375rem;
+
+  /* 强调色。accent 用在文字、图标、描边上（暗色下更亮，保证对比度）；brand-* 用在底色上。 */
+  --color-accent: var(--fl-accent);
+  --color-brand-50: var(--fl-accent-soft);
+  --color-brand-100: var(--fl-accent-soft-strong);
+  --color-brand-200: var(--fl-accent-line);
+  --color-brand-300: var(--fl-accent-line);
+  --color-brand-500: var(--fl-accent-solid);
+  --color-brand-600: var(--fl-accent-solid-hover);
+  --color-brand-700: var(--fl-accent-solid-active);
 
   /* 文字 */
-  --color-fg: var(--semi-color-text-0);
-  --color-fg-muted: var(--semi-color-text-1);
-  --color-fg-subtle: var(--semi-color-text-2);
-  --color-fg-disabled: var(--semi-color-disabled-text);
+  --color-fg: var(--fl-fg);
+  --color-fg-muted: var(--fl-fg-muted);
+  --color-fg-subtle: var(--fl-fg-subtle);
+  --color-fg-disabled: var(--fl-fg-disabled);
 
   /* 线和底色 */
-  --color-line: #d0d3d6;
-  --color-line-subtle: var(--semi-color-border);
-  --color-canvas: #f5f6f7;
-  --color-surface: var(--semi-color-bg-0);
-  --color-hover: var(--semi-color-fill-0);
-  --color-pressed: var(--semi-color-fill-1);
+  --color-line: var(--fl-line-strong);
+  --color-line-subtle: var(--fl-line);
+  --color-chrome: var(--fl-chrome);
+  --color-canvas: var(--fl-canvas);
+  --color-surface: var(--fl-surface);
+  --color-raised: var(--fl-raised);
+  --color-popover: var(--fl-popover);
+  --color-hover: var(--fl-hover);
+  --color-pressed: var(--fl-pressed);
+  --color-overlay: var(--fl-overlay);
+  --color-inverse: var(--fl-inverse);
+  --color-inverse-fg: var(--fl-inverse-fg);
+  --color-track: var(--fl-track);
+  --color-track-done: var(--fl-track-done);
 
-  /* 状态色：文字用 -600，浅底用 -50 */
-  --color-success-50: var(--semi-color-success-light-default);
-  --color-success-500: var(--semi-color-success);
-  --color-success-600: var(--semi-color-success-hover);
-  --color-warning-50: var(--semi-color-warning-light-default);
-  --color-warning-500: var(--semi-color-warning);
-  --color-warning-600: var(--semi-color-warning-hover);
-  --color-danger-50: var(--semi-color-danger-light-default);
-  --color-danger-500: var(--semi-color-danger);
-  --color-danger-600: var(--semi-color-danger-hover);
-  --color-violet-50: rgba(var(--semi-violet-0), 1);
-  --color-violet-600: rgba(var(--semi-violet-6), 1);
-  --color-teal-50: rgba(var(--semi-teal-0), 1);
-  --color-teal-600: rgba(var(--semi-teal-6), 1);
+  /* 状态色：文字用 -600，实底和圆点用 -500，浅底用 -50 */
+  --color-success-50: var(--fl-success-soft);
+  --color-success-500: var(--fl-success);
+  --color-success-600: var(--fl-success-text);
+  --color-warning-50: var(--fl-warning-soft);
+  --color-warning-500: var(--fl-warning);
+  --color-warning-600: var(--fl-warning-text);
+  --color-danger-50: var(--fl-danger-soft);
+  --color-danger-500: var(--fl-danger);
+  --color-danger-600: var(--fl-danger-text);
+  --color-violet-50: var(--fl-violet-soft);
+  --color-violet-600: var(--fl-violet-text);
+  --color-teal-50: var(--fl-teal-soft);
+  --color-teal-600: var(--fl-teal-text);
 
-  --radius-sm: var(--semi-border-radius-small);
-  --radius-md: var(--semi-border-radius-medium);
-  --radius-lg: var(--semi-border-radius-large);
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
-  --shadow-popover: var(--semi-shadow-elevated);
-  --shadow-card: 0 1px 2px 0 rgba(var(--semi-grey-9), 0.04);
+  --shadow-panel: var(--fl-shadow-panel);
+  --shadow-popover: var(--fl-shadow-popover);
+  --shadow-float: var(--fl-shadow-float);
+  --shadow-card: var(--fl-shadow-panel);
 }
 
 @layer base {
@@ -120,11 +250,65 @@
     height: 100%;
   }
   body {
-    @apply bg-canvas text-sm text-fg antialiased;
+    @apply bg-chrome text-sm text-fg antialiased;
+    font-feature-settings: "tnum";
   }
   ::selection {
-    @apply bg-brand-100;
+    background: var(--fl-accent-soft-strong);
   }
+  :focus-visible {
+    outline: 2px solid var(--fl-accent);
+    outline-offset: 1px;
+  }
+  /* 滚动条：细、平时不抢眼 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--fl-line-strong) transparent;
+  }
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* 勾选框：原生 input，自己画外观。 */
+.fl-checkbox {
+  appearance: none;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1.5px solid var(--fl-line-strong);
+  border-radius: 4px;
+  background: var(--fl-surface) center / 11px 11px no-repeat;
+  cursor: pointer;
+  vertical-align: -2px;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
+}
+.fl-checkbox:hover {
+  border-color: var(--fl-fg-subtle);
+}
+.fl-checkbox:checked,
+.fl-checkbox:indeterminate {
+  border-color: var(--fl-accent-solid);
+  background-color: var(--fl-accent-solid);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+.fl-checkbox:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round'%3E%3Cpath d='M5 12h14'/%3E%3C/svg%3E");
+}
+.fl-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* React Flow：只读流程图不显示连接点；编辑器里悬停节点时才显示。 */
@@ -143,6 +327,15 @@
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-line-subtle);
 }
+.react-flow__controls-button {
+  background: var(--color-surface);
+  border-bottom-color: var(--color-line-subtle);
+  color: var(--color-fg-muted);
+  fill: currentColor;
+}
+.react-flow__controls-button:hover {
+  background: var(--color-raised);
+}
 
 /* 富文本字段的排版（编辑区和只读显示共用）。 */
 .rich-text p,
@@ -158,7 +351,7 @@
   padding-left: 1.25rem;
 }
 .rich-text a {
-  color: var(--color-brand-500);
+  color: var(--color-accent);
   text-decoration: underline;
 }
 .rich-text h1 {

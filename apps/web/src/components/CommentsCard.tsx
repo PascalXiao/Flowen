@@ -1,10 +1,10 @@
-import { Popconfirm } from "@douyinfe/semi-ui";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
 import { type FormEvent, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { cn, newId } from "@/lib/utils";
 
 interface CommentRow {
@@ -100,7 +100,7 @@ function Composer({
                   onClick={() => setMentions((prev) => (on ? prev.filter((u) => u !== m.userId) : [...prev, m.userId]))}
                   className={cn(
                     "h-6 cursor-pointer rounded-md px-1.5 text-xs transition-colors",
-                    on ? "bg-brand-100 text-brand-600" : "text-fg-muted hover:bg-hover",
+                    on ? "bg-brand-100 text-accent" : "text-fg-muted hover:bg-hover",
                   )}
                 >
                   @{m.name}
@@ -207,11 +207,11 @@ export function CommentsCard({
           )}
           {editing !== c.id && (
             <div className="flex gap-3 text-xs text-fg-subtle opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-              <button type="button" className="cursor-pointer hover:text-brand-500" onClick={() => setReplying(c)}>
+              <button type="button" className="cursor-pointer hover:text-accent" onClick={() => setReplying(c)}>
                 回复
               </button>
               {mine && (
-                <button type="button" className="cursor-pointer hover:text-brand-500" onClick={() => setEditing(c.id)}>
+                <button type="button" className="cursor-pointer hover:text-accent" onClick={() => setEditing(c.id)}>
                   编辑
                 </button>
               )}

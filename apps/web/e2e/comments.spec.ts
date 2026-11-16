@@ -80,7 +80,7 @@ test("reply in a thread, edit and delete your own comment", async ({ page }) => 
   // 删除一级评论：留下占位，回复还在
   await root.hover();
   await root.getByRole("button", { name: "删除" }).first().click();
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "删除" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "删除" }).click();
   await expect(list).toContainText("该评论已删除");
   await expect(reply).toContainText("包材也一起定");
   await expect(tabs.getByRole("tab", { name: "评论 1" })).toBeVisible();

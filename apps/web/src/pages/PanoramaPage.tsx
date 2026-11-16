@@ -190,7 +190,7 @@ function PanoramaTable({ items, spaces }: { items: readonly Item[]; spaces: Sour
                 {g.rows.map((w) => (
                   <tr key={w.id} className="border-b border-line-subtle last:border-0 hover:bg-hover/40">
                     <td className="h-9 max-w-72 truncate px-4">
-                      <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-brand-500 hover:underline">
+                      <Link to="/items/$itemId" params={{ itemId: w.id }} className="text-accent hover:underline">
                         {w.name}
                       </Link>
                     </td>

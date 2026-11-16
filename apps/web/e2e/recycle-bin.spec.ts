@@ -11,7 +11,7 @@ test("delete work items into the recycle bin, recover one and purge another", as
 
   // 详情页里删除：回到列表，列表里没有了
   await page.getByRole("button", { name: "删除", exact: true }).click();
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "删除" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "删除" }).click();
   await expect(page.getByText("已删除「乳液立项」，可以在回收站里恢复")).toBeVisible();
   const grid = page.getByRole("grid");
   await expect(grid.getByRole("row").filter({ hasText: "精华立项" })).toBeVisible();
@@ -20,7 +20,7 @@ test("delete work items into the recycle bin, recover one and purge another", as
   // 列表里勾选批量删除
   await grid.getByRole("row").filter({ hasText: "精华立项" }).getByRole("checkbox").check();
   await page.getByRole("group", { name: "批量操作" }).getByRole("button", { name: "删除" }).click();
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "删除" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "删除" }).click();
   await expect(page.getByText("已删除 1 项")).toBeVisible();
   await expect(grid.getByRole("row").filter({ hasText: "精华立项" })).toHaveCount(0);
   await expect(grid.getByRole("row").filter({ hasText: "面霜立项" })).toBeVisible();
@@ -33,7 +33,7 @@ test("delete work items into the recycle bin, recover one and purge another", as
   await bin.getByRole("button", { name: "恢复 乳液立项" }).click();
   await expect(page.getByText("已恢复「乳液立项」")).toBeVisible();
   await bin.getByRole("button", { name: "彻底删除 精华立项" }).click();
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "彻底删除" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "彻底删除" }).click();
   await expect(page.getByText("已彻底删除「精华立项」")).toBeVisible();
   await expect(page.getByText("回收站是空的")).toBeVisible();
 

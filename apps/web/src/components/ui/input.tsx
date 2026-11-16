@@ -1,43 +1,70 @@
-import { Input as SemiInput, Select as SemiSelect, TextArea as SemiTextArea } from "@douyinfe/semi-ui";
+import * as RadixSelect from "@radix-ui/react-select";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { popupSurface } from "./popover";
 
-/**
- * 输入框（Semi Input）。对外仍是原生 input 的属性：onChange 收到原生事件，name、required 照常进表单。
- * className 加在 Semi 的外层容器上。
- */
-export function Input({
-  className,
+/** 输入类控件共用的外观：28px 高、细描边，聚焦时描边变强调色。 */
+export const fieldSurface =
+  "rounded-md border border-line bg-surface text-fg text-sm outline-none transition-[border-color,box-shadow] placeholder:text-fg-subtle hover:border-fg-disabled focus:border-accent focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-raised disabled:text-fg-disabled disabled:hover:border-line";
+
+/** 输入框：原生 input。 */
+export function Input({ className, ...props }: Omit<React.ComponentProps<"input">, "size" | "prefix">) {
+  return <input className={cn(fieldSurface, "h-7 w-full min-w-0 px-2 read-only:bg-raised", className)} {...props} />;
+}
+
+/** 搜索框：前面是放大镜，有内容时右边出现清除按钮。 */
+export function SearchInput({
+  value,
   onChange,
-  readOnly,
+  className,
   ...props
-}: Omit<React.ComponentProps<"input">, "size" | "prefix">) {
+}: Omit<React.ComponentProps<"input">, "value" | "onChange" | "size" | "prefix"> & {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    <SemiInput
-      {...(props as Record<string, unknown>)}
-      // Semi 的只读属性叫 readonly
-      readonly={readOnly}
-      className={className}
-      onChange={(_value, e) => onChange?.(e)}
+    <span className={cn("relative inline-flex w-56 items-center", className)}>
+      <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-fg-subtle" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          fieldSurface,
+          "h-7 w-full min-w-0 border-transparent bg-raised pr-7 pl-7 hover:border-line focus:bg-surface",
+        )}
+        {...props}
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label="清除"
+          className="absolute right-1.5 inline-flex size-4 items-center justify-center rounded-full text-fg-subtle hover:bg-pressed hover:text-fg"
+          onClick={() => onChange("")}
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** 多行输入框：原生 textarea，至少三行，随内容长高。 */
+export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      className={cn(
+        fieldSurface,
+        "field-sizing-content block min-h-[4.75rem] w-full min-w-0 resize-y px-2 py-1.5 read-only:bg-raised",
+        className,
+      )}
+      {...props}
     />
   );
 }
 
-/** 多行输入框（Semi TextArea），onChange 同样收到原生事件。 */
-export function Textarea({ className, onChange, readOnly, ...props }: React.ComponentProps<"textarea">) {
-  return (
-    <SemiTextArea
-      {...(props as Record<string, unknown>)}
-      readonly={readOnly}
-      autosize={{ minRows: 3 }}
-      className={className}
-      // Semi 把事件类型标成了 MouseEvent，实际收到的是 textarea 的 change 事件
-      onChange={(_value, e) => onChange?.(e as unknown as React.ChangeEvent<HTMLTextAreaElement>)}
-    />
-  );
-}
-
-/** 外层 Label / Field 的文字：Semi 的下拉框不是原生表单控件，包在 label 里也取不到名字，要自己带上。 */
+/** 外层 Label / Field 的文字：下拉框不是原生表单控件，包在 label 里也取不到名字，要自己带上。 */
 const LabelText = React.createContext<string | undefined>(undefined);
 
 /** 取 children 里直接写的文字（不进到子元素里）。 */
@@ -52,7 +79,7 @@ function ownText(children: React.ReactNode): string | undefined {
 type OptionNode = { value: string; label: React.ReactNode; disabled?: boolean };
 type GroupNode = { label: string; options: OptionNode[] };
 
-/** 把写在 Select 里的 <option>、<optgroup> 读成 Semi 的选项。 */
+/** 把写在 Select 里的 <option>、<optgroup> 读成选项。 */
 function readOptions(children: React.ReactNode): (OptionNode | GroupNode)[] {
   const out: (OptionNode | GroupNode)[] = [];
   React.Children.forEach(children, (child) => {
@@ -71,8 +98,13 @@ function readOptions(children: React.ReactNode): (OptionNode | GroupNode)[] {
   return out;
 }
 
+/** Radix 的选项值不能是空字符串，「未选择」这类空值在内部换成这个记号。 */
+const EMPTY = "__empty__";
+const encode = (value: string) => (value === "" ? EMPTY : value);
+const decode = (value: string) => (value === EMPTY ? "" : value);
+
 /**
- * 下拉框（Semi Select）。写法和原生 select 一样：里面放 <option>，onChange 收到 { target: { value } }，
+ * 下拉框。写法和原生 select 一样：里面放 <option>，onChange 收到 { target: { value } }，
  * 有 name 时带一个隐藏输入框，表单提交照常能取到值。选项上带 data-value，测试按值选也能找到。
  */
 export function Select({
@@ -88,46 +120,76 @@ export function Select({
   ...rest
 }: Omit<React.ComponentProps<"select">, "value" | "defaultValue"> & { value?: string; defaultValue?: string }) {
   const labelText = React.useContext(LabelText);
-  // Semi 选中后会把 aria-label 改成 "selected"，用 aria-labelledby 指向一段隐藏文字保住名字
-  const labelId = React.useId();
   const accessibleName = ariaLabel ?? labelText;
   const options = readOptions(children);
   const flat = options.flatMap((o) => ("options" in o ? o.options : [o]));
   const [own, setOwn] = React.useState(defaultValue ?? flat[0]?.value ?? "");
   const current = value ?? own;
   const renderOption = (o: OptionNode) => (
-    <SemiSelect.Option key={o.value} value={o.value} disabled={o.disabled}>
-      <span data-value={o.value}>{o.label}</span>
-    </SemiSelect.Option>
+    <RadixSelect.Item
+      key={o.value}
+      value={encode(o.value)}
+      disabled={o.disabled}
+      className="relative flex min-h-7 cursor-pointer select-none items-center rounded-md py-1 pr-7 pl-2 outline-none data-[disabled]:cursor-not-allowed data-[highlighted]:bg-hover data-[disabled]:text-fg-disabled"
+    >
+      <RadixSelect.ItemText>
+        <span data-value={o.value}>{o.label}</span>
+      </RadixSelect.ItemText>
+      <RadixSelect.ItemIndicator className="absolute right-2 text-accent">
+        <Check className="size-3.5" />
+      </RadixSelect.ItemIndicator>
+    </RadixSelect.Item>
   );
   return (
     <span className={cn("inline-flex min-w-0", className)} {...(rest as Record<string, unknown>)}>
-      <SemiSelect
-        aria-labelledby={accessibleName ? labelId : undefined}
-        className="w-full min-w-24"
-        value={current}
+      <RadixSelect.Root
+        value={encode(current)}
         disabled={disabled}
-        onChange={(v) => {
-          const next = String(v ?? "");
+        onValueChange={(v) => {
+          const next = decode(v);
           if (value === undefined) setOwn(next);
           onChange?.({ target: { value: next }, currentTarget: { value: next } } as never);
         }}
       >
-        {options.map((o) =>
-          "options" in o ? (
-            <SemiSelect.OptGroup key={o.label} label={o.label}>
-              {o.options.map(renderOption)}
-            </SemiSelect.OptGroup>
-          ) : (
-            renderOption(o)
-          ),
-        )}
-      </SemiSelect>
-      {accessibleName && (
-        <span id={labelId} hidden>
-          {accessibleName}
-        </span>
-      )}
+        <RadixSelect.Trigger
+          aria-label={accessibleName}
+          className={cn(
+            fieldSurface,
+            "flex h-7 w-full min-w-24 cursor-pointer items-center justify-between gap-1 pr-1.5 pl-2 text-left data-[state=open]:border-accent",
+          )}
+        >
+          <span className="min-w-0 truncate">
+            <RadixSelect.Value>{flat.find((o) => o.value === current)?.label ?? ""}</RadixSelect.Value>
+          </span>
+          <RadixSelect.Icon className="shrink-0 text-fg-subtle">
+            <ChevronDown className="size-3.5" />
+          </RadixSelect.Icon>
+        </RadixSelect.Trigger>
+        <RadixSelect.Portal>
+          <RadixSelect.Content
+            position="popper"
+            sideOffset={4}
+            collisionPadding={8}
+            className={cn(
+              popupSurface,
+              "max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) overflow-hidden",
+            )}
+          >
+            <RadixSelect.Viewport className="p-1">
+              {options.map((o) =>
+                "options" in o ? (
+                  <RadixSelect.Group key={o.label}>
+                    <RadixSelect.Label className="px-2 pt-1.5 pb-1 text-fg-subtle text-xs">{o.label}</RadixSelect.Label>
+                    {o.options.map(renderOption)}
+                  </RadixSelect.Group>
+                ) : (
+                  renderOption(o)
+                ),
+              )}
+            </RadixSelect.Viewport>
+          </RadixSelect.Content>
+        </RadixSelect.Portal>
+      </RadixSelect.Root>
       {name && <input type="hidden" name={name} value={current} required={required} />}
     </span>
   );
@@ -137,7 +199,7 @@ export function Label({ className, children, ...props }: React.ComponentProps<"l
   return (
     <LabelText.Provider value={ownText(children)}>
       {/* biome-ignore lint/a11y/noLabelWithoutControl: 控件由调用方通过 htmlFor 或嵌套关联 */}
-      <label className={cn("text-sm text-fg-muted", className)} {...props}>
+      <label className={cn("text-fg-muted text-sm", className)} {...props}>
         {children}
       </label>
     </LabelText.Provider>
@@ -160,7 +222,7 @@ export function Field({
     <Label className={cn("flex flex-col gap-1.5", className)}>
       <span>{label}</span>
       <LabelText.Provider value={typeof label === "string" ? label : undefined}>{children}</LabelText.Provider>
-      {hint && <span className="text-xs text-fg-subtle">{hint}</span>}
+      {hint && <span className="text-fg-subtle text-xs">{hint}</span>}
     </Label>
   );
 }

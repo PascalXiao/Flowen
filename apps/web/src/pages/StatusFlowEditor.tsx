@@ -121,7 +121,7 @@ export function StatusFlowEditor({
           <Link
             to="/spaces/$spaceId/setting/$tab"
             params={{ spaceId: type.spaceId, tab: "workObjectSetting" }}
-            className="hover:text-brand-500"
+            className="hover:text-accent"
           >
             空间配置
           </Link>
@@ -130,7 +130,7 @@ export function StatusFlowEditor({
             to="/spaces/$spaceId/setting/workObject/$typeKey"
             params={{ spaceId: type.spaceId, typeKey: type.key }}
             search={{ menuTab: "workflow" }}
-            className="hover:text-brand-500"
+            className="hover:text-accent"
           >
             {type.name}
           </Link>
@@ -263,7 +263,7 @@ export function StatusFlowEditor({
                               className={cn(
                                 "h-6 rounded-full border px-2.5 text-xs",
                                 on
-                                  ? "border-brand-500 bg-brand-50 text-brand-500"
+                                  ? "border-accent bg-brand-50 text-accent"
                                   : "border-line text-fg-muted hover:bg-hover",
                               )}
                               onClick={() => {

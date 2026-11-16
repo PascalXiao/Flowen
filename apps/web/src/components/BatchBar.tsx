@@ -1,11 +1,14 @@
-import { Popconfirm, Popover, Toast } from "@douyinfe/semi-ui";
 import type { FieldDataType } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
 import { useState } from "react";
 import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { fieldSurface, Select } from "@/components/ui/input";
+import { Popconfirm } from "@/components/ui/popconfirm";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 /** 不能批量改的字段：关联、公式、附件、字段组由各自的地方维护。 */
 const NOT_BATCH: readonly FieldDataType[] = ["relation", "formula", "attachment", "fieldGroup", "multiPerson", "vote"];
@@ -112,16 +115,15 @@ export function BatchBar({
     >
       <span className="mr-1">已选 {items.length} 项</span>
       {editable.length > 0 && (
-        <Popover
-          trigger="custom"
-          visible={editOpen}
-          onClickOutSide={() => setEditOpen(false)}
-          position="bottomRight"
-          content={editPanel}
-        >
-          <Button size="sm" variant="ghost" onClick={() => setEditOpen((v) => !v)}>
-            修改字段
-          </Button>
+        <Popover open={editOpen} onOpenChange={setEditOpen}>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="ghost">
+              修改字段
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="p-0">
+            {editPanel}
+          </PopoverContent>
         </Popover>
       )}
       <Button
@@ -147,7 +149,7 @@ export function BatchBar({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="终止原因（选填）"
-              className="semi-input-wrapper mt-1 h-8 w-64 rounded-md border border-line px-2"
+              className={cn(fieldSurface, "mt-1 h-7 w-64 px-2")}
             />
           }
           okText="终止"

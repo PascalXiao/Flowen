@@ -145,14 +145,14 @@ export async function closeTypeConfig(page: Page) {
 }
 
 /**
- * 在下拉框（Semi Select）里选一项：先点开，再点选项。
+ * 在下拉框里选一项：先点开，再点选项。
  * 传字符串时按选项的值或文字找，传 { label } 时只按文字找。
  */
 export async function choose(select: Locator, option: string | { label: string }) {
   const page = select.page();
   const combobox = (await select.getAttribute("role")) === "combobox" ? select : select.getByRole("combobox");
   await combobox.click();
-  const options = page.locator(".semi-select-option:visible");
+  const options = page.locator("[role=option]:visible");
   const exact = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
   const target =
     typeof option === "string"

@@ -1,4 +1,3 @@
-import { Popconfirm } from "@douyinfe/semi-ui";
 import { nodeFlowOf } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
@@ -9,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Popconfirm } from "@/components/ui/popconfirm";
 import { newId } from "@/lib/utils";
 
 type Kind = "field" | "nodeDrive" | "nodeSchedule";

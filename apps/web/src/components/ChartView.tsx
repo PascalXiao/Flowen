@@ -144,7 +144,7 @@ function Indicator({ data, label }: { data: ChartData; label: string }) {
         <button
           type="button"
           aria-label={`查看明细：${fmt(data.total)}`}
-          className="cursor-pointer rounded hover:text-brand-500"
+          className="cursor-pointer rounded hover:text-accent"
           onClick={() => pick({})}
         >
           {value}
@@ -494,7 +494,7 @@ function DataTable({ data, label }: { data: ChartData; label: string }) {
       <button
         type="button"
         aria-label={`查看明细：${name} ${text}`}
-        className="cursor-pointer tabular-nums hover:text-brand-500 hover:underline"
+        className="cursor-pointer tabular-nums hover:text-accent hover:underline"
         onClick={() => pick(drill)}
       >
         {text}

@@ -31,7 +31,7 @@ export function SpacesPage() {
                 <Link
                   to="/spaces/$spaceId"
                   params={{ spaceId: space.id }}
-                  className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface p-4 shadow-card transition-colors hover:border-brand-300"
+                  className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface p-4 shadow-card transition-colors hover:border-accent"
                 >
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-base font-semibold text-violet-600">
                     {space.name.slice(0, 1)}

@@ -1,4 +1,4 @@
-import { Checkbox, SideSheet, Toast } from "@douyinfe/semi-ui";
+import { Checkbox, SideSheet } from "@douyinfe/semi-ui";
 import {
   applyDefaults,
   availableOptions,
@@ -32,6 +32,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
 import { Segmented, Tabs } from "@/components/ui/tabs";
+import { Toast } from "@/components/ui/toast";
 import { type ListDisplay, WorkItemList } from "@/components/WorkItemList";
 import { env } from "@/lib/env";
 import { withLineOptions } from "@/lib/fields";
@@ -120,7 +121,7 @@ export function WorkItemHomePage() {
               <Link
                 to="/spaces/$spaceId/$typeKey/detail/$itemId"
                 params={{ spaceId, typeKey, itemId: openItem }}
-                className="text-brand-500"
+                className="text-accent"
               >
                 全屏打开
               </Link>
@@ -240,7 +241,7 @@ function ViewList({
                   <button
                     type="button"
                     onClick={() => onOpen(v.id)}
-                    className="cursor-pointer text-fg hover:text-brand-500"
+                    className="cursor-pointer text-fg hover:text-accent"
                   >
                     {v.name}
                   </button>
@@ -647,7 +648,7 @@ function CreateWorkItemForm({
                 // biome-ignore lint/suspicious/noArrayIndexKey: 提示文字没有 id，按位置渲染
                 key={i}
                 role="note"
-                className="rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-600 sm:col-span-2"
+                className="rounded-md bg-brand-50 px-3 py-2 text-sm text-accent sm:col-span-2"
               >
                 {item.kind === "text" ? item.text : ""}
               </p>

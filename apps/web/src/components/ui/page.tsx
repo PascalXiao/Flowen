@@ -19,21 +19,21 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("flex flex-col gap-1 border-b border-line-subtle bg-surface px-6 pt-4 pb-3", className)}>
-      {breadcrumb && <div className="flex items-center gap-1 text-xs text-fg-subtle">{breadcrumb}</div>}
-      <div className="flex min-h-8 items-center gap-3">
-        <h1 className="truncate text-xl font-semibold">{title}</h1>
+    <header className={cn("flex shrink-0 flex-col gap-0.5 border-line-subtle border-b px-5 pt-3 pb-2.5", className)}>
+      {breadcrumb && <div className="flex items-center gap-1 text-fg-subtle text-xs">{breadcrumb}</div>}
+      <div className="flex min-h-7 items-center gap-3">
+        <h1 className="truncate font-semibold text-[16px] tracking-[-0.01em]">{title}</h1>
         {children}
         {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
-      {tabs && <div className="-mb-3">{tabs}</div>}
+      {tabs && <div className="-mb-2.5 -ml-2">{tabs}</div>}
     </header>
   );
 }
 
-/** 页面主体：灰底上居中的内容区。 */
+/** 页面主体：居中的内容区。 */
 export function PageBody({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("mx-auto flex w-full max-w-6xl flex-col gap-4 p-6", className)} {...props} />;
+  return <div className={cn("mx-auto flex w-full max-w-6xl flex-col gap-4 p-5", className)} {...props} />;
 }
 
 /** 空状态：说明为什么是空的、下一步做什么。 */
@@ -50,7 +50,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn("flex flex-col items-center gap-2 px-6 py-12 text-center", className)}>
-      <p className="text-base font-medium">{title}</p>
+      <p className="font-medium text-sm">{title}</p>
       {description && <p className="max-w-md text-sm text-fg-subtle">{description}</p>}
       {action && <div className="pt-2">{action}</div>}
     </div>
@@ -95,7 +95,7 @@ export function Panel({
 }: Omit<React.ComponentProps<"section">, "title"> & { title: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <section
-      className={cn("flex flex-col gap-3 border-b border-line-subtle px-5 py-4 last:border-b-0", className)}
+      className={cn("flex flex-col gap-2.5 border-line-subtle border-b px-5 py-4 last:border-b-0", className)}
       {...props}
     >
       <div className="flex items-center justify-between gap-2">

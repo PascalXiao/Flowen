@@ -183,7 +183,7 @@ function RelationGroup({
 
 function ItemLink({ item }: { item: ItemRef }) {
   return (
-    <Link to="/items/$itemId" params={{ itemId: item.id }} className="truncate text-brand-500 hover:text-brand-600">
+    <Link to="/items/$itemId" params={{ itemId: item.id }} className="truncate text-accent hover:text-accent">
       {item.name}
     </Link>
   );

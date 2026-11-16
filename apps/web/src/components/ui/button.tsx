@@ -2,27 +2,23 @@ import { Slot } from "@radix-ui/react-slot";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-/**
- * 按钮：用 Semi Button 的样式类渲染原生 button，外观与 Semi 一致，
- * 同时保留 ref 和 asChild（弹出层的触发器、链接按钮都靠这两样）。
- */
 const VARIANTS = {
   /** 主按钮：一个区域最多一个。 */
-  default: "semi-button-primary",
-  /** 次按钮：灰底。 */
-  outline: "semi-button-tertiary semi-button-light",
+  default: "bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700",
+  /** 次按钮：描边。 */
+  outline: "border border-line bg-surface text-fg hover:bg-raised active:bg-pressed",
   /** 文字按钮：工具栏、行内操作。 */
-  ghost: "semi-button-tertiary semi-button-borderless",
-  link: "semi-button-primary semi-button-borderless h-auto! p-0! hover:underline",
-  danger: "semi-button-danger",
+  ghost: "text-fg-muted hover:bg-hover hover:text-fg active:bg-pressed",
+  link: "h-auto! rounded-sm p-0! font-normal text-accent hover:underline",
+  danger: "bg-danger-500 text-white hover:opacity-90 active:opacity-80",
 } as const;
 
 const SIZES = {
-  default: "",
-  sm: "semi-button-size-small",
-  lg: "semi-button-size-large",
-  icon: "semi-button-with-icon-only w-8 px-0!",
-  "icon-sm": "semi-button-size-small semi-button-with-icon-only w-6 px-0!",
+  default: "h-7 px-2.5",
+  sm: "h-6 px-2 text-xs",
+  lg: "h-8 px-3.5",
+  icon: "size-7 px-0",
+  "icon-sm": "size-6 px-0",
 } as const;
 
 export function buttonVariants({
@@ -37,10 +33,10 @@ export function buttonVariants({
   className?: string;
 } = {}) {
   return cn(
-    "semi-button gap-1.5 [&_svg]:size-4 [&_svg]:shrink-0",
+    "inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium text-sm transition-colors [&_svg]:size-[15px] [&_svg]:shrink-0",
     VARIANTS[variant ?? "default"],
     SIZES[size ?? "default"],
-    disabled && "semi-button-disabled",
+    disabled && "pointer-events-none cursor-not-allowed opacity-50",
     className,
   );
 }
@@ -68,7 +64,7 @@ export function Button({
   }
   return (
     <button className={cls} type={type ?? "button"} {...props}>
-      <span className="semi-button-content inline-flex items-center gap-1.5">{children}</span>
+      {children}
     </button>
   );
 }

@@ -5,6 +5,14 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Flowen</title>
+    <script>
+      // 页面画出来之前先定好浅色还是深色，避免闪一下（完整逻辑见 src/lib/theme.ts）
+      (() => {
+        const saved = localStorage.getItem("flowen-theme");
+        const dark = saved === "dark" || (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

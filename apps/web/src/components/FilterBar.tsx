@@ -130,7 +130,7 @@ export function FilterBar({
   const tab = (active: boolean) =>
     cn(
       "inline-flex h-7 cursor-pointer items-center rounded-md px-2.5 text-sm transition-colors",
-      active ? "bg-brand-50 font-medium text-brand-500" : "text-fg-muted hover:bg-hover hover:text-fg",
+      active ? "bg-brand-50 font-medium text-accent" : "text-fg-muted hover:bg-hover hover:text-fg",
     );
 
   return (
@@ -334,7 +334,7 @@ function FieldFilters({
         <span
           // biome-ignore lint/suspicious/noArrayIndexKey: 条件没有自己的 id，按位置删除
           key={i}
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-brand-50 pr-1 pl-2.5 text-sm text-brand-500"
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-brand-50 pr-1 pl-2.5 text-sm text-accent"
         >
           {describe(filter)}
           <button

@@ -162,7 +162,7 @@ export function MyWorkPage() {
       {e.taskId && view === "todo" ? (
         <Checkbox
           aria-label={`完成子任务：${e.title}`}
-          className="size-3.5 accent-brand-500"
+          className="size-3.5 accent-accent"
           onChange={() => zero.mutate(mutators.task.setDone({ id: e.taskId as string, done: true }))}
         />
       ) : (
@@ -175,7 +175,7 @@ export function MyWorkPage() {
       <Link
         to="/items/$itemId"
         params={{ itemId: e.itemId }}
-        className="min-w-0 truncate text-fg-muted hover:text-brand-500"
+        className="min-w-0 truncate text-fg-muted hover:text-accent"
       >
         {e.itemName}
         {e.nodeName && ` · ${e.nodeName}`}
@@ -212,8 +212,8 @@ export function MyWorkPage() {
               aria-label={`${s.label} ${s.value}`}
               onClick={() => pick(s.key)}
               className={cn(
-                "flex cursor-pointer flex-col items-start gap-1 rounded-lg border bg-surface px-4 py-3 text-left transition-colors hover:border-brand-300",
-                isActive(s.key) ? "border-brand-500 ring-2 ring-brand-50" : "border-line-subtle",
+                "flex cursor-pointer flex-col items-start gap-1 rounded-lg border bg-surface px-4 py-3 text-left transition-colors hover:border-accent",
+                isActive(s.key) ? "border-accent ring-2 ring-brand-50" : "border-line-subtle",
               )}
             >
               <span className="text-xs text-fg-muted">{s.label}</span>

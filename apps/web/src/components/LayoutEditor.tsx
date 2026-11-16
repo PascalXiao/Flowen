@@ -165,7 +165,7 @@ export function LayoutEditor({
                 aria-selected={t.key === tab?.key}
                 className={cn(
                   "h-7 rounded-md border px-2.5",
-                  t.key === tab?.key ? "border-brand-500 bg-brand-50 text-brand-500" : "border-line hover:bg-hover",
+                  t.key === tab?.key ? "border-accent bg-brand-50 text-accent" : "border-line hover:bg-hover",
                 )}
                 onClick={() => setTabKey(t.key)}
               >

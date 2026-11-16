@@ -83,7 +83,7 @@ export function NodeTasks({
             <li key={task.id} className="group flex h-8 items-center gap-2 rounded-md px-1 hover:bg-hover/60">
               <Checkbox
                 aria-label={`完成子任务：${task.name}`}
-                className="size-3.5 accent-brand-500"
+                className="size-3.5 accent-accent"
                 checked={task.done === true}
                 disabled={readOnly}
                 onChange={(e) => run(mutators.task.setDone({ id: task.id, done: e.target.checked }))}
@@ -124,7 +124,7 @@ export function NodeTasks({
                       key={m.userId}
                       type="button"
                       aria-pressed={m.userId === task.assigneeId}
-                      className="flex h-8 w-full items-center gap-2 rounded px-2 text-left hover:bg-hover aria-pressed:text-brand-500"
+                      className="flex h-8 w-full items-center gap-2 rounded px-2 text-left hover:bg-hover aria-pressed:text-accent"
                       onClick={() =>
                         run(
                           mutators.task.update({

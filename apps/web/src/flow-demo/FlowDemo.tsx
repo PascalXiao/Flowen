@@ -18,7 +18,7 @@ const F = demoSample.F;
 
 const STATE_STYLE: Record<NodeState, string> = {
   notStarted: "bg-surface border-line text-fg-muted",
-  inProgress: "bg-brand-50 border-brand-500 text-brand-600 ring-2 ring-brand-100 cursor-pointer",
+  inProgress: "bg-brand-50 border-accent text-accent ring-2 ring-brand-100 cursor-pointer",
   completed: "bg-success-50 border-success-500 text-success-600",
   skipped: "bg-canvas border-dashed border-line text-fg-subtle line-through",
 };
@@ -207,7 +207,7 @@ export function FlowDemo() {
               <input
                 id={`toggle-${t.field}`}
                 type="checkbox"
-                className="size-4 accent-brand-500"
+                className="size-4 accent-accent"
                 checked={fields[t.field] === t.on}
                 onChange={(e) => toggle(t.field, e.target.checked ? t.on : t.off)}
               />

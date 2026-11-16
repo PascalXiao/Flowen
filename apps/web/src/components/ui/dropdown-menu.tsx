@@ -1,95 +1,86 @@
-import { Dropdown } from "@douyinfe/semi-ui";
-import * as React from "react";
+import * as RadixMenu from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
+import type * as React from "react";
 import { cn } from "@/lib/utils";
-import { semiPosition } from "./popover";
+import { popupSurface } from "./popover";
 
-/**
- * 下拉菜单（Semi Dropdown），沿用 DropdownMenu / Trigger / Content / Item / Label / Separator 的组合写法。
- */
-type TriggerProps = React.ComponentProps<"button"> & { asChild?: boolean };
-type ContentProps = {
+/** 下拉菜单，组合写法：DropdownMenu / Trigger / Content / Item / Label / Separator。 */
+export function DropdownMenu({ children }: { children: React.ReactNode }) {
+  return <RadixMenu.Root modal={false}>{children}</RadixMenu.Root>;
+}
+
+export function DropdownMenuTrigger({
+  asChild,
+  type,
+  ...props
+}: React.ComponentProps<"button"> & { asChild?: boolean }) {
+  return <RadixMenu.Trigger asChild={asChild} type={asChild ? undefined : (type ?? "button")} {...props} />;
+}
+
+export function DropdownMenuContent({
+  className,
+  align = "start",
+  side = "bottom",
+  children,
+}: {
   className?: string;
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   children?: React.ReactNode;
-};
-
-const CloseMenu = React.createContext<() => void>(() => {});
-
-export function DropdownMenuTrigger(_: TriggerProps): React.ReactNode {
-  return null;
-}
-export function DropdownMenuContent(_: ContentProps): React.ReactNode {
-  return null;
-}
-
-export function DropdownMenu({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
-  let trigger: React.ReactElement<TriggerProps> | undefined;
-  let content: React.ReactElement<ContentProps> | undefined;
-  React.Children.forEach(children, (child) => {
-    if (!React.isValidElement(child)) return;
-    if (child.type === DropdownMenuTrigger) trigger = child as React.ReactElement<TriggerProps>;
-    if (child.type === DropdownMenuContent) content = child as React.ReactElement<ContentProps>;
-  });
-  const { asChild: _asChild, children: triggerChildren, ...triggerProps } = trigger?.props ?? {};
+}) {
   return (
-    <CloseMenu.Provider value={() => setOpen(false)}>
-      <Dropdown
-        visible={open}
-        trigger="custom"
-        motion={false}
-        onClickOutSide={() => setOpen(false)}
-        position={semiPosition(content?.props.side, content?.props.align) as never}
-        render={
-          <CloseMenu.Provider value={() => setOpen(false)}>
-            <Dropdown.Menu className={cn("min-w-40", content?.props.className)}>
-              {content?.props.children}
-            </Dropdown.Menu>
-          </CloseMenu.Provider>
-        }
+    <RadixMenu.Portal>
+      <RadixMenu.Content
+        align={align}
+        side={side}
+        sideOffset={4}
+        collisionPadding={8}
+        className={cn(
+          popupSurface,
+          "max-h-(--radix-dropdown-menu-content-available-height) min-w-40 overflow-auto p-1",
+          className,
+        )}
       >
-        <button type="button" aria-expanded={open} {...triggerProps} onClick={() => setOpen(!open)}>
-          {triggerChildren}
-        </button>
-      </Dropdown>
-    </CloseMenu.Provider>
+        {children}
+      </RadixMenu.Content>
+    </RadixMenu.Portal>
   );
 }
 
 export function DropdownMenuItem({
   asChild,
   onSelect,
+  active,
   className,
   children,
 }: {
   asChild?: boolean;
   onSelect?: () => void;
+  /** 当前选中的那一项：强调色加对勾。 */
+  active?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
-  const close = React.useContext(CloseMenu);
   return (
-    <Dropdown.Item
-      className={cn("gap-2 [&_svg]:size-4 [&_svg]:text-fg-muted", asChild && "p-0!", className)}
-      onClick={() => {
-        onSelect?.();
-        close();
-      }}
+    <RadixMenu.Item
+      asChild={asChild}
+      onSelect={() => onSelect?.()}
+      className={cn(
+        "flex h-7 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-sm outline-none data-[highlighted]:bg-hover [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:text-fg-subtle",
+        active && "font-medium text-accent",
+        className,
+      )}
     >
-      {asChild && React.isValidElement<{ className?: string }>(children)
-        ? React.cloneElement(children, {
-            className: cn("flex w-full items-center gap-2 px-3 py-2", children.props.className),
-          })
-        : children}
-    </Dropdown.Item>
+      {children}
+      {active && !asChild && <Check aria-hidden className="ml-auto text-accent!" />}
+    </RadixMenu.Item>
   );
 }
 
 export function DropdownMenuLabel({ children }: { children: React.ReactNode }) {
-  return <Dropdown.Title>{children}</Dropdown.Title>;
+  return <RadixMenu.Label className="px-2 pt-1.5 pb-1 text-fg-subtle text-xs">{children}</RadixMenu.Label>;
 }
 
 export function DropdownMenuSeparator() {
-  return <Dropdown.Divider />;
+  return <RadixMenu.Separator className="-mx-1 my-1 h-px bg-line-subtle" />;
 }

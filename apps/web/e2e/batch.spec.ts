@@ -51,7 +51,7 @@ test("batch edit a field, terminate and restore selected rows", async ({ page })
   // 批量终止，再批量恢复
   await bar.getByRole("button", { name: "终止" }).click();
   await page.getByLabel("终止原因").fill("方案调整");
-  await page.locator(".semi-popconfirm").getByRole("button", { name: "终止" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "终止" }).click();
   await expect(page.getByText("已终止 2 项")).toBeVisible();
   await expect(bar.getByRole("button", { name: "终止" })).toHaveCount(0);
   await bar.getByRole("button", { name: "恢复" }).click();

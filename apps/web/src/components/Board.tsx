@@ -220,7 +220,7 @@ export function Board({
               to="/items/$itemId"
               params={{ itemId: item.id }}
               draggable={false}
-              className="font-medium hover:text-brand-500"
+              className="font-medium hover:text-accent"
             >
               {item.name}
             </Link>
@@ -278,7 +278,7 @@ export function Board({
             aria-label={`${column.name}列`}
             className={cn(
               "flex w-72 shrink-0 flex-col gap-2 rounded-lg bg-canvas p-2",
-              over === column.key && "ring-2 ring-brand-300",
+              over === column.key && "ring-2 ring-accent",
             )}
             {...dropProps(column.key)}
           >

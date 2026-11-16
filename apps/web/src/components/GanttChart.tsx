@@ -305,7 +305,7 @@ export function GanttChart({
                   <button
                     type="button"
                     aria-expanded={row.expanded ?? false}
-                    className="flex min-w-0 items-center gap-1 font-medium hover:text-brand-600"
+                    className="flex min-w-0 items-center gap-1 font-medium hover:text-accent"
                     onClick={() => onToggle(row.key)}
                   >
                     <span className="w-3 shrink-0 text-fg-subtle">{row.expanded ? "▾" : "▸"}</span>
