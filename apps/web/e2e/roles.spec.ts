@@ -46,7 +46,7 @@ test("business lines drive which roles appear and who is assigned by default", a
     await page.getByRole("button", { name: "添加角色" }).click();
     await expect(page.getByRole("button", { name: `配置角色 ${name}` })).toBeVisible();
   }
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
 
   // NPD：业务线是 星河（含下级）时默认是 Lin，单人
   await page.getByRole("button", { name: "配置角色 NPD" }).click();

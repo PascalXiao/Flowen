@@ -34,7 +34,7 @@ test("new field types and field rules: default value, conditional required, help
 
   // 优先级默认 P1
   await page.getByRole("button", { name: "配置字段 优先级" }).click();
-  const sheet = page.locator(".semi-sidesheet");
+  const sheet = page.locator("[data-sheet]");
   await sheet.getByRole("tablist", { name: "默认值" }).getByRole("tab", { name: "统一默认" }).click();
   await sheet.getByRole("radio", { name: "P1" }).check();
   await sheet.getByRole("button", { name: "保存" }).click();

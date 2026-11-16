@@ -1,6 +1,7 @@
 import type { Day, NodeState, WorkCalendar } from "@fp/engine";
 import { dayToIso } from "@fp/engine";
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useResolvedTheme } from "@/lib/theme";
 
 export interface GanttRow {
   key: string;
@@ -33,27 +34,27 @@ const LABEL_WIDTH = 220;
 const DAY_WIDTH = 26;
 const HANDLE = 6;
 
-/** Canvas 画不了 CSS 变量，绘制时从主题变量里取实际颜色（换主题、切暗色都跟着变）。 */
+/** Canvas 画不了 CSS 变量，绘制时从设计令牌里取实际颜色（切换浅色、深色时组件会重画）。 */
 function themeColors() {
-  const css = getComputedStyle(document.body);
+  const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
-    grid: v("--semi-color-border", "#eff0f1"),
-    weekend: v("--semi-color-fill-0", "#f5f6f7"),
-    text: v("--semi-color-text-0", "#1f2329"),
-    muted: v("--semi-color-text-2", "#8f959e"),
-    today: v("--semi-color-danger", "#f54a45"),
-    dep: v("--semi-color-disabled-text", "#bbbfc4"),
-    actual: v("--semi-color-success-hover", "#2ea121"),
+    grid: v("--fl-line", "#e9eaed"),
+    weekend: v("--fl-raised", "#f4f5f7"),
+    text: v("--fl-fg", "#15161a"),
+    muted: v("--fl-fg-subtle", "#878b95"),
+    today: v("--fl-danger", "#d5443b"),
+    dep: v("--fl-fg-disabled", "#b9bcc4"),
+    actual: v("--fl-track-done", "#8b8f99"),
     bar: {
-      notStarted: v("--semi-color-disabled-text", "#bbbfc4"),
-      inProgress: v("--semi-color-primary", "#3370ff"),
-      completed: v("--semi-color-success", "#34c724"),
-      skipped: v("--semi-color-fill-1", "#eff0f1"),
+      notStarted: v("--fl-line-strong", "#dcdee3"),
+      inProgress: v("--fl-accent-solid", "#2f66e8"),
+      completed: v("--fl-success", "#1c9a5e"),
+      skipped: v("--fl-raised", "#f4f5f7"),
     } as Record<NodeState, string>,
-    pinned: v("--semi-color-text-0", "#1f2329"),
-    critical: v("--semi-color-danger", "#f54a45"),
-    baseline: v("--semi-color-text-3", "#c9cdd4"),
+    pinned: v("--fl-fg", "#15161a"),
+    critical: v("--fl-danger", "#d5443b"),
+    baseline: v("--fl-fg-disabled", "#b9bcc4"),
   };
 }
 
@@ -80,6 +81,7 @@ export function GanttChart({
   onToggle?: (key: string) => void;
   labelTitle?: string;
 }) {
+  const theme = useResolvedTheme();
   const scroller = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLCanvasElement>(null);
   const body = useRef<HTMLCanvasElement>(null);
@@ -110,6 +112,7 @@ export function GanttChart({
   };
 
   useEffect(() => {
+    void theme; // 换主题时重画
     const COLORS = themeColors();
     const ratio = window.devicePixelRatio || 1;
     const setup = (canvas: HTMLCanvasElement | null, h: number) => {

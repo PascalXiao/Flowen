@@ -1,4 +1,3 @@
-import { SideSheet } from "@douyinfe/semi-ui";
 import type { Condition, FieldOption, RoleAssign, RoleConfig, RoleEditors } from "@fp/engine";
 import { Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -8,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { ErrorBanner } from "@/components/ui/page";
+import { Sheet } from "@/components/ui/sheet";
 import { Segmented } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -122,11 +122,12 @@ export function RoleConfigSheet({
   }
 
   return (
-    <SideSheet
-      visible
+    <Sheet
+      open
+      bodyClassName="px-5 py-4"
       title={`角色配置 · ${role.name}`}
       width={560}
-      onCancel={onClose}
+      onClose={onClose}
       footer={
         canManage && (
           <div className="flex justify-end gap-2">
@@ -297,7 +298,7 @@ export function RoleConfigSheet({
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
         </Group>
       </fieldset>
-    </SideSheet>
+    </Sheet>
   );
 }
 
