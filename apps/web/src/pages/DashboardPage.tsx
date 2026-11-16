@@ -38,8 +38,7 @@ interface Dashboard {
 }
 
 /** 新建、完成两个系列的颜色（已用配色校验脚本检查过色盲区分度和对比度）。 */
-// 和度量图表同一套分类色（主题变量在内联样式里不一定生成，直接用色值）
-const SERIES = { created: "var(--fl-accent-solid)", completed: "var(--fl-success)" } as const;
+const SERIES = { created: "var(--fl-chart-1)", completed: "var(--fl-success)" } as const;
 
 /**
  * 空间仪表盘：进行中和完成的数量、阶段和类型分布、每周新建和完成趋势、延期节点和每个人的负载。
