@@ -25,7 +25,8 @@ export function Popconfirm({
   okType?: "primary" | "danger";
   onConfirm?: () => unknown;
   disabled?: boolean;
-  children: React.ReactNode;
+  /** asChild 触发器：必须是单个元素，不能是文字或多个节点。 */
+  children: React.ReactElement;
 }) {
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
