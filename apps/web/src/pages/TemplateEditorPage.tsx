@@ -19,10 +19,23 @@ import {
   type Node,
   Position,
   ReactFlow,
+  ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
-import { ChevronRight, Plus } from "lucide-react";
+import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalSpaceAround,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalJustifyCenter,
+  AlignVerticalSpaceAround,
+  ChevronRight,
+  Group as GroupIcon,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { ConditionEditor } from "@/components/ConditionEditor";
@@ -30,7 +43,7 @@ import { flowConditionFields, NodeAdvancedEditor, StageRulesEditor } from "@/com
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Label, SearchInput, Select, Textarea } from "@/components/ui/input";
 import { Tag } from "@/components/ui/tag";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { cn, newId } from "@/lib/utils";
@@ -63,7 +76,11 @@ export function TemplateEditorPage() {
   // 换了版本（比如在已发布版本上保存出新草稿）时重新载入编辑器
   const states = statusFlowOf(latest.definition);
   if (states) return <StatusFlowEditor key={latest.id} template={template} type={template.type} base={states} />;
-  return <Editor key={latest.id} template={template} type={template.type} />;
+  return (
+    <ReactFlowProvider key={latest.id}>
+      <Editor template={template} type={template.type} />
+    </ReactFlowProvider>
+  );
 }
 
 function toCanvas(definition: FlowDefinition): { nodes: EditorNode[]; edges: Edge[] } {
@@ -91,20 +108,112 @@ function toEdge({ from, to }: { from: string; to: string }): Edge {
   };
 }
 
+type FlowGroup = NonNullable<FlowDefinition["groups"]>[number];
+
 function toDefinition(
   base: FlowDefinition,
   nodes: EditorNode[],
   edges: Edge[],
   stageRules: NonNullable<FlowDefinition["stageRules"]>,
+  groups: FlowGroup[] = [],
 ): FlowDefinition {
+  const keys = new Set(nodes.map((n) => n.id));
+  // 分组里已经删掉的节点去掉，空了的分组不留
+  const kept = groups
+    .map((g) => ({ ...g, nodes: g.nodes.filter((k) => keys.has(k)) }))
+    .filter((g) => g.nodes.length > 0);
   return {
     key: base.key,
     version: base.version,
     nodes: nodes.map((n) => ({ ...n.data, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })),
     edges: edges.map((e) => ({ from: e.source, to: e.target })),
     ...(stageRules.length > 0 && { stageRules }),
+    ...(kept.length > 0 && { groups: kept }),
   };
 }
+
+const NODE_WIDTH = 200;
+const GROUP_PAD = 16;
+const GROUP_ID = "group:";
+
+/** 分组在画布上的框：包住组里所有节点，标题在左上角。只用来显示，不能选中、不能拖。 */
+function groupFrames(groups: FlowGroup[], nodes: EditorNode[]): Node[] {
+  return groups.flatMap((g) => {
+    const members = nodes.filter((n) => g.nodes.includes(n.id));
+    if (members.length === 0) return [];
+    const left = Math.min(...members.map((n) => n.position.x)) - GROUP_PAD;
+    const top = Math.min(...members.map((n) => n.position.y)) - GROUP_PAD - 22;
+    const right = Math.max(...members.map((n) => n.position.x + (n.measured?.width ?? NODE_WIDTH))) + GROUP_PAD;
+    const bottom = Math.max(...members.map((n) => n.position.y + (n.measured?.height ?? 56))) + GROUP_PAD;
+    return [
+      {
+        id: `${GROUP_ID}${g.key}`,
+        type: "frame",
+        position: { x: left, y: top },
+        data: { name: g.name },
+        style: { width: right - left, height: bottom - top },
+        width: right - left,
+        height: bottom - top,
+        selectable: false,
+        draggable: false,
+        connectable: false,
+        zIndex: -1,
+        className: "!pointer-events-none",
+      },
+    ];
+  });
+}
+
+function FrameNode({ data }: { data: { name: string } }) {
+  return (
+    <div className="h-full w-full rounded-xl border border-line border-dashed bg-raised/60 px-3 py-1.5">
+      <span className="font-medium text-fg-muted text-xs">{data.name}</span>
+    </div>
+  );
+}
+const NODE_TYPES = { frame: FrameNode };
+
+/** 把选中的节点对齐或等距排开。 */
+type Arrange = "left" | "centerX" | "top" | "centerY" | "spreadX" | "spreadY";
+function arrange(nodes: EditorNode[], how: Arrange): Map<string, { x: number; y: number }> {
+  const w = (n: EditorNode) => n.measured?.width ?? NODE_WIDTH;
+  const h = (n: EditorNode) => n.measured?.height ?? 56;
+  const next = new Map<string, { x: number; y: number }>();
+  if (how === "left" || how === "centerX") {
+    const x = Math.min(...nodes.map((n) => n.position.x));
+    const center = nodes.reduce((sum, n) => sum + n.position.x + w(n) / 2, 0) / nodes.length;
+    for (const n of nodes) next.set(n.id, { x: how === "left" ? x : center - w(n) / 2, y: n.position.y });
+  } else if (how === "top" || how === "centerY") {
+    const y = Math.min(...nodes.map((n) => n.position.y));
+    const center = nodes.reduce((sum, n) => sum + n.position.y + h(n) / 2, 0) / nodes.length;
+    for (const n of nodes) next.set(n.id, { x: n.position.x, y: how === "top" ? y : center - h(n) / 2 });
+  } else {
+    // 节点之间的空隙相等；原来挤在一起时至少留 24px
+    const axis = how === "spreadX" ? "x" : "y";
+    const size = axis === "x" ? w : h;
+    const sorted = [...nodes].sort((a, b) => a.position[axis] - b.position[axis]);
+    const first = sorted[0]?.position[axis] ?? 0;
+    const lastNode = sorted[sorted.length - 1];
+    const end = lastNode ? lastNode.position[axis] + size(lastNode) : first;
+    const total = sorted.reduce((sum, n) => sum + size(n), 0);
+    const gap = Math.max(24, sorted.length > 1 ? (end - first - total) / (sorted.length - 1) : 0);
+    let at = first;
+    for (const n of sorted) {
+      next.set(n.id, { ...n.position, [axis]: at });
+      at += size(n) + gap;
+    }
+  }
+  return next;
+}
+
+const ARRANGE: [Arrange, string, typeof AlignStartVertical][] = [
+  ["left", "左对齐", AlignStartVertical],
+  ["centerX", "水平居中对齐", AlignHorizontalJustifyCenter],
+  ["top", "顶端对齐", AlignStartHorizontal],
+  ["centerY", "垂直居中对齐", AlignVerticalJustifyCenter],
+  ["spreadX", "水平等距", AlignHorizontalSpaceAround],
+  ["spreadY", "垂直等距", AlignVerticalSpaceAround],
+];
 
 function Editor({ template, type }: { template: Template; type: TypeConfig }) {
   const zero = useZero();
@@ -115,10 +224,15 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges);
   const [dirty, setDirty] = useState(false);
   const [stageRules, setStageRules] = useState(base.stageRules ?? []);
+  const [groups, setGroups] = useState<FlowGroup[]>(base.groups ?? []);
+  const [query, setQuery] = useState("");
+  const [hit, setHit] = useState(0);
+  const [groupName, setGroupName] = useState("");
+  const flow = useReactFlow();
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
 
   const isAdmin = type.space?.members.some((m) => m.role === "admin") ?? false;
-  const definition = toDefinition(base, nodes, edges, stageRules);
+  const definition = toDefinition(base, nodes, edges, stageRules, groups);
   const validation = validateFlow(definition);
   const errors = [
     ...validation.errors,
@@ -128,7 +242,47 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
       type.fields.map((f) => f.key),
     ),
   ];
-  const selectedNode = nodes.find((n) => n.selected);
+  const selectedNodes = nodes.filter((n) => n.selected);
+  const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : undefined;
+  // 查找节点：按名称或节点 ID，回车跳到下一个
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? nodes.filter((n) => n.data.name.toLowerCase().includes(q) || n.data.key.toLowerCase().includes(q))
+    : [];
+  function focusNode(id: string) {
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+    flow.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 });
+  }
+  function nextHit() {
+    if (matches.length === 0) return;
+    const i = hit % matches.length;
+    const target = matches[i];
+    if (target) focusNode(target.id);
+    setHit(i + 1);
+  }
+  const selectedIds = new Set(selectedNodes.map((n) => n.id));
+  function removeSelected() {
+    setNodes(edit((prev) => prev.filter((n) => !selectedIds.has(n.id))));
+    setEdges((prev) => prev.filter((e) => !selectedIds.has(e.source) && !selectedIds.has(e.target)));
+  }
+  function arrangeSelected(how: Arrange) {
+    const next = arrange(selectedNodes, how);
+    setNodes(edit((prev) => prev.map((n) => (next.has(n.id) ? { ...n, position: next.get(n.id) ?? n.position } : n))));
+  }
+  function patchSelected(patch: Partial<NodeData>) {
+    setNodes(edit((prev) => prev.map((n) => (selectedIds.has(n.id) ? { ...n, data: { ...n.data, ...patch } } : n))));
+  }
+  function groupSelected() {
+    const name = groupName.trim() || `分组 ${groups.length + 1}`;
+    const members = [...selectedIds];
+    setGroups((prev) => [
+      // 一个节点只在一个分组里
+      ...prev.map((g) => ({ ...g, nodes: g.nodes.filter((k) => !selectedIds.has(k)) })).filter((g) => g.nodes.length),
+      { key: `g_${newId().slice(0, 8)}`, name, nodes: members },
+    ]);
+    setGroupName("");
+    setDirty(true);
+  }
   const selectedEdge = edges.find((e) => e.selected);
   const draftId = latest.publishedAt ? flowVersionId(template.id, latest.version + 1) : latest.id;
 
@@ -224,6 +378,25 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
           <Tag tone={latest.publishedAt ? "success" : "warning"}>{status}</Tag>
           {dirty && <span className="text-xs text-warning-600">有未保存的修改</span>}
           <div className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
+              <SearchInput
+                aria-label="查找节点"
+                placeholder="查找节点"
+                value={query}
+                onChange={(v) => {
+                  setQuery(v);
+                  setHit(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") nextHit();
+                }}
+              />
+              {q && (
+                <span className="w-14 text-fg-subtle text-xs tabular-nums">
+                  {matches.length ? `${Math.min(hit || 1, matches.length)}/${matches.length}` : "没有匹配"}
+                </span>
+              )}
+            </span>
             <Button variant="outline" onClick={addNode} disabled={!isAdmin}>
               <Plus />
               添加节点
@@ -243,19 +416,25 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
       <div className="flex min-h-0 flex-1">
         <div className="flex-1">
           <ReactFlow
-            nodes={nodes.map((n) => ({
-              ...n,
-              data: { ...n.data, label: <NodeLabel data={n.data} type={type} /> },
-              className: cn(
-                "!w-[200px] !rounded-lg !border !border-line !bg-surface !px-3 !py-2 !text-left !shadow-card",
-                n.data.completion === "auto" ? "!border-dashed" : "",
-                n.selected && "!border-accent !ring-3 !ring-brand-100",
-              ),
-            }))}
+            nodes={[
+              ...groupFrames(groups, nodes),
+              ...nodes.map((n) => ({
+                ...n,
+                data: { ...n.data, label: <NodeLabel data={n.data} type={type} /> },
+                className: cn(
+                  "!w-[200px] !rounded-lg !border !border-line !bg-surface !px-3 !py-2 !text-left !shadow-card",
+                  n.data.completion === "auto" ? "!border-dashed" : "",
+                  q && !matches.includes(n) && "opacity-40",
+                  q && matches.includes(n) && "!border-fg-muted",
+                  n.selected && "!border-accent !ring-3 !ring-brand-100",
+                ),
+              })),
+            ]}
             edges={edges}
-            onNodesChange={(changes) => {
+            onNodesChange={(all) => {
+              const changes = all.filter((c) => !("id" in c) || !c.id.startsWith(GROUP_ID));
               if (changes.some((c) => c.type === "position" || c.type === "remove")) setDirty(true);
-              onNodesChange(changes);
+              onNodesChange(changes as Parameters<typeof onNodesChange>[0]);
             }}
             onEdgesChange={(changes) => {
               if (changes.some((c) => c.type === "remove")) setDirty(true);
@@ -271,6 +450,10 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
             nodesDraggable={isAdmin}
             nodesConnectable={isAdmin}
             elementsSelectable
+            nodeTypes={NODE_TYPES}
+            // 按住 Shift 拖动框选，按住 Ctrl/⌘ 点选多个
+            selectionKeyCode="Shift"
+            multiSelectionKeyCode={["Meta", "Control"]}
             deleteKeyCode={isAdmin ? ["Backspace", "Delete"] : null}
             defaultViewport={{ x: 40, y: 80, zoom: 1 }}
             minZoom={0.1}
@@ -311,7 +494,82 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
               }}
             />
           )}
-          {!selectedNode && selectedEdge && isAdmin && (
+          {selectedNodes.length > 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>已选 {selectedNodes.length} 个节点</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 text-sm">
+                <fieldset disabled={!isAdmin} className="flex flex-col gap-3">
+                  {/* biome-ignore lint/a11y/useSemanticElements: 一排图标按钮，fieldset 已经用来控制禁用 */}
+                  <div role="group" aria-label="对齐" className="flex flex-wrap gap-1">
+                    {ARRANGE.map(([how, label, Icon]) => (
+                      <Button
+                        key={how}
+                        size="sm"
+                        variant="outline"
+                        aria-label={label}
+                        title={label}
+                        disabled={how.startsWith("spread") && selectedNodes.length < 3}
+                        onClick={() => arrangeSelected(how)}
+                      >
+                        <Icon />
+                      </Button>
+                    ))}
+                  </div>
+                  <Label className="flex flex-col gap-1.5">
+                    负责角色
+                    <Select
+                      aria-label="批量设置负责角色"
+                      value=""
+                      onChange={(e) => e.target.value && patchSelected({ ownerRoles: [e.target.value] })}
+                    >
+                      <option value="">改为…</option>
+                      {type.roles.map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Label>
+                  <Label className="flex flex-col gap-1.5">
+                    完成方式
+                    <Select
+                      aria-label="批量设置完成方式"
+                      value=""
+                      onChange={(e) =>
+                        e.target.value && patchSelected({ completion: e.target.value as CompletionMode })
+                      }
+                    >
+                      <option value="">改为…</option>
+                      {COMPLETION.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      aria-label="分组名称"
+                      placeholder="分组名称，如：概念阶段"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                    />
+                    <Button size="sm" variant="outline" onClick={groupSelected}>
+                      <GroupIcon />
+                      分组
+                    </Button>
+                  </div>
+                  <Button size="sm" variant="ghost" className="w-fit text-danger-600" onClick={removeSelected}>
+                    <Trash2 />
+                    删除这 {selectedNodes.length} 个节点
+                  </Button>
+                </fieldset>
+              </CardContent>
+            </Card>
+          )}
+          {!selectedNodes.length && selectedEdge && isAdmin && (
             <Card>
               <CardHeader>
                 <CardTitle>连线</CardTitle>
@@ -327,10 +585,59 @@ function Editor({ template, type }: { template: Template; type: TypeConfig }) {
               </CardContent>
             </Card>
           )}
-          {!selectedNode && !selectedEdge && (
+          {!selectedNodes.length && !selectedEdge && (
             <p className="text-sm text-fg-muted">
-              点选节点编辑属性；从节点右侧的圆点拖到另一个节点左侧连线；选中后按 Delete 删除。
+              点选节点编辑属性；按住 Shift 拖动框选、按住 Ctrl
+              点选多个节点，可以批量修改、对齐和分组；从节点右侧的圆点拖到另一个节点左侧连线；选中后按 Delete 删除。
             </p>
+          )}
+
+          {groups.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>节点分组</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul aria-label="节点分组" className="flex flex-col gap-1.5 text-sm">
+                  {groups.map((g) => (
+                    <li key={g.key} className="flex items-center gap-2">
+                      <Input
+                        aria-label={`分组 ${g.name} 的名称`}
+                        className="flex-1"
+                        disabled={!isAdmin}
+                        value={g.name}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setGroups((prev) => prev.map((x) => (x.key === g.key ? { ...x, name } : x)));
+                          setDirty(true);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 text-fg-muted text-xs hover:text-accent"
+                        onClick={() =>
+                          setNodes((prev) => prev.map((n) => ({ ...n, selected: g.nodes.includes(n.id) })))
+                        }
+                      >
+                        {g.nodes.length} 个节点
+                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="shrink-0 text-fg-subtle text-xs hover:text-danger-600"
+                          onClick={() => {
+                            setGroups((prev) => prev.filter((x) => x.key !== g.key));
+                            setDirty(true);
+                          }}
+                        >
+                          取消分组
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
           )}
 
           <Card>
@@ -514,6 +821,47 @@ function NodePanel({
             onChange={(gate) => onChange({ gate })}
           />
           <FormEditor value={data.form ?? []} fields={type.fields} onChange={(form) => onChange({ form })} />
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-sm font-medium text-fg">完成提醒</legend>
+            <p className="text-xs text-fg-subtle">
+              负责人点「完成」时在确认弹窗里看到这段话；勾选角色后，节点完成时这些角色上的人会收到通知。
+            </p>
+            <Textarea
+              aria-label="完成提醒文案"
+              placeholder="如：请确认评审纪要已上传到附件，并@相关负责人"
+              value={data.completeNotice?.text ?? ""}
+              onChange={(e) =>
+                onChange({
+                  completeNotice: e.target.value ? { ...data.completeNotice, text: e.target.value } : undefined,
+                })
+              }
+            />
+            {data.completeNotice && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {type.roles.map((r) => {
+                  const roles = data.completeNotice?.roles ?? [];
+                  return (
+                    <Label key={r.key} className="flex items-center gap-1.5 font-normal">
+                      <Checkbox
+                        aria-label={`完成后通知：${r.name}`}
+                        checked={roles.includes(r.key)}
+                        onChange={(e) => {
+                          const next = e.target.checked ? [...roles, r.key] : roles.filter((k) => k !== r.key);
+                          onChange({
+                            completeNotice: {
+                              text: data.completeNotice?.text ?? "",
+                              ...(next.length > 0 && { roles: next }),
+                            },
+                          });
+                        }}
+                      />
+                      {r.name}
+                    </Label>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
           <TasksEditor value={data.tasks ?? []} onChange={(tasks) => onChange({ tasks })} />
           <RelatedInfoEditor value={data.relatedInfo ?? []} onChange={(relatedInfo) => onChange({ relatedInfo })} />
           <NodeAdvancedEditor

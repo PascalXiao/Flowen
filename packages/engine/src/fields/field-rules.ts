@@ -74,6 +74,8 @@ export interface FieldConfig {
   people?: MultiPersonConfig | null;
   /** 投票字段的方式、备注、盲投和放榜角色。 */
   vote?: VoteConfig | null;
+  /** 选项和另一个字段联动（那个字段的 id）：选项跟着它变，本字段不能单独改。 */
+  optionSource?: string | null;
 }
 
 /** 规则求值需要的字段定义。 */

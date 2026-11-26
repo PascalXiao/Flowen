@@ -84,7 +84,20 @@ export function FieldConfigSheet({
   canManage,
   onClose,
   onSave,
+  reuse,
+  copy,
 }: {
+  /** 复用选项：同一空间里能拿来复用的选项字段，和执行复用的操作。 */
+  reuse?: {
+    sources: readonly { id: string; label: string }[];
+    linkedTo: string | null;
+    onReuse: (sourceId: string | null, mode: "copy" | "link" | "unlink") => Promise<string | null>;
+  };
+  /** 复制至其他工作项：同一空间的其他类型（已有同名或同 ID 字段的不能选）。 */
+  copy?: {
+    targets: readonly { id: string; name: string; taken: boolean }[];
+    onCopy: (typeIds: string[]) => Promise<string | null>;
+  };
   field: ConfigurableField;
   fields: readonly ConfigurableField[];
   /** 这个工作项的流程模板名：条件里可以按流程类型判断。 */
@@ -133,6 +146,20 @@ export function FieldConfigSheet({
   const [columns, setColumns] = useState<FieldGroupColumn[]>([...(initial.columns ?? [])]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [reuseSource, setReuseSource] = useState("");
+  const [reuseMode, setReuseMode] = useState<"copy" | "link">("link");
+  const [copyTo, setCopyTo] = useState<string[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const linkedLabel = reuse?.linkedTo
+    ? (reuse.sources.find((src) => src.id === reuse.linkedTo)?.label ?? "另一个字段")
+    : null;
+  async function act(run: () => Promise<string | null>, done: string) {
+    setError(null);
+    setNotice(null);
+    const outcome = await run();
+    if (outcome) setError(outcome);
+    else setNotice(done);
+  }
 
   // 条件只能引用别的字段；可以用来判断的字段和选项
   const conditionFields: ConditionField[] = fields
@@ -182,6 +209,7 @@ export function FieldConfigSheet({
       defaultValue: canDefault ? buildDefault() : null,
       number: dataType === "number" && Object.values(number).some((v) => v !== undefined) ? number : null,
       leafOnly: cascade && leafOnly,
+      optionSource: reuse?.linkedTo ?? null,
       unique: dataType === "text" && unique,
       freezeOnComplete: dataType === "formula" && freeze,
       optionWhen: isOptions
@@ -202,7 +230,8 @@ export function FieldConfigSheet({
     const outcome = await onSave({
       name: name.trim(),
       required: requiredMode === "always",
-      ...(isOptions && { options: options.map((o) => ({ ...o, label: o.label?.trim() || o.value })) }),
+      ...(isOptions &&
+        !reuse?.linkedTo && { options: options.map((o) => ({ ...o, label: o.label?.trim() || o.value })) }),
       config,
     });
     setSaving(false);
@@ -245,17 +274,74 @@ export function FieldConfigSheet({
 
         {isOptions && (
           <Group title="选项">
-            <OptionsEditor
-              options={options}
-              cascade={cascade}
-              multi={dataType === "multiSelect"}
-              exclusive={exclusive}
-              optionWhen={optionWhen}
-              conditionFields={conditionFields}
-              onChange={setOptions}
-              onExclusive={setExclusive}
-              onOptionWhen={setOptionWhen}
-            />
+            {linkedLabel ? (
+              <div className="flex items-center gap-2 rounded-md bg-brand-50 px-3 py-2 text-sm">
+                <span className="flex-1">选项和「{linkedLabel}」联动：那边改了这里跟着变，要改请到源字段里改。</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => act(() => reuse?.onReuse(null, "unlink") ?? Promise.resolve(null), "已解除联动")}
+                >
+                  解除联动
+                </Button>
+              </div>
+            ) : (
+              reuse &&
+              reuse.sources.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-fg-muted">复用其他字段的选项</span>
+                  <Select
+                    aria-label="复用哪个字段的选项"
+                    className="w-52"
+                    value={reuseSource}
+                    onChange={(e) => setReuseSource(e.target.value)}
+                  >
+                    <option value="">选择字段</option>
+                    {reuse.sources.map((src) => (
+                      <option key={src.id} value={src.id}>
+                        {src.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    aria-label="复用方式"
+                    className="w-32"
+                    value={reuseMode}
+                    onChange={(e) => setReuseMode(e.target.value as "copy" | "link")}
+                  >
+                    <option value="link">两端联动</option>
+                    <option value="copy">复制一份</option>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!reuseSource}
+                    onClick={() =>
+                      act(
+                        () => reuse.onReuse(reuseSource, reuseMode),
+                        reuseMode === "link" ? "选项已改为联动" : "选项已复制过来",
+                      )
+                    }
+                  >
+                    复用
+                  </Button>
+                </div>
+              )
+            )}
+            {notice && <p className="text-sm text-success-600">{notice}</p>}
+            <fieldset disabled={!!linkedLabel} className="contents">
+              <OptionsEditor
+                options={options}
+                cascade={cascade}
+                multi={dataType === "multiSelect"}
+                exclusive={exclusive}
+                optionWhen={optionWhen}
+                conditionFields={conditionFields}
+                onChange={setOptions}
+                onExclusive={setExclusive}
+                onOptionWhen={setOptionWhen}
+              />
+            </fieldset>
             {cascade && <CheckRow label="必须选到最后一级" checked={leafOnly} onChange={setLeafOnly} />}
           </Group>
         )}
@@ -434,6 +520,44 @@ export function FieldConfigSheet({
             <CheckRow label="工作项完成后冻结结果（不再重算）" checked={freeze} onChange={setFreeze} />
           )}
         </Group>
+
+        {copy && copy.targets.length > 0 && (
+          <Group title="复制至其他工作项">
+            <p className="text-fg-muted text-sm">
+              名称、类型、选项、必填和规则一起带过去；条件里用到对方没有的字段时，那条条件不带。
+            </p>
+            <div className="grid grid-cols-3 gap-1">
+              {copy.targets.map((t) => (
+                <Checkbox
+                  key={t.id}
+                  disabled={t.taken}
+                  checked={copyTo.includes(t.id)}
+                  onChange={(e) => setCopyTo(e.target.checked ? [...copyTo, t.id] : copyTo.filter((id) => id !== t.id))}
+                >
+                  <span className={t.taken ? "text-fg-subtle" : undefined}>
+                    {t.name}
+                    {t.taken ? "（已有）" : ""}
+                  </span>
+                </Checkbox>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              disabled={copyTo.length === 0}
+              onClick={() =>
+                act(async () => {
+                  const outcome = await copy.onCopy(copyTo);
+                  if (!outcome) setCopyTo([]);
+                  return outcome;
+                }, `已复制到 ${copyTo.length} 个工作项`)
+              }
+            >
+              复制到选中的工作项
+            </Button>
+          </Group>
+        )}
 
         <Group title="高级设置">
           <Field label="对接标识" hint="开放接口里可以用它代替字段 ID，只能用英文字母、数字和下划线。">

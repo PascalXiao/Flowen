@@ -132,6 +132,11 @@ export interface NodeDefinition {
   duration?: number;
   /** 里程碑：只有截止日期，不占工期。 */
   milestone?: boolean;
+  /**
+   * 完成提醒：负责人点「完成」时在确认弹窗里看到这段文字（比如交付物要求）；
+   * 选了角色时，节点完成后这些角色上的人会收到带这段文字的通知。
+   */
+  completeNotice?: { text: string; roles?: string[] };
   /** 限制节点：只有空间管理员能完成、回滚。 */
   restricted?: boolean;
   conclusion?: NodeConclusion;
@@ -166,6 +171,8 @@ export interface FlowDefinition {
    * 结论写成 `$conclusion.节点键`。
    */
   stageRules?: { when: Condition; stage: string }[];
+  /** 节点分组：只用来在流程图上把一组节点框在一起显示，不影响流转。 */
+  groups?: { key: string; name: string; nodes: string[] }[];
 }
 
 /** 流程图的只读索引：按键查节点、前序、后续、末端节点。 */

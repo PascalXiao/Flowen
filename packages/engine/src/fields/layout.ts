@@ -15,6 +15,7 @@
  */
 
 import { type Condition, conditionFields } from "../flow/condition.ts";
+import type { ChartConfig } from "../metrics/chart.ts";
 
 /** 早期布局的分组（只有字段）。 */
 export interface DetailLayoutGroup {
@@ -63,6 +64,10 @@ export type LayoutItem =
    * nodes 是节点键或名；template 填了时只在用这个流程类型的工作项上显示。
    */
   | { kind: "nodeTable"; nodes: string[]; template?: string; title?: string }
+  /**
+   * 图表：把一种关联的关联工作项（比如项目关联的缺陷）按维度和指标画成图，只看这个工作项自己的关联数据。
+   */
+  | { kind: "chart"; relationDefId: string; chart: ChartConfig; title?: string }
   /** 所有关联（含上级、子工作项）。 */
   | { kind: "relations" }
   | { kind: "roles" }
@@ -282,6 +287,7 @@ export function checkLayout(
         if (!relationDefIds.includes(item.relationDefId)) return "关联工作项视图引用的关联不存在。";
         if (item.columns.length === 0) return "关联工作项视图至少要有一列。";
       }
+      if (item.kind === "chart" && !relationDefIds.includes(item.relationDefId)) return "图表控件引用的关联不存在。";
       if (item.kind === "relatedField") {
         if (!relationDefIds.includes(item.relationDefId)) return "关联信息控件引用的关联不存在。";
         if (!item.field.trim()) return "关联信息控件要选一个字段。";

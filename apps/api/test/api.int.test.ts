@@ -1127,6 +1127,31 @@ describe("comments and notifications", () => {
     ]);
   });
 
+  it("sends a node's completion notice to the chosen roles", async () => {
+    const [item] = await services.database.db.select().from(schema.workItem).where(eq(schema.workItem.id, itemId));
+    const [version] = await services.database.db
+      .select()
+      .from(schema.flowVersion)
+      .where(eq(schema.flowVersion.id, item?.flowVersionId as string));
+    const definition = version?.definition as FlowDefinition;
+    await services.database.db
+      .update(schema.flowVersion)
+      .set({
+        definition: {
+          ...definition,
+          nodes: definition.nodes.map((n) =>
+            n.key === "start" ? { ...n, completeNotice: { text: "请在三天内提交立项材料", roles: ["NPD"] } } : n,
+          ),
+        },
+      })
+      .where(eq(schema.flowVersion.id, version?.id as string));
+    const completed = (await eventsOf()).find((e) => e.kind === "nodeCompleted" && e.payload.node === "start");
+    await notify(services.database, completed?.id as number);
+    expect((await inbox(member.userId)).filter((n) => n.kind === "nodeCompleted")).toMatchObject([
+      { text: "「新品 N」的节点「开始」已完成：请在三天内提交立项材料" },
+    ]);
+  });
+
   it("posts a comment, notifies the people it mentions once, and only space members can be mentioned", async () => {
     const outsider = await signUp(`note-outsider-${randomUUID()}@example.com`);
     await expect(
@@ -1981,6 +2006,70 @@ describe("status-flow work items", () => {
       run("workItemType.setSettings", { id: typeId, settings: { disabled: false } }, dev.userId),
     ).rejects.toThrow();
     await run("workItemType.setSettings", { id: typeId, settings: { disabled: false } });
+  });
+
+  it("copies a field to another type and reuses options with or without linking", async () => {
+    const storyId = `${spaceId}/story`;
+    await run("workItemType.create", { id: storyId, spaceId, key: "story", name: "需求", flowMode: "state" });
+    await run("fieldDef.create", {
+      id: `${typeId}/field/sev`,
+      typeId,
+      key: "sev",
+      name: "严重程度",
+      dataType: "select",
+      options: [
+        { value: "p0", label: "致命" },
+        { value: "p1", label: "严重" },
+      ],
+    });
+    await run("fieldDef.update", {
+      id: `${typeId}/field/sev`,
+      config: { showWhen: { kind: "notEmpty", field: "修复版本" }, description: "影响范围" },
+    });
+    await run("fieldDef.copyTo", {
+      id: `${typeId}/field/sev`,
+      targets: [{ typeId: storyId, id: `${storyId}/field/sev` }],
+    });
+    const field = async (id: string) =>
+      (await services.database.db.select().from(schema.fieldDef).where(eq(schema.fieldDef.id, id)))[0];
+    // 需求上没有「修复版本」，显示条件不带过去
+    expect(await field(`${storyId}/field/sev`)).toMatchObject({
+      key: "sev",
+      name: "严重程度",
+      options: [{ value: "p0" }, { value: "p1" }],
+      config: { description: "影响范围" },
+    });
+    expect((await field(`${storyId}/field/sev`))?.config?.showWhen).toBeUndefined();
+    await expect(
+      run("fieldDef.copyTo", { id: `${typeId}/field/sev`, targets: [{ typeId: storyId, id: randomUUID() }] }),
+    ).rejects.toThrow("已经有字段「严重程度」");
+
+    await run("fieldDef.create", {
+      id: `${storyId}/field/pri`,
+      typeId: storyId,
+      key: "pri",
+      name: "优先级",
+      dataType: "select",
+      options: [{ value: "x", label: "X" }],
+    });
+    await run("fieldDef.reuseOptions", { id: `${storyId}/field/pri`, sourceId: `${typeId}/field/sev`, mode: "link" });
+    await run("fieldDef.update", {
+      id: `${typeId}/field/sev`,
+      options: [
+        { value: "p0", label: "致命" },
+        { value: "p1", label: "严重" },
+        { value: "p2", label: "一般" },
+      ],
+    });
+    expect((await field(`${storyId}/field/pri`))?.options?.map((o) => o.value)).toEqual(["p0", "p1", "p2"]);
+    // 复制一份的不跟着变
+    expect((await field(`${storyId}/field/sev`))?.options).toHaveLength(2);
+    await expect(
+      run("fieldDef.update", { id: `${storyId}/field/pri`, options: [{ value: "y", label: "Y" }] }),
+    ).rejects.toThrow("联动");
+    await run("fieldDef.reuseOptions", { id: `${storyId}/field/pri`, mode: "unlink" });
+    await run("fieldDef.update", { id: `${storyId}/field/pri`, options: [{ value: "y", label: "Y" }] });
+    expect((await field(`${storyId}/field/pri`))?.options).toEqual([{ value: "y", label: "Y" }]);
   });
 
   it("keeps create-form drafts per person and type", async () => {

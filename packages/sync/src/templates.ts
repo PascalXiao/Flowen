@@ -9,6 +9,7 @@ import {
   type DetailLayout,
   EDITABLE_FIELD_TYPES,
   FIELD_GROUP_COLUMN_TYPES,
+  type FieldConfig,
   type FieldDataType,
   type FlowDefinition,
   FormulaError,
@@ -18,12 +19,14 @@ import {
   roleConditions,
   STANCE_OPTIONS,
   type StatusFlowDefinition,
+  TEMPLATE_CONDITION_KEY,
   validateFlow,
   validateStatusFlow,
 } from "@fp/engine";
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { assertSpaceMembers, requireAdmin, syncFieldAccess } from "./access.ts";
+import { chartConfig } from "./charts.ts";
 import { compileTypeFormulas, fieldResolver, recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
 import { zql } from "./schema.gen.ts";
 
@@ -156,6 +159,7 @@ export const fieldConfigSchema = z.object({
   exclusiveOptions: z.array(z.string()).nullish(),
   freezeOnComplete: z.boolean().nullish(),
   people: z.object({ role: z.string().min(1).nullish() }).nullish(),
+  optionSource: z.string().nullish(),
   vote: z
     .object({
       mode: z.enum(["stance", "single", "multi"]),
@@ -228,6 +232,12 @@ const layoutItem = z.union([
     kind: z.literal("relationTable"),
     relationDefId: z.string(),
     columns: z.array(z.string().min(1).max(200)).min(1).max(40),
+    title: z.string().max(60).optional(),
+  }),
+  z.object({
+    kind: z.literal("chart"),
+    relationDefId: z.string(),
+    chart: chartConfig,
     title: z.string().max(60).optional(),
   }),
   z.object({
@@ -333,6 +343,9 @@ export const flowDefinitionSchema = z.object({
       duration: z.number().int().min(0).max(999).optional(),
       position: z.object({ x: z.number(), y: z.number() }).optional(),
       milestone: z.boolean().optional(),
+      completeNotice: z
+        .object({ text: z.string().trim().min(1).max(500), roles: z.array(z.string()).max(50).optional() })
+        .optional(),
       restricted: z.boolean().optional(),
       conclusion: z
         .object({
@@ -397,6 +410,16 @@ export const flowDefinitionSchema = z.object({
   edges: z.array(z.object({ from: z.string(), to: z.string() })),
   stageRules: z
     .array(z.object({ when: condition, stage: z.string().trim().min(1) }))
+    .max(50)
+    .optional(),
+  groups: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(64),
+        name: z.string().trim().min(1).max(60),
+        nodes: z.array(z.string()).min(1).max(200),
+      }),
+    )
     .max(50)
     .optional(),
 });
@@ -685,6 +708,9 @@ export async function updateField(tx: Transaction, args: z.output<typeof updateF
   if (others.some((f) => f.name === name)) throw new Error(`已经有字段「${name}」了。`);
   const dataType = field.dataType as FieldDataType;
   const options = args.options ?? field.options ?? [];
+  const linkedTo = field.config?.optionSource;
+  if (args.options && linkedTo && JSON.stringify(args.options) !== JSON.stringify(field.options ?? []))
+    throw new Error(`「${field.name}」的选项和别的字段联动，要在源字段里改，或者先解除联动。`);
   if (args.options) {
     if (!OPTION_FIELD_TYPES.includes(dataType)) throw new Error(`「${name}」没有选项。`);
     if (options.length === 0) throw new Error("选项字段至少要有一个选项。");
@@ -712,6 +738,140 @@ export async function updateField(tx: Transaction, args: z.output<typeof updateF
     ...(args.required !== undefined && { required: args.required }),
     ...(args.config !== undefined && { config: args.config }),
   });
+  if (args.options) await propagateOptions(tx, field.id, type.spaceId, options);
+}
+
+/** 选项联动：把源字段的选项同步到所有跟着它的字段（同一空间）。 */
+async function propagateOptions(
+  tx: Transaction,
+  sourceId: string,
+  spaceId: string,
+  options: NonNullable<z.output<typeof fieldOptions>>,
+) {
+  const linked = (await tx.run(zql.fieldDef.whereExists("type", (t) => t.where("spaceId", spaceId)))).filter(
+    (f) => f.config?.optionSource === sourceId && f.id !== sourceId,
+  );
+  for (const f of linked) await tx.mutate.fieldDef.update({ id: f.id, options });
+}
+
+/**
+ * 复用选项：从同一空间里另一个选项字段拿选项。
+ * - copy：复制一份，之后各改各的；
+ * - link：两端联动，源字段改了选项这里跟着变，这里不能单独改；
+ * - unlink：解除联动，保留当前选项。
+ */
+export const reuseOptionsArgs = z.object({
+  id: z.string(),
+  sourceId: z.string().optional(),
+  mode: z.enum(["copy", "link", "unlink"]),
+});
+
+export async function reuseOptions(tx: Transaction, args: z.output<typeof reuseOptionsArgs>, userID: string) {
+  const field = await tx.run(zql.fieldDef.where("id", args.id).one());
+  if (!field) throw new Error("字段不存在。");
+  const type = await adminType(tx, field.typeId, userID);
+  const config: FieldConfig = { ...(field.config ?? {}) };
+  if (args.mode === "unlink") {
+    delete config.optionSource;
+    await tx.mutate.fieldDef.update({ id: field.id, config });
+    return;
+  }
+  const source = args.sourceId
+    ? await tx.run(
+        zql.fieldDef
+          .where("id", args.sourceId)
+          .whereExists("type", (t) => t.where("spaceId", type.spaceId))
+          .one(),
+      )
+    : undefined;
+  if (!source || source.id === field.id) throw new Error("要复用的字段不存在。");
+  const dataType = field.dataType as FieldDataType;
+  const sourceType = source.dataType as FieldDataType;
+  if (!OPTION_FIELD_TYPES.includes(dataType) || !OPTION_FIELD_TYPES.includes(sourceType))
+    throw new Error("只有选项字段能复用选项。");
+  if (CASCADE_FIELD_TYPES.includes(dataType) !== CASCADE_FIELD_TYPES.includes(sourceType))
+    throw new Error("级联字段只能和级联字段复用选项。");
+  if (source.config?.optionSource) throw new Error(`「${source.name}」自己也在跟着别的字段，请选它的源字段。`);
+  const options = source.options ?? [];
+  const error = checkOptions(dataType, options);
+  if (error) throw new Error(error);
+  // 本字段的选项条件、排他选项里不再存在的选项去掉
+  const values = new Set(options.map((o) => o.value));
+  if (config.optionWhen)
+    config.optionWhen = Object.fromEntries(Object.entries(config.optionWhen).filter(([v]) => values.has(v)));
+  if (config.exclusiveOptions) config.exclusiveOptions = config.exclusiveOptions.filter((v) => values.has(v));
+  if (args.mode === "link") config.optionSource = source.id;
+  else delete config.optionSource;
+  await tx.mutate.fieldDef.update({ id: field.id, options, config });
+}
+
+/**
+ * 复制字段到同一空间的其他工作项：名称、类型、选项、必填和配置一起带过去。
+ * 条件里用到对方没有的字段时，这条条件不带；对方没有的角色不带；同名或同 ID 的字段已经存在时报错。
+ */
+export const copyFieldArgs = z.object({
+  id: z.string(),
+  targets: z
+    .array(z.object({ typeId: z.string(), id: z.string() }))
+    .min(1)
+    .max(50),
+});
+
+export async function copyField(tx: Transaction, args: z.output<typeof copyFieldArgs>, userID: string) {
+  const field = await tx.run(zql.fieldDef.where("id", args.id).one());
+  if (!field) throw new Error("字段不存在。");
+  const from = await adminType(tx, field.typeId, userID);
+  for (const target of args.targets) {
+    const type = await adminType(tx, target.typeId, userID);
+    if (type.spaceId !== from.spaceId) throw new Error("只能复制到同一空间的工作项。");
+    if (type.id === from.id) continue;
+    const existing = type.fields.find((f) => f.key === field.key || f.name === field.name);
+    if (existing) throw new Error(`「${type.name}」已经有字段「${existing.name}」了。`);
+    const keys = new Set([...type.fields.map((f) => f.key), TEMPLATE_CONDITION_KEY]);
+    const known = (c: Condition | null | undefined) => !c || conditionFields(c).every((k) => keys.has(k));
+    const source = field.config ?? {};
+    const config: FieldConfig = { ...source };
+    for (const k of ["validWhen", "showWhen", "requiredWhen"] as const) if (!known(config[k])) delete config[k];
+    if (config.defaultValue?.mode === "conditional") {
+      const rules = config.defaultValue.rules.filter((r) => known(r.when));
+      if (rules.length) config.defaultValue = { ...config.defaultValue, rules };
+      else delete config.defaultValue;
+    }
+    if (config.optionWhen)
+      config.optionWhen = Object.fromEntries(Object.entries(config.optionWhen).filter(([, c]) => known(c)));
+    if (config.people?.role && !type.roles.some((r) => r.key === config.people?.role)) delete config.people;
+    if (config.alias && type.fields.some((f) => f.config?.alias === config.alias || f.key === config.alias))
+      delete config.alias;
+    const roleKeys = new Set(type.roles.map((r) => r.key));
+    const roles = (list: readonly string[] | null) => {
+      const kept = (list ?? []).filter((r) => roleKeys.has(r));
+      return kept.length ? kept : null;
+    };
+    // 公式里的字段按 {字段 ID} 存，对方要有同 ID 或同名的字段
+    const formula = field.formula
+      ? checkFormula(
+          [...type.fields, { key: field.key, name: field.name, dataType: field.dataType, formula: null }],
+          field.key,
+          field.formula,
+        )
+      : null;
+    await tx.mutate.fieldDef.insert({
+      id: target.id,
+      typeId: type.id,
+      key: field.key,
+      name: field.name,
+      dataType: field.dataType,
+      options: field.options ?? null,
+      formula,
+      required: field.required,
+      config: Object.keys(config).length ? config : null,
+      viewRoles: roles(field.viewRoles),
+      editRoles: roles(field.editRoles),
+      sort: type.fields.length,
+      createdAt: Date.now(),
+    });
+    if (formula) await recomputeType(tx, type.id);
+  }
 }
 
 /** 新模板带一个草稿 v1：节点流只有“开始”节点；状态流是“待处理 → 处理中 → 已完成”的常用流转。 */
