@@ -855,6 +855,9 @@ function ItemsEditor({
 }
 
 /** 图表控件的设置：图表类型、按什么分组、算什么。数据范围是这个工作项通过这种关联关联的工作项。 */
+/** 详情页图表控件能选的样式：基础图表（透视表、对比卡等在度量页里建）。 */
+const LAYOUT_CHART_KINDS: readonly string[] = ["column", "bar", "line", "area", "ring", "indicator"];
+
 function ChartItemEditor({
   item,
   fields,
@@ -877,7 +880,7 @@ function ChartItemEditor({
     <>
       <Field label="图表类型">
         <Select value={chart.kind} onChange={(e) => set({ kind: e.target.value as ChartConfig["kind"] })}>
-          {CHART_KINDS.filter((k) => k !== "table").map((k) => (
+          {CHART_KINDS.filter((k) => LAYOUT_CHART_KINDS.includes(k)).map((k) => (
             <option key={k} value={k}>
               {CHART_KIND_LABEL[k]}
             </option>
