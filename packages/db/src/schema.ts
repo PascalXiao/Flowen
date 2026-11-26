@@ -989,7 +989,10 @@ export const hierarchy = pgTable(
   (t) => [index("hierarchy_space").on(t.spaceId)],
 );
 
-/** 工作项下的评论。提及的人会收到通知（由事件流里的通知 activity 生成）。 */
+/**
+ * 工作项下的评论。正文是富文本 HTML（显示前按白名单清理），里面的
+ * `<span data-user>`、`<span data-field>` 是 @人、@字段。提及的人会收到通知（由事件流里的通知 activity 生成）。
+ */
 export const comment = pgTable(
   "comment",
   {
@@ -1006,6 +1009,10 @@ export const comment = pgTable(
     parentId: text("parent_id"),
     /** 回复的是谁（回复楼里的某条回复时显示「回复 xx」）。 */
     replyToId: text("reply_to_id").references(() => user.id),
+    /** 针对字段的评论：话题字段的键（只有一级评论有）。 */
+    fieldKey: text("field_key"),
+    /** 针对字段评论时引用的字段当时的值（显示文字）。 */
+    quote: text("quote"),
     editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
     /** 删除只清空内容、留下占位，楼里的回复还在。 */
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
@@ -1028,6 +1035,8 @@ export const attachment = pgTable(
     storageKey: text("storage_key").notNull(),
     /** 附件字段上传的附件记字段键；为空的是工作项的附件（附件卡片）。 */
     fieldKey: text("field_key"),
+    /** 评论里的附件记评论 id（评论可能还没发出去，所以不建外键）。 */
+    commentId: text("comment_id"),
     uploadedBy: text("uploaded_by")
       .notNull()
       .references(() => user.id),
@@ -1388,10 +1397,12 @@ export const planBaselineRelations = relations(planBaseline, ({ one }) => ({
 
 export const attachmentRelations = relations(attachment, ({ one }) => ({
   workItem: one(workItem, { fields: [attachment.workItemId], references: [workItem.id] }),
+  comment: one(comment, { fields: [attachment.commentId], references: [comment.id] }),
   uploader: one(user, { fields: [attachment.uploadedBy], references: [user.id] }),
 }));
 
-export const commentRelations = relations(comment, ({ one }) => ({
+export const commentRelations = relations(comment, ({ one, many }) => ({
+  attachments: many(attachment),
   workItem: one(workItem, { fields: [comment.workItemId], references: [workItem.id] }),
   author: one(user, { fields: [comment.authorId], references: [user.id] }),
   replyTo: one(user, { fields: [comment.replyToId], references: [user.id], relationName: "commentReplyTo" }),

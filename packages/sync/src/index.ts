@@ -23,6 +23,7 @@ export * from "./permissions.ts";
 export * from "./planning.ts";
 export * from "./queries.ts";
 export * from "./relations.ts";
+export * from "./rich-text.ts";
 export * from "./schema.gen.ts";
 export * from "./spaces.ts";
 export * from "./status.ts";

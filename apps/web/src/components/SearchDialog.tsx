@@ -1,4 +1,4 @@
-import { queries } from "@fp/sync";
+import { htmlToText, queries } from "@fp/sync";
 import { useQuery } from "@rocicorp/zero/react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
@@ -129,7 +129,7 @@ export function SearchDialog({ className }: { className?: string }) {
                             {fieldName}：{highlight(field.str, q)}
                           </>
                         )}
-                        {!inName && !field?.str && comment && <> · 评论：{highlight(comment.body, q)}</>}
+                        {!inName && !field?.str && comment && <> · 评论：{highlight(htmlToText(comment.body), q)}</>}
                       </span>
                     </button>
                   </li>

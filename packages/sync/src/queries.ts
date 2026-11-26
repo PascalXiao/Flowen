@@ -626,6 +626,10 @@ export const queries = defineQueries({
           )
           .related("marks", (m) => m.where("userId", me))
           .related("visits", (v) => v.where("userId", me))
+          // 最新一条评论：名称旁的评论图标悬停预览、「最新评论」列
+          .related("comments", (c) =>
+            c.where("deletedAt", "IS", null).orderBy("createdAt", "desc").limit(1).related("author"),
+          )
       );
     }),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>

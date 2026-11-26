@@ -840,7 +840,8 @@ describe("automation rules", () => {
     expect(notes.map((n) => [n.userId, n.text])).toEqual([[admin.userId, "「新品 X」有新评论"]]);
 
     const comments = await services.database.db.select().from(schema.comment).where(eq(schema.comment.workItemId, id));
-    expect(comments.map((c) => c.body).sort()).toEqual(["什么时候能好？", "已收到，跟进中"].sort());
+    // 自动化发的评论是纯文本，转成富文本存
+    expect(comments.map((c) => c.body).sort()).toEqual(["什么时候能好？", "<p>已收到，跟进中</p>"].sort());
     const tasks = await services.database.db.select().from(schema.nodeTask).where(eq(schema.nodeTask.workItemId, id));
     expect(tasks.map((t) => [t.name, t.nodeKey, t.assigneeId])).toEqual([
       ["回复「新品 X」的评论", "doing", member.userId],
@@ -982,7 +983,7 @@ describe("timed automation and branches", () => {
       expect(event.payload).toEqual({ ruleId, slot: nine });
       expect(await matchRules(services.database, event.id)).toEqual([ruleId]);
       expect(await runRule(runner, ruleId, event.id, "wf-clock")).toBe("succeeded");
-      expect((await commentsOf(id)).map((c) => c.body)).toEqual([body]);
+      expect((await commentsOf(id)).map((c) => c.body)).toEqual([`<p>${body}</p>`]);
     }
 
     // 去掉兜底分支后，不满足条件的工作项不匹配；规则停用后时钟不再触发
@@ -1291,6 +1292,74 @@ describe("comments and notifications", () => {
       ),
     ).rejects.toThrow("评论已删除");
     expect((await eventsOf()).at(-1)).toMatchObject({ kind: "commentDeleted", payload: { commentId: root } });
+  });
+
+  it("comments on a field, and tells everyone in the thread about new replies", async () => {
+    // 针对字段评论：记下字段和引用的值；字段要存在，回复不能针对字段
+    await expect(
+      services.zero.run(
+        "comment.create",
+        { id: randomUUID(), workItemId: itemId, body: "<p>看看</p>", mentions: [], fieldKey: "没有这个字段" },
+        admin.userId,
+      ),
+    ).rejects.toThrow("字段不存在");
+    await expect(
+      services.zero.run(
+        "comment.create",
+        { id: randomUUID(), workItemId: itemId, body: "<p></p>", mentions: [] },
+        admin.userId,
+      ),
+    ).rejects.toThrow("评论不能为空");
+    const root = randomUUID();
+    await services.zero.run(
+      "comment.create",
+      {
+        id: root,
+        workItemId: itemId,
+        body: `<p>这里要改成 <span data-field="${F.needPhaseOut}">@需要淘汰</span></p>`,
+        mentions: [],
+        fieldKey: F.needPhaseOut,
+        quote: "是",
+      },
+      admin.userId,
+    );
+    const [topic] = await services.database.db.select().from(schema.comment).where(eq(schema.comment.id, root));
+    expect(topic).toMatchObject({ fieldKey: F.needPhaseOut, quote: "是" });
+    const reply = randomUUID();
+    await expect(
+      services.zero.run(
+        "comment.create",
+        { id: reply, workItemId: itemId, body: "<p>好</p>", mentions: [], replyTo: root, fieldKey: F.needPhaseOut },
+        member.userId,
+      ),
+    ).rejects.toThrow("回复不能针对字段");
+
+    // 成员回复，再有第三个人回复：楼主和之前回复过的人都收到通知
+    const third = await signUp(`note-third-${randomUUID()}@example.com`);
+    await services.database.db.insert(schema.spaceMember).values({ spaceId, userId: third.userId });
+    await services.zero.run(
+      "comment.create",
+      { id: reply, workItemId: itemId, body: "<p>好</p>", mentions: [], replyTo: root },
+      member.userId,
+    );
+    await services.zero.run(
+      "comment.create",
+      { id: randomUUID(), workItemId: itemId, body: "<p>我也看看</p>", mentions: [], replyTo: reply },
+      third.userId,
+    );
+    const replies = (await eventsOf()).filter((e) => e.kind === "commentAdded" && e.payload.parentId === root);
+    const before = {
+      admin: (await inbox(admin.userId)).filter((n) => n.kind === "replied").length,
+      member: (await inbox(member.userId)).filter((n) => n.kind === "replied").length,
+    };
+    const last = replies.at(-1);
+    await notify(services.database, last?.id as number);
+    const adminNotes = (await inbox(admin.userId)).filter((n) => n.kind === "replied");
+    const memberNotes = (await inbox(member.userId)).filter((n) => n.kind === "replied");
+    expect(adminNotes).toHaveLength(before.admin + 1);
+    expect(adminNotes.some((n) => n.text.includes("你参与的评论里有新回复"))).toBe(true);
+    expect(memberNotes).toHaveLength(before.member + 1);
+    expect((await inbox(third.userId)).filter((n) => n.kind === "replied")).toEqual([]);
   });
 
   it("nudges a node's owners once per ten minutes", async () => {
@@ -2651,6 +2720,36 @@ describe("attachments", () => {
       (await app.request(`/api/attachments/${mine.id}`, { method: "DELETE", headers: { cookie: admin.cookie } }))
         .status,
     ).toBe(200);
+  });
+
+  it("attaches files to a comment, guests included, and drops them with the comment", async () => {
+    const commentId = randomUUID();
+    const send = (who: { cookie: string }, id: string) => {
+      const body = new FormData();
+      body.append("file", new File(["截图"], "截图.png", { type: "image/png" }));
+      return app.request(`/api/work-items/${itemId}/attachments?comment=${id}`, {
+        method: "POST",
+        body,
+        headers: { cookie: who.cookie },
+      });
+    };
+    const before = (await events("attachmentAdded")).length;
+    // 访客也能评论，所以也能给评论传附件；附件先传、评论后发
+    const res = await send(guest, commentId);
+    expect(res.status).toBe(200);
+    const { id: fileId } = (await res.json()) as { id: string };
+    const [row] = await services.database.db.select().from(schema.attachment).where(eq(schema.attachment.id, fileId));
+    expect(row).toMatchObject({ commentId, fieldKey: null });
+    // 评论里的附件不另记进动态
+    expect(await events("attachmentAdded")).toHaveLength(before);
+    // 只有附件、没有文字的评论也能发
+    await run("comment.create", { id: commentId, workItemId: itemId, body: "", mentions: [] }, guest.userId);
+    // 别人不能往这条评论里加附件
+    expect((await send(member, commentId)).status).toBe(403);
+    await run("comment.delete", { id: commentId }, guest.userId);
+    expect(
+      await services.database.db.select().from(schema.attachment).where(eq(schema.attachment.commentId, commentId)),
+    ).toEqual([]);
   });
 });
 

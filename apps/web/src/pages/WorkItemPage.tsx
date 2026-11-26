@@ -28,18 +28,30 @@ import {
   type VoteSummary,
   WorkCalendar,
 } from "@fp/engine";
-import { fieldViewRoles, hasAnyRole, mutators, queries } from "@fp/sync";
+import { fieldViewRoles, hasAnyRole, htmlToText, mutators, queries } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { Background, Controls, type Edge, MarkerType, type Node, Position, ReactFlow } from "@xyflow/react";
-import { Check, ChevronRight, CircleCheck, CircleDashed, CircleDot, Diamond, Eye, Star, Undo2 } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  Diamond,
+  Eye,
+  MessageSquare,
+  MessageSquarePlus,
+  Star,
+  Undo2,
+} from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityCard } from "@/components/ActivityCard";
 import { useActiveSpace } from "@/components/AppShell";
 import { AttachmentsCard } from "@/components/AttachmentsCard";
 import { ChartView } from "@/components/ChartView";
-import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
+import { CommentsCard, type CommentTopic, fieldCommentCounts, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
 import { MultiPersonField } from "@/components/MultiPersonField";
@@ -111,8 +123,8 @@ export function ItemRedirect() {
   );
 }
 
-/** 工作项详情：整页打开，或在列表右侧的抽屉里打开（内容一样）。 */
-export function WorkItemView({ itemId }: { itemId: string }) {
+/** 工作项详情：整页打开，或在列表右侧的抽屉里打开（内容一样）。initialTab 指定先打开哪个系统页签。 */
+export function WorkItemView({ itemId, initialTab }: { itemId: string; initialTab?: "comments" }) {
   const zero = useZero();
   const [item, result] = useQuery(queries.workItems.byId({ id: itemId }));
   // 空间成员和角色定义：改角色成员时用
@@ -131,6 +143,9 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   const [completing, setCompleting] = useState<string | null>(null);
   /** 当前打开的详情页签。 */
   const [tab, setTab] = useState<string | null>(null);
+  /** 正在针对哪个字段写评论；评论页签只看某个字段的评论。 */
+  const [commentTopic, setCommentTopic] = useState<CommentTopic | null>(null);
+  const [commentFilter, setCommentFilter] = useState<string | null>(null);
   /** 终止弹窗：选的原因和补充说明。 */
   const [terminating, setTerminating] = useState(false);
   const [abortReason, setAbortReason] = useState("取消，现在先不做了");
@@ -321,7 +336,58 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   const tabs = layout.tabs.filter(
     (t) => (t.system !== "nodes" || graph) && (!t.showWhen || evaluate(t.showWhen, roleView)),
   );
-  const currentTab = tabs.find((t) => t.key === tab) ?? tabs[0];
+  const currentTab =
+    tabs.find((t) => t.key === tab) ??
+    (tab === null && initialTab ? tabs.find((t) => t.system === initialTab) : undefined) ??
+    tabs[0];
+  const commentsTab = tabs.find((t) => t.system === "comments");
+  // 自己能看到的字段：评论里可以 @ 它们，针对它们评论
+  const visibleFields = typeFields.filter((f) => {
+    const roles = fieldViewRoles(f);
+    return !roles || isAdmin || hasAnyRole(roles, myRoles);
+  });
+  const fieldCounts = fieldCommentCounts(item.comments);
+  const fieldText = (key: string) => {
+    const def = typeFields.find((f) => f.key === key);
+    const value = record[key];
+    if (!def || value === null || value === undefined) return "";
+    if (def.dataType === "richText") return htmlToText(String(value));
+    return formatFieldValue(
+      { name: def.name, dataType: def.dataType as FieldDataType, options: def.options, config: def.config },
+      value,
+      (id: string) => nameOf(id),
+    );
+  };
+  /** 针对字段评论：切到评论页签，评论框带上字段和它现在的值。 */
+  const commentOnField = (key: string, name: string) => {
+    setCommentFilter(null);
+    setCommentTopic({ fieldKey: key, name, quote: fieldText(key) });
+    if (commentsTab) setTab(commentsTab.key);
+    requestAnimationFrame(() =>
+      document.querySelector("[data-comment-composer]")?.scrollIntoView({ block: "nearest", behavior: "smooth" }),
+    );
+  };
+  /** 只看某个字段上的评论。 */
+  const showFieldComments = (key: string) => {
+    setCommentTopic(null);
+    setCommentFilter(key);
+    if (commentsTab) setTab(commentsTab.key);
+  };
+  /** 从评论定位到字段：切到放着它的页签，滚过去闪一下。 */
+  const locateField = (key: string) => {
+    const host = tabs.find(
+      (t) => !t.system && t.sections?.some((s) => s.items.some((i) => i.kind === "field" && i.field === key)),
+    );
+    if (host) setTab(host.key);
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-field-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.remove("fl-located");
+      void el.offsetWidth;
+      el.classList.add("fl-located");
+    }, 60);
+  };
   const tabLabel = (t: (typeof tabs)[number]) =>
     t.system === "comments" && liveCommentCount(item.comments)
       ? `${t.name} ${liveCommentCount(item.comments)}`
@@ -612,6 +678,11 @@ export function WorkItemView({ itemId }: { itemId: string }) {
             myRoles={myRoles}
             me={me}
             labelPosition={layout.labelPosition}
+            commentCount={fieldCounts.get(it.field) ?? 0}
+            {...(commentsTab && {
+              onComment: commentOnField,
+              onShowComments: showFieldComments,
+            })}
             onSet={(fieldKey, value) => run(mutators.fieldValue.set({ workItemId: item.id, fieldKey, value }))}
           />
         );
@@ -887,7 +958,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
           <div key={`a-${index}`} className="col-span-full">
             <AttachmentsCard
               workItemId={item.id}
-              attachments={item.attachments.filter((a) => !a.fieldKey)}
+              attachments={item.attachments.filter((a) => !a.fieldKey && !a.commentId)}
               me={me}
               isAdmin={isAdmin}
               canWrite={canWrite}
@@ -1432,7 +1503,19 @@ export function WorkItemView({ itemId }: { itemId: string }) {
         )}
         {currentTab?.system === "comments" && (
           <div className="px-5 py-4">
-            <CommentsCard workItemId={item.id} comments={item.comments} members={members} isAdmin={isAdmin} />
+            <CommentsCard
+              workItemId={item.id}
+              comments={item.comments}
+              members={members}
+              fields={visibleFields.map((f) => ({ key: f.key, name: f.name }))}
+              files={item.attachments.filter((a) => a.commentId)}
+              isAdmin={isAdmin}
+              topic={commentTopic}
+              onClearTopic={() => setCommentTopic(null)}
+              fieldFilter={commentFilter}
+              onClearFieldFilter={() => setCommentFilter(null)}
+              onLocateField={locateField}
+            />
           </div>
         )}
         {currentTab?.system === "activity" && (
@@ -1606,6 +1689,9 @@ function LayoutField({
   myRoles,
   me,
   labelPosition,
+  commentCount = 0,
+  onComment,
+  onShowComments,
   onSet,
 }: {
   item: Extract<LayoutItem, { kind: "field" }>;
@@ -1617,6 +1703,11 @@ function LayoutField({
   myRoles: string[];
   me: string;
   labelPosition: "side" | "top";
+  /** 这个字段上的评论数；点了只看这些评论。 */
+  commentCount?: number;
+  /** 针对这个字段评论（悬停字段时出现入口）。 */
+  onComment?: (fieldKey: string, name: string) => void;
+  onShowComments?: (fieldKey: string) => void;
   onSet: (fieldKey: string, value: FieldInputValue) => void;
 }) {
   const field = fields.find((f) => f.key === item.field);
@@ -1633,14 +1724,42 @@ function LayoutField({
   const name = item.label || field.name;
   return (
     <div
+      data-field-key={field.key}
       className={cn(
-        "grid min-w-0 gap-1.5",
+        "group/field grid min-w-0 gap-1.5",
         wide && "col-span-full",
         !top && "grid-cols-[9rem_minmax(0,1fr)] items-center gap-3",
       )}
     >
-      <span className="min-w-0 overflow-hidden text-fg-muted" title={name}>
-        <FieldLabel name={name} required={state?.required} description={field.config?.description} />
+      <span className="flex min-w-0 items-center gap-1 text-fg-muted" title={name}>
+        <span className="min-w-0 overflow-hidden">
+          <FieldLabel name={name} required={state?.required} description={field.config?.description} />
+        </span>
+        {/* 字段上的评论：有评论时显示条数（点了只看这些评论），悬停时出现「评论」入口 */}
+        {onShowComments && commentCount > 0 && (
+          <button
+            type="button"
+            // 名称里不带字段名：按字段名找输入框时不会找到这里
+            aria-label={`字段评论 ${commentCount}`}
+            title="查看这个字段的评论"
+            onClick={() => onShowComments(field.key)}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-1 text-xs text-accent hover:bg-hover"
+          >
+            <MessageSquare className="size-3" />
+            {commentCount}
+          </button>
+        )}
+        {onComment && (
+          <button
+            type="button"
+            aria-label="针对字段评论"
+            title="针对这个字段评论"
+            onClick={() => onComment(field.key, name)}
+            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-fg-subtle opacity-0 group-focus-within/field:opacity-100 group-hover/field:opacity-100 hover:bg-hover hover:text-accent focus-visible:opacity-100"
+          >
+            <MessageSquarePlus className="size-3.5" />
+          </button>
+        )}
       </span>
       <div className="flex min-w-0 flex-col gap-1">
         {field.dataType === "multiPerson" ? (
