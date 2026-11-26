@@ -175,7 +175,19 @@ import {
   updateRole,
   updateRoleArgs,
 } from "./templates.ts";
-import { createView, createViewArgs, deleteView, deleteViewArgs, updateView, updateViewArgs } from "./views.ts";
+import {
+  addViewItems,
+  createView,
+  createViewArgs,
+  deleteView,
+  deleteViewArgs,
+  removeViewItems,
+  setViewMembers,
+  setViewMembersArgs,
+  updateView,
+  updateViewArgs,
+  viewItemsArgs,
+} from "./views.ts";
 import { castVote, castVoteArgs, revealVote, revealVoteArgs } from "./vote.ts";
 import {
   createWebhook,
@@ -335,6 +347,9 @@ export const mutators = defineMutators({
     create: defineMutator(createViewArgs, ({ tx, args, ctx }) => createView(tx, args, ctx.userID)),
     update: defineMutator(updateViewArgs, ({ tx, args, ctx }) => updateView(tx, args, ctx.userID)),
     delete: defineMutator(deleteViewArgs, ({ tx, args, ctx }) => deleteView(tx, args, ctx.userID)),
+    setMembers: defineMutator(setViewMembersArgs, ({ tx, args, ctx }) => setViewMembers(tx, args, ctx.userID)),
+    addItems: defineMutator(viewItemsArgs, ({ tx, args, ctx }) => addViewItems(tx, args, ctx.userID)),
+    removeItems: defineMutator(viewItemsArgs, ({ tx, args, ctx }) => removeViewItems(tx, args, ctx.userID)),
   },
   relationDef: {
     create: defineMutator(createRelationDefArgs, ({ tx, args, ctx }) => createRelationDef(tx, args, ctx.userID)),

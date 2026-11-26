@@ -4,7 +4,7 @@ import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { spaceMemberOf } from "./access.ts";
 import { zql } from "./schema.gen.ts";
-import { workItemFilter } from "./views.ts";
+import { compactFilter, workItemFilter } from "./views.ts";
 
 const dimension = z.object({
   by: z.enum(["type", "status", "stage", "creator", "createdAt", "role", "field"]),
@@ -43,9 +43,6 @@ export const updateChartArgs = z.object({
 export const deleteChartArgs = z.object({ id: z.string() });
 /** 调整度量页上图表的顺序：按给定的 id 顺序重排。 */
 export const reorderChartsArgs = z.object({ spaceId: z.string(), ids: z.array(z.string()).max(200) });
-
-const compactFilter = (filter: z.output<typeof workItemFilter>) =>
-  Object.fromEntries(Object.entries(filter).filter(([, v]) => v?.length)) as WorkItemFilter;
 
 /** 图表引用的字段要在筛选的类型（不筛类型时是空间里所有类型）里存在。 */
 async function checkConfig(tx: Transaction, spaceId: string, filter: WorkItemFilter, config: ChartConfig) {

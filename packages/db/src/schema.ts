@@ -479,8 +479,50 @@ export interface WorkItemFilter {
   stages?: string[];
   /** 在任一角色里的成员。 */
   memberIds?: string[];
-  /** 按字段值筛选，多个条件同时满足。 */
+  /** 按字段值筛选，多个条件同时满足（快捷筛选）。 */
   fields?: FieldFilter[];
+  /** 条件组：组之间、组内条件之间各按自己的「且 / 或」组合，再和上面的条件取「且」。 */
+  conds?: FilterConds;
+  /** 动态时间按哪天算、时区偏移（分钟）：查询时由前端带上，不存进视图。 */
+  clock?: { today: string; offset: number };
+  /** 固定视图：只看视图里手动加入的工作项。 */
+  viewId?: string;
+}
+
+export interface FilterConds {
+  conj: "and" | "or";
+  groups: { conj: "and" | "or"; items: FilterCond[] }[];
+}
+
+/** 动态时间：今天、本周、过去 N 天等，按查询当天换算成日期范围。 */
+export type DatePreset =
+  | "today"
+  | "yesterday"
+  | "tomorrow"
+  | "thisWeek"
+  | "lastWeek"
+  | "nextWeek"
+  | "thisMonth"
+  | "lastMonth"
+  | "nextMonth"
+  | "pastDays"
+  | "nextDays"
+  | "beforeToday";
+
+/**
+ * 条件组里的一个条件。field 是字段键，或者系统属性：$type、$status、$stage、$member、$createdBy、
+ * $name、$createdAt、$updatedAt、$role:<角色键>（担任该角色的人）、$node:<属性>:<节点键>
+ * （节点的 plannedStart、plannedEnd、actualEnd、state，节点键为 * 表示任一节点）。
+ * 人员值里的 $me 表示当前登录的人。
+ */
+export interface FilterCond {
+  field: string;
+  op: "in" | "notIn" | "contains" | "notContains" | "range" | "empty" | "notEmpty" | "date";
+  values?: string[];
+  text?: string;
+  min?: number | string;
+  max?: number | string;
+  date?: { preset: DatePreset; n?: number };
 }
 
 /**
@@ -521,11 +563,47 @@ export const savedView = pgTable("saved_view", {
   name: text("name").notNull(),
   filter: jsonb("filter").$type<WorkItemFilter>().notNull(),
   display: jsonb("display").$type<ViewDisplay>(),
+  /** 视图说明。 */
+  description: text("description"),
+  /** 条件视图按筛选条件取工作项；固定视图只放手动加入的工作项（saved_view_item）。 */
+  kind: text("kind").$type<"condition" | "fixed">().notNull().default("condition"),
+  /** 公共视图空间成员都能看到；个人视图只有创建人和协作者能看到。 */
+  visibility: text("visibility").$type<"public" | "personal">().notNull().default("public"),
   createdBy: text("created_by")
     .notNull()
     .references(() => user.id),
   createdAt: createdAt(),
 });
+
+/** 视图的协作者：个人视图共享给的人。edit 能改视图（条件、显示设置、固定视图的工作项），view 只能看。 */
+export const savedViewMember = pgTable(
+  "saved_view_member",
+  {
+    viewId: text("view_id")
+      .notNull()
+      .references(() => savedView.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    role: text("role").$type<"edit" | "view">().notNull().default("view"),
+  },
+  (t) => [primaryKey({ columns: [t.viewId, t.userId] })],
+);
+
+/** 固定视图里手动加入的工作项。 */
+export const savedViewItem = pgTable(
+  "saved_view_item",
+  {
+    viewId: text("view_id")
+      .notNull()
+      .references(() => savedView.id, { onDelete: "cascade" }),
+    workItemId: text("work_item_id")
+      .notNull()
+      .references(() => workItem.id, { onDelete: "cascade" }),
+    addedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.viewId, t.workItemId] }), index("saved_view_item_item").on(t.workItemId)],
+);
 
 /**
  * 度量图表：空间里保存的一张图。数据源是筛选条件（和视图同一套），config 是维度、指标和样式。
@@ -1203,7 +1281,19 @@ export const flowVersionRelations = relations(flowVersion, ({ one }) => ({
   }),
 }));
 
-export const savedViewRelations = relations(savedView, ({ one }) => ({
+export const savedViewMemberRelations = relations(savedViewMember, ({ one }) => ({
+  view: one(savedView, { fields: [savedViewMember.viewId], references: [savedView.id] }),
+  user: one(user, { fields: [savedViewMember.userId], references: [user.id] }),
+}));
+
+export const savedViewItemRelations = relations(savedViewItem, ({ one }) => ({
+  view: one(savedView, { fields: [savedViewItem.viewId], references: [savedView.id] }),
+  workItem: one(workItem, { fields: [savedViewItem.workItemId], references: [workItem.id] }),
+}));
+
+export const savedViewRelations = relations(savedView, ({ one, many }) => ({
+  members: many(savedViewMember),
+  items: many(savedViewItem),
   space: one(space, { fields: [savedView.spaceId], references: [space.id] }),
   creator: one(user, { fields: [savedView.createdBy], references: [user.id] }),
 }));
@@ -1273,6 +1363,7 @@ export const workItemRelations = relations(workItem, ({ one, many }) => ({
   events: many(eventLog),
   comments: many(comment),
   tasks: many(nodeTask),
+  viewItems: many(savedViewItem),
 }));
 
 export const nodeTaskRelations = relations(nodeTask, ({ one }) => ({
