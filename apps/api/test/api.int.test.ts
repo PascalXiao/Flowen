@@ -3627,4 +3627,46 @@ describe("cross-space relations", () => {
     await run("node.confirm", { workItemId: project, nodeKey: "design" });
     await run("node.confirm", { workItemId: sku, nodeKey: "design" });
   });
+  it("hierarchies follow cross-space relations into the other space and on along its own relations", async () => {
+    const part = `${spaceB}/part`;
+    await run("workItemType.create", { id: part, spaceId: spaceB, key: "part", name: "部件" }, otherAdmin.userId);
+    const partDef = `${spaceB}/rel/part`;
+    await run(
+      "relationDef.create",
+      { id: partDef, fromTypeId: typeB, toTypeId: part, name: "部件", cardinality: "many" },
+      otherAdmin.userId,
+    );
+    const id = randomUUID();
+    const layers = [
+      { typeId: typeB, relationDefId: defId },
+      { typeId: part, relationDefId: partDef },
+    ];
+    // 只是项目空间的管理员、不在 SKU 空间里，不能把层级伸进 SKU 空间
+    const adminA = await signUp(`cross-admin-a-${spaceA}@example.com`);
+    await services.database.db
+      .insert(schema.spaceMember)
+      .values({ spaceId: spaceA, userId: adminA.userId, role: "admin" });
+    await expect(
+      run("hierarchy.create", { id, spaceId: spaceA, name: "项目到部件", rootTypeId: typeA, layers }, adminA.userId),
+    ).rejects.toThrow("层级经过的别的空间，你也要是那个空间的成员");
+    // 子工作项只能在同一个空间里，不能从项目直接到部件
+    await expect(
+      run("hierarchy.create", {
+        id,
+        spaceId: spaceA,
+        name: "项目到部件",
+        rootTypeId: typeA,
+        layers: [{ typeId: part, relationDefId: null }],
+      }),
+    ).rejects.toThrow("第 2 层和上一层之间没有这条关系");
+    await run("hierarchy.create", { id, spaceId: spaceA, name: "项目到部件", rootTypeId: typeA, layers });
+    const [row] = await services.database.db.select().from(schema.hierarchy).where(eq(schema.hierarchy.id, id));
+    expect(row?.layers).toEqual(layers);
+    // SKU 空间里的关系被项目空间的层级用着，也不能删
+    await expect(run("relationDef.delete", { id: partDef }, otherAdmin.userId)).rejects.toThrow(
+      "层级「项目到部件」用到了这条关系",
+    );
+    await run("hierarchy.delete", { id });
+    await run("relationDef.delete", { id: partDef }, otherAdmin.userId);
+  });
 });

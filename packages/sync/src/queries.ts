@@ -195,6 +195,8 @@ export const queries = defineQueries({
         .whereExists("members", (m) => m.where("userId", ctx.userID))
         .related("workItemTypes", (t) => t.orderBy("sort", "asc"))
         .related("members", (m) => m.related("user"))
+        // 树形模式按某个空间的层级展开（层级可以跨空间）
+        .related("hierarchies", (h) => h.orderBy("createdAt", "asc"))
         .orderBy("name", "asc"),
     ),
     byId: defineQuery(z.object({ id: z.string() }), ({ args, ctx }) =>
@@ -243,6 +245,22 @@ export const queries = defineQueries({
             .related("flowTemplates", (f) => f.related("currentVersion")),
         )
         .one(),
+    ),
+    /**
+     * 层级管理走进别的空间时用：那些空间（自己是成员的）的工作项类型，和碰到这些类型的关联
+     * （另一端可能又在别的空间，带上它的空间名）。
+     */
+    hierarchyConfig: defineQuery(z.object({ ids: z.array(z.string()).max(50) }), ({ args, ctx }) =>
+      zql.space
+        .where("id", "IN", args.ids)
+        .whereExists("members", (m) => m.where("userId", ctx.userID))
+        .related("workItemTypes", (t) =>
+          t
+            .orderBy("sort", "asc")
+            .related("relationDefs", (d) => d.related("toType", (x) => x.related("space")))
+            .related("incomingRelationDefs", (d) => d.related("fromType", (x) => x.related("space"))),
+        )
+        .orderBy("name", "asc"),
     ),
   },
   automations: {
@@ -551,7 +569,7 @@ export const queries = defineQueries({
       spaceItemsArgs.extend({ rootTypeId: z.string(), next: z.array(stepArgs).max(2), plans: z.boolean().optional() }),
       ({ args, ctx }) =>
         spaceItems({ spaceId: args.spaceId, filter: { ...args.filter, typeIds: [args.rootTypeId] } }, ctx.userID)
-          .related("type")
+          .related("type", (t) => t.related("space"))
           .related("nodes", treePlans(args.plans))
           .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
           .related("incoming", (r) => r.where(stepEdges(args.next, true)))
@@ -568,7 +586,7 @@ export const queries = defineQueries({
         .whereExists("to", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
         .related("to", (w) =>
           w
-            .related("type")
+            .related("type", (t) => t.related("space"))
             .related("nodes", treePlans(args.plans))
             .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
             .related("incoming", (r) => r.where(stepEdges(args.next, true))),
@@ -582,7 +600,7 @@ export const queries = defineQueries({
         .whereExists("from", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
         .related("from", (w) =>
           w
-            .related("type")
+            .related("type", (t) => t.related("space"))
             .related("nodes", treePlans(args.plans))
             .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
             .related("incoming", (r) => r.where(stepEdges(args.next, true))),
@@ -599,7 +617,7 @@ export const queries = defineQueries({
           .whereExists("to", (w) => w.where(itemVisible(ctx.userID)))
           .related("to", (w) =>
             w
-              .related("type")
+              .related("type", (t) => t.related("space"))
               .related("nodes", treePlans(args.plans))
               .related("outgoing", (r) => r.where(hierarchyEdges(args.hierarchy))),
           )

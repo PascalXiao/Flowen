@@ -42,7 +42,7 @@ interface TreeItem {
   name: string;
   stage: string | null;
   status: string | null;
-  type?: { name: string } | null;
+  type?: { name: string; spaceId?: string; space?: { name: string } | null } | null;
   /** 排期管理模式下才有：没跳过的节点的计划排期。 */
   nodes?: readonly { nodeKey: string; plannedStart: number | null; plannedEnd: number | null }[];
   outgoing: readonly unknown[];
@@ -167,15 +167,17 @@ export function TreeView({
           </div>
         )}
       </div>
-      <TimelineContext.Provider value={timeline}>
-        <div className={cn(schedule && "overflow-x-auto")}>
-          {layered ? (
-            <LayeredTree key={layered.id} spaceId={spaceId} filter={filter} hierarchy={layered} typeId={typeId} />
-          ) : (
-            <SingleTree key={mode} spaceId={spaceId} filter={filter} hierarchy={{ relationDefId: mode || null }} />
-          )}
-        </div>
-      </TimelineContext.Provider>
+      <SpaceContext.Provider value={spaceId}>
+        <TimelineContext.Provider value={timeline}>
+          <div className={cn(schedule && "overflow-x-auto")}>
+            {layered ? (
+              <LayeredTree key={layered.id} spaceId={spaceId} filter={filter} hierarchy={layered} typeId={typeId} />
+            ) : (
+              <SingleTree key={mode} spaceId={spaceId} filter={filter} hierarchy={{ relationDefId: mode || null }} />
+            )}
+          </div>
+        </TimelineContext.Provider>
+      </SpaceContext.Provider>
     </div>
   );
 }
@@ -196,6 +198,20 @@ const SCALES: Record<Scale, { label: string; days: number; dayWidth: number; ste
   month: { label: "按月", days: 365, dayWidth: 3, step: 91 },
 };
 const TimelineContext = createContext<Timeline | null>(null);
+/**
+ * 树形视图所在的空间：层级走进别的空间时，那边的工作项在类型前面带上空间名。
+ * 全景视图里是 "*"：每一行都带空间名。
+ */
+const SpaceContext = createContext<string>("");
+
+/** 全景视图的树形模式：按某个空间的一个层级展开，第一层是那个空间里的全部树根工作项。 */
+export function HierarchyTree({ spaceId, hierarchy }: { spaceId: string; hierarchy: LayeredHierarchy }) {
+  return (
+    <SpaceContext.Provider value="*">
+      <LayeredTree key={hierarchy.id} spaceId={spaceId} filter={{}} hierarchy={hierarchy} />
+    </SpaceContext.Provider>
+  );
+}
 
 /** 时间轴从哪天开始：今天往前留一段，按天、按周从周一开始，按月从月初开始。 */
 function windowStart(today: Day, scale: Scale): Day {
@@ -544,6 +560,8 @@ function Row({
   onToggle: () => void;
 }) {
   const t = useContext(TimelineContext);
+  const spaceId = useContext(SpaceContext);
+  const foreign = spaceId === "*" || (!!item.type?.spaceId && !!spaceId && item.type.spaceId !== spaceId);
   return (
     <tr className="border-b border-line-subtle hover:bg-hover/50">
       <td className={cn("h-9 px-4", t && "sticky left-0 z-10 min-w-72 bg-surface")}>
@@ -565,9 +583,19 @@ function Row({
             {item.name}
           </Link>
           {count > 0 && <span className="text-xs text-fg-subtle">{count}</span>}
+          {t && foreign && <span className="text-xs text-fg-subtle">· {item.type?.space?.name}</span>}
         </div>
       </td>
-      {!t && <td className="px-4">{item.type && <Tag>{item.type.name}</Tag>}</td>}
+      {!t && (
+        <td className="whitespace-nowrap px-4">
+          {item.type && (
+            <span className="flex items-center gap-1.5">
+              {foreign && <span className="text-xs text-fg-subtle">{item.type.space?.name}</span>}
+              <Tag>{item.type.name}</Tag>
+            </span>
+          )}
+        </td>
+      )}
       <td className="whitespace-nowrap px-4">{item.stage && <StageTag stage={item.stage} />}</td>
       <td className="whitespace-nowrap px-4">
         <StatusTag status={item.status ?? "inProgress"} />

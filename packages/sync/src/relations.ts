@@ -76,7 +76,7 @@ export async function deleteRelationDef(tx: Transaction, args: z.output<typeof d
   if (!def) throw new Error("关联不存在。");
   // 跨空间关联两边的管理员都能删
   await assertAdminOfEither(tx, [def.spaceId, def.toSpaceId], userID);
-  const used = await hierarchiesUsing(tx, def.spaceId, args.id);
+  const used = await hierarchiesUsing(tx, args.id);
   if (used.length > 0)
     throw new Error(`层级${used.map((n) => `「${n}」`).join("、")}用到了这条关系，先在层级管理里改掉。`);
   for (const r of await tx.run(zql.relation.where("relationDefId", args.id)))

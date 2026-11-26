@@ -39,7 +39,16 @@ interface RelationDefLike {
   toTypeId: string;
 }
 
-/** 从某个类型往下一层能走的路：沿自定义关系的两个方向，或者子工作项关系到任意类型。 */
+/** 层级里能用的工作项类型：本空间的，以及沿跨空间关联走到的别的空间的。 */
+export interface HierarchyTypeLike {
+  id: string;
+  spaceId: string;
+}
+
+/**
+ * 从某个类型往下一层能走的路：沿碰到这个类型的自定义关系的两个方向（包括跨空间关联，
+ * 走到别的空间后也能沿那个空间自己的关系继续往下），或者子工作项关系到同一个空间的任意类型。
+ */
 export interface HierarchyStep {
   typeId: string;
   relationDefId: string | null;
@@ -49,8 +58,9 @@ export interface HierarchyStep {
 export function nextSteps(
   typeId: string,
   defs: readonly RelationDefLike[],
-  typeIds: readonly string[],
+  types: readonly HierarchyTypeLike[],
 ): HierarchyStep[] {
+  const spaceId = types.find((t) => t.id === typeId)?.spaceId;
   const steps: HierarchyStep[] = [];
   for (const d of defs) {
     if (d.fromTypeId === typeId) steps.push({ typeId: d.toTypeId, relationDefId: d.id, reverse: false });
@@ -58,21 +68,23 @@ export function nextSteps(
     if (d.toTypeId === typeId && d.fromTypeId !== d.toTypeId)
       steps.push({ typeId: d.fromTypeId, relationDefId: d.id, reverse: true });
   }
-  for (const t of typeIds) steps.push({ typeId: t, relationDefId: null, reverse: false });
+  // 子工作项只能建在同一个空间里
+  for (const t of types) if (t.spaceId === spaceId) steps.push({ typeId: t.id, relationDefId: null, reverse: false });
   return steps;
 }
 
 /** 检查每一层都能从上一层走到；返回第一个问题，没有问题时返回 null。 */
 export function checkLayers(
+  spaceId: string,
   rootTypeId: string,
   layers: readonly HierarchyLayerArgs[],
   defs: readonly RelationDefLike[],
-  typeIds: readonly string[],
+  types: readonly HierarchyTypeLike[],
 ): string | null {
-  if (!typeIds.includes(rootTypeId)) return "第一层的工作项类型不存在。";
+  if (types.find((t) => t.id === rootTypeId)?.spaceId !== spaceId) return "第一层的工作项类型不存在。";
   let parent = rootTypeId;
   for (const [i, layer] of layers.entries()) {
-    const ok = nextSteps(parent, defs, typeIds).some(
+    const ok = nextSteps(parent, defs, types).some(
       (s) =>
         s.typeId === layer.typeId && s.relationDefId === layer.relationDefId && s.reverse === (layer.reverse ?? false),
     );
@@ -87,10 +99,29 @@ export function checkLayers(
   return null;
 }
 
-async function spaceConfig(tx: Transaction, spaceId: string) {
-  const types = await tx.run(zql.workItemType.where("spaceId", spaceId));
-  const defs = await tx.run(zql.relationDef.where("spaceId", spaceId));
-  return { typeIds: types.map((t) => t.id), defs };
+/**
+ * 检查层级要用的配置：本空间和层级经过的别的空间的类型，以及碰到这些空间的关系。
+ * 层级走进别的空间时，改层级的人也要是那个空间的成员（不然看不到那边的配置）。
+ */
+async function layerConfig(tx: Transaction, spaceId: string, layers: readonly HierarchyLayerArgs[], userID: string) {
+  const layerTypes = layers.length
+    ? await tx.run(zql.workItemType.where("id", "IN", [...new Set(layers.map((l) => l.typeId))]))
+    : [];
+  const spaceIds = [...new Set([spaceId, ...layerTypes.map((t) => t.spaceId)])];
+  for (const other of spaceIds.filter((s) => s !== spaceId)) {
+    const member = await tx.run(zql.spaceMember.where("spaceId", other).where("userId", userID).one());
+    if (!member) throw new Error("层级经过的别的空间，你也要是那个空间的成员。");
+  }
+  const types = await tx.run(zql.workItemType.where("spaceId", "IN", spaceIds));
+  const defs = [
+    ...(await tx.run(zql.relationDef.where("spaceId", "IN", spaceIds))),
+    ...(await tx.run(zql.relationDef.where("toSpaceId", "IN", spaceIds))),
+  ];
+  // 跨空间关联另一端的类型（可能在第三个空间）也算进来
+  const known = new Set(types.map((t) => t.id));
+  const far = [...new Set(defs.flatMap((d) => [d.fromTypeId, d.toTypeId]).filter((id) => !known.has(id)))];
+  const farTypes = far.length ? await tx.run(zql.workItemType.where("id", "IN", far)) : [];
+  return { types: [...types, ...farTypes], defs };
 }
 
 const clean = (layers: readonly HierarchyLayerArgs[]) =>
@@ -107,8 +138,8 @@ export async function createHierarchy(tx: Transaction, args: z.output<typeof cre
   const existing = await tx.run(zql.hierarchy.where("spaceId", args.spaceId));
   if (existing.length >= MAX_HIERARCHIES) throw new Error(`一个空间最多 ${MAX_HIERARCHIES} 个层级。`);
   if (existing.some((h) => h.name === args.name)) throw new Error(`层级「${args.name}」已经存在。`);
-  const { typeIds, defs } = await spaceConfig(tx, args.spaceId);
-  const problem = checkLayers(args.rootTypeId, args.layers, defs, typeIds);
+  const { types, defs } = await layerConfig(tx, args.spaceId, args.layers, userID);
+  const problem = checkLayers(args.spaceId, args.rootTypeId, args.layers, defs, types);
   if (problem) throw new Error(problem);
   await tx.mutate.hierarchy.insert({
     id: args.id,
@@ -131,8 +162,8 @@ export async function updateHierarchy(tx: Transaction, args: z.output<typeof upd
     if (clash) throw new Error(`层级「${args.name}」已经存在。`);
   }
   if (args.layers) {
-    const { typeIds, defs } = await spaceConfig(tx, current.spaceId);
-    const problem = checkLayers(current.rootTypeId, args.layers, defs, typeIds);
+    const { types, defs } = await layerConfig(tx, current.spaceId, args.layers, userID);
+    const problem = checkLayers(current.spaceId, current.rootTypeId, args.layers, defs, types);
     if (problem) throw new Error(problem);
   }
   await tx.mutate.hierarchy.update({
@@ -149,8 +180,8 @@ export async function deleteHierarchy(tx: Transaction, args: z.output<typeof del
   await tx.mutate.hierarchy.delete({ id: args.id });
 }
 
-/** 删关系前看有没有层级在用它。 */
-export async function hierarchiesUsing(tx: Transaction, spaceId: string, relationDefId: string) {
-  const all = await tx.run(zql.hierarchy.where("spaceId", spaceId));
+/** 删关系前看有没有层级在用它。层级可以跨空间，所以每个空间的层级都要看。 */
+export async function hierarchiesUsing(tx: Transaction, relationDefId: string) {
+  const all = await tx.run(zql.hierarchy);
   return all.filter((h) => h.layers.some((l) => l.relationDefId === relationDefId)).map((h) => h.name);
 }

@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Database } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { ChartView } from "@/components/ChartView";
+import { HierarchyTree } from "@/components/TreeView";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -43,7 +44,7 @@ export function PanoramaPage() {
   const allTypes = useMemo(() => spaces.flatMap((s) => s.workItemTypes.map((t) => t.id)), [spaces]);
   const typeIds = search.types ?? allTypes;
   const items = usePanorama(typeIds);
-  const [mode, setMode] = useState<"table" | "chart">("table");
+  const [mode, setMode] = useState<"table" | "tree" | "chart">("table");
   const [picking, setPicking] = useState(false);
   const setTypes = (ids: string[]) => navigate({ to: ".", search: { types: ids } });
 
@@ -63,6 +64,7 @@ export function PanoramaPage() {
               onChange={setMode}
               items={[
                 ["table", "表格"],
+                ["tree", "树形"],
                 ["chart", "度量"],
               ]}
             />
@@ -74,7 +76,9 @@ export function PanoramaPage() {
         }
       />
       <PageBody>
-        {sourceCount === 0 ? (
+        {mode === "tree" ? (
+          <PanoramaTree spaces={spaces} />
+        ) : sourceCount === 0 ? (
           <div className="rounded-lg border border-line-subtle bg-surface">
             <EmptyState
               title="还没有选数据源"
@@ -209,6 +213,42 @@ function PanoramaTable({ items, spaces }: { items: readonly Item[]; spaces: Sour
           </tbody>
         </table>
         {items.length === 0 && <p className="py-10 text-center text-sm text-fg-subtle">数据源里还没有工作项</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 树形模式：选一个空间里配好的层级，按它一层层展开。层级可以沿跨空间关联走进别的空间，
+ * 每一行都带所属空间。数据源只决定表格和度量，树形按层级本身找数据。
+ */
+function PanoramaTree({ spaces }: { spaces: Sources }) {
+  const hierarchies = spaces.flatMap((s) => s.hierarchies.map((h) => ({ ...h, spaceName: s.name })));
+  const [id, setId] = useState("");
+  const chosen = hierarchies.find((h) => h.id === id) ?? hierarchies[0];
+  if (!chosen)
+    return (
+      <div className="rounded-lg border border-line-subtle bg-surface">
+        <EmptyState
+          title="还没有层级"
+          description="在空间配置 → 工作项 → 高级设置 → 层级管理里，按关系把工作项排成多层的树。"
+        />
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm text-fg-muted">
+        层级
+        <Select aria-label="层级" value={chosen.id} onChange={(e) => setId(e.target.value)} className="w-auto">
+          {hierarchies.map((h) => (
+            <option key={h.id} value={h.id}>
+              {h.spaceName} / {h.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-line-subtle bg-surface">
+        <HierarchyTree spaceId={chosen.spaceId} hierarchy={chosen} />
       </div>
     </div>
   );
