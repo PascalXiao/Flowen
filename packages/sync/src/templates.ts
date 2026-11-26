@@ -402,6 +402,16 @@ export const flowDefinitionSchema = z.object({
     .array(z.object({ when: condition, stage: z.string().trim().min(1) }))
     .max(50)
     .optional(),
+  groups: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(64),
+        name: z.string().trim().min(1).max(60),
+        nodes: z.array(z.string()).min(1).max(200),
+      }),
+    )
+    .max(50)
+    .optional(),
 });
 
 export const statusFlowDefinitionSchema = z.object({

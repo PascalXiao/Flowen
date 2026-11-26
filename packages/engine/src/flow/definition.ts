@@ -166,6 +166,8 @@ export interface FlowDefinition {
    * 结论写成 `$conclusion.节点键`。
    */
   stageRules?: { when: Condition; stage: string }[];
+  /** 节点分组：只用来在流程图上把一组节点框在一起显示，不影响流转。 */
+  groups?: { key: string; name: string; nodes: string[] }[];
 }
 
 /** 流程图的只读索引：按键查节点、前序、后续、末端节点。 */
