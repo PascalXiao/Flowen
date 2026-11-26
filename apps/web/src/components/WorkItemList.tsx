@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BatchBar, type BatchLink } from "@/components/BatchBar";
+import { CommentPreview } from "@/components/CommentPreview";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { MultiPick } from "@/components/FilterConditions";
 import { type GridColumn, type GridRow, ListGrid } from "@/components/ListGrid";
@@ -432,20 +433,38 @@ export function WorkItemList({
       });
   }
 
-  const nameCell = (item: ListItem) => (
-    <span className="flex min-w-0 items-center gap-1.5">
-      {/* 点名称在右侧抽屉里打开，列表留在后面，可以连续看 */}
-      <Link
-        className="min-w-0 truncate font-medium text-fg hover:text-accent"
-        from="/spaces/$spaceId/$typeKey"
-        to="."
-        search={(prev) => ({ ...prev, item: item.id })}
-      >
-        {item.name}
-      </Link>
-      {marks(item).has("star") && <Star className="size-3.5 shrink-0 fill-warning-500 text-warning-500" />}
-    </span>
-  );
+  const nameCell = (item: ListItem) => {
+    const latest = item.comments[0];
+    return (
+      <span className="flex min-w-0 items-center gap-1.5">
+        {/* 点名称在右侧抽屉里打开，列表留在后面，可以连续看 */}
+        <Link
+          className="min-w-0 truncate font-medium text-fg hover:text-accent"
+          from="/spaces/$spaceId/$typeKey"
+          to="."
+          search={(prev) => ({ ...prev, item: item.id, itemTab: undefined })}
+        >
+          {item.name}
+        </Link>
+        {marks(item).has("star") && <Star className="size-3.5 shrink-0 fill-warning-500 text-warning-500" />}
+        {latest && (
+          <CommentPreview
+            latest={latest}
+            openAll={(children, className) => (
+              <Link
+                className={className}
+                from="/spaces/$spaceId/$typeKey"
+                to="."
+                search={(prev) => ({ ...prev, item: item.id, itemTab: "comments" as const })}
+              >
+                {children}
+              </Link>
+            )}
+          />
+        )}
+      </span>
+    );
+  };
   const gridColumns: GridColumn<ListItem>[] = [
     { key: "name", header: "名称", width: 260, frozen: true, cell: nameCell },
     ...shown.map((c, index): GridColumn<ListItem> => {

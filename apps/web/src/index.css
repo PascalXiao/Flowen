@@ -316,6 +316,49 @@
   padding-left: 0.75rem;
   color: var(--color-fg-muted);
 }
+.rich-text code {
+  border-radius: 4px;
+  background: var(--color-canvas);
+  padding: 0 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+.rich-text pre {
+  margin: 0.25rem 0;
+  border-radius: 6px;
+  background: var(--color-canvas);
+  padding: 0.5rem 0.75rem;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+.rich-text pre code {
+  padding: 0;
+  background: none;
+}
+/* @人、@字段：人用强调色文字，字段多一层浅底、可以点击定位。 */
+.rich-text [data-user],
+.rich-text [data-field] {
+  color: var(--color-accent);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.rich-text [data-field] {
+  cursor: pointer;
+  border-radius: 4px;
+  background: var(--fl-accent-soft);
+  padding: 0 0.25rem;
+}
+/* 从评论定位到字段时闪一下。 */
+@keyframes fl-locate {
+  from {
+    background: var(--fl-accent-soft);
+  }
+}
+.fl-located {
+  animation: fl-locate 1.6s ease-out;
+  border-radius: 6px;
+}
 
 @keyframes fl-sheet-in {
   from {

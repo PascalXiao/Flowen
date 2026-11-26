@@ -35,7 +35,7 @@ type ItemType = Space["workItemTypes"][number];
  */
 export function WorkItemHomePage() {
   const { spaceId, typeKey } = useParams({ from: "/app/spaces/$spaceId/$typeKey" });
-  const { tab, view: viewId, item: openItem } = useSearch({ from: "/app/spaces/$spaceId/$typeKey" });
+  const { tab, view: viewId, item: openItem, itemTab } = useSearch({ from: "/app/spaces/$spaceId/$typeKey" });
   const navigate = useNavigate();
   const zero = useZero();
   const [space, spaceResult] = useQuery(queries.spaces.byId({ id: spaceId }));
@@ -101,7 +101,7 @@ export function WorkItemHomePage() {
               <DrawerStepper
                 ids={rowIds}
                 current={openItem}
-                onGo={(id) => navigate({ to: ".", search: (prev) => ({ ...prev, item: id }) })}
+                onGo={(id) => navigate({ to: ".", search: (prev) => ({ ...prev, item: id, itemTab: undefined }) })}
               />
               <Link
                 to="/spaces/$spaceId/$typeKey/detail/$itemId"
@@ -112,9 +112,13 @@ export function WorkItemHomePage() {
               </Link>
             </span>
           }
-          onClose={() => navigate({ to: ".", search: (prev) => ({ ...prev, item: undefined }) })}
+          onClose={() => navigate({ to: ".", search: (prev) => ({ ...prev, item: undefined, itemTab: undefined }) })}
         >
-          <WorkItemView itemId={openItem} />
+          <WorkItemView
+            key={`${openItem}-${itemTab ?? ""}`}
+            itemId={openItem}
+            {...(itemTab && { initialTab: itemTab })}
+          />
         </Sheet>
       )}
       <PageBody className="max-w-none">

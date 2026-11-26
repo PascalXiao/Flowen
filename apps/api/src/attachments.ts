@@ -52,9 +52,18 @@ export function attachmentRoutes(
         const workItemId = c.req.param("id");
         const member = await roleOn(workItemId, me);
         if (!member) return c.json({ error: "工作项不存在或没有权限。" }, 404);
-        if (member.role === "guest") return c.json({ error: "访客只能查看和评论。" }, 403);
+        // ?comment= 表示评论里的附件：评论可以先传附件再发（id 由前端先定好），访客也能评论、能传
+        const commentId = c.req.query("comment") || null;
+        if (commentId) {
+          const [comment] = await database.db
+            .select({ workItemId: schema.comment.workItemId, authorId: schema.comment.authorId })
+            .from(schema.comment)
+            .where(eq(schema.comment.id, commentId));
+          if (comment && (comment.workItemId !== workItemId || comment.authorId !== me))
+            return c.json({ error: "只能给自己的评论加附件。" }, 403);
+        } else if (member.role === "guest") return c.json({ error: "访客只能查看和评论。" }, 403);
         // ?field= 表示传到附件字段里：只记上字段键，放不放进字段值由前端随后改字段值决定
-        const fieldKey = c.req.query("field") || null;
+        const fieldKey = commentId ? null : c.req.query("field") || null;
         if (fieldKey) {
           const [def] = await database.db
             .select({ dataType: schema.fieldDef.dataType })
@@ -78,11 +87,14 @@ export function attachmentRoutes(
           size,
           storageKey,
           fieldKey,
+          commentId,
           uploadedBy: me,
         };
         try {
           await database.db.transaction(async (tx) => {
             await tx.insert(schema.attachment).values(row);
+            // 评论里的附件随评论显示，不另记进工作项动态
+            if (commentId) return;
             await appendEvents(tx, [
               {
                 spaceId: member.spaceId,
@@ -136,6 +148,7 @@ export function attachmentRoutes(
         return c.json({ error: "只有上传人和空间管理员可以删除附件。" }, 403);
       await database.db.transaction(async (tx) => {
         await tx.delete(schema.attachment).where(eq(schema.attachment.id, file.id));
+        if (file.commentId) return;
         await appendEvents(tx, [
           {
             spaceId: member.spaceId,

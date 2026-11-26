@@ -1,6 +1,6 @@
 import { type Database, schema } from "@fp/db";
 import { nodeFlowOf } from "@fp/engine";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 interface NewNotification {
   userId: string;
@@ -30,14 +30,24 @@ export async function notify(database: Database, eventId: number): Promise<numbe
         kind: "mentioned",
         text: `${author?.name ?? "有人"} 在「${item.name}」的评论里提到了你`,
       });
-    // 回复：通知被回复的人（已经被提及的不重复通知）
-    const replyTo = typeof payload.replyTo === "string" ? payload.replyTo : null;
-    if (replyTo && !mentions.includes(replyTo))
-      notifications.push({
-        userId: replyTo,
-        kind: "replied",
-        text: `${author?.name ?? "有人"} 在「${item.name}」回复了你的评论`,
-      });
+    // 回复：通知楼主和楼里回复过的人（已经被提及的不重复通知，操作者自己最后统一去掉）
+    const parentId = event.kind === "commentAdded" && typeof payload.parentId === "string" ? payload.parentId : null;
+    if (parentId) {
+      const floor = await db
+        .select({ authorId: schema.comment.authorId })
+        .from(schema.comment)
+        .where(or(eq(schema.comment.id, parentId), eq(schema.comment.parentId, parentId)));
+      for (const userId of new Set(floor.map((c) => c.authorId)))
+        if (!mentions.includes(userId))
+          notifications.push({
+            userId,
+            kind: "replied",
+            text:
+              userId === payload.replyTo
+                ? `${author?.name ?? "有人"} 在「${item.name}」回复了你的评论`
+                : `${author?.name ?? "有人"} 在「${item.name}」你参与的评论里有新回复`,
+          });
+    }
   } else if (event.kind === "nodeStarted" && typeof payload.node === "string") {
     const node = await db.query.nodeInstance.findFirst({
       where: eq(schema.nodeInstance.id, `${item.id}/${payload.node}`),

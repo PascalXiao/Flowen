@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type Database, schema } from "@fp/db";
 import { nodeFlowOf, statusFlowOf } from "@fp/engine";
-import { queries, workItemFilter } from "@fp/sync";
+import { queries, textToHtml, workItemFilter } from "@fp/sync";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, os } from "@orpc/server";
@@ -370,7 +370,7 @@ export const openApiRouter = {
         await mutate(
           context.zero,
           "comment.create",
-          { id, workItemId: input.id, body: input.body, mentions: input.mentions ?? [] },
+          { id, workItemId: input.id, body: textToHtml(input.body), mentions: input.mentions ?? [] },
           context.userId,
         );
         return { id };

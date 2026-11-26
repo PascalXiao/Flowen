@@ -80,11 +80,14 @@ const typeHomeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/spaces/$spaceId/$typeKey",
   component: WorkItemHomePage,
-  // ?tab=views 看视图列表；?view= 套用一个视图；?item= 在右侧抽屉里打开一个工作项
-  validateSearch: (search: Record<string, unknown>): { tab?: "views"; view?: string; item?: string } => ({
+  // ?tab=views 看视图列表；?view= 套用一个视图；?item= 在右侧抽屉里打开一个工作项（?itemTab=comments 直接看评论）
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "views"; view?: string; item?: string; itemTab?: "comments" } => ({
     ...(search.tab === "views" && { tab: "views" as const }),
     ...(typeof search.view === "string" && { view: search.view }),
     ...(typeof search.item === "string" && { item: search.item }),
+    ...(search.itemTab === "comments" && { itemTab: "comments" as const }),
   }),
 });
 const itemRoute = createRoute({

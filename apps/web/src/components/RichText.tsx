@@ -24,7 +24,11 @@ const ALLOWED = new Set([
   "BLOCKQUOTE",
   "CODE",
   "PRE",
+  "SPAN",
 ]);
+
+/** @人、@字段：`<span data-user="id">`、`<span data-field="key">`，清理时只留下这两个属性。 */
+const DATA_ATTRS = ["data-user", "data-field"] as const;
 
 /** 清理富文本 HTML：只留白名单标签和 http(s) 链接，防止存进去的内容带脚本。 */
 export function sanitizeHtml(html: string): string {
@@ -41,7 +45,9 @@ export function sanitizeHtml(html: string): string {
         child.replaceWith(...child.childNodes);
         continue;
       }
-      for (const attr of [...child.attributes]) child.removeAttribute(attr.name);
+      for (const attr of [...child.attributes])
+        if (!(child.tagName === "SPAN" && DATA_ATTRS.includes(attr.name as never) && attr.value.length <= 200))
+          child.removeAttribute(attr.name);
     }
   };
   // 链接的 href 要在清掉属性之前取出来
@@ -60,11 +66,25 @@ export function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
-/** 只读显示富文本。 */
-export function RichTextView({ html, className }: { html: string; className?: string }) {
+/** 只读显示富文本。点 @字段 时交给 onField（定位到字段）。 */
+export function RichTextView({
+  html,
+  className,
+  onField,
+}: {
+  html: string;
+  className?: string;
+  onField?: (key: string) => void;
+}) {
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: 只接住 @字段 的点击；键盘可以用字段旁的评论入口定位
+    // biome-ignore lint/a11y/noStaticElementInteractions: 同上
     <div
       className={cn("rich-text text-sm", className)}
+      onClick={(e) => {
+        const key = (e.target as HTMLElement).closest("[data-field]")?.getAttribute("data-field");
+        if (key && onField) onField(key);
+      }}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: 内容已经过 sanitizeHtml 白名单清理
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />

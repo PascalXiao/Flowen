@@ -288,6 +288,13 @@
       "when": 1795689598646,
       "tag": "0040_view_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795695678495,
+      "tag": "0041_comment_rich_text",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@ import {
   SIGNAL_STATE_LABEL,
   type SignalState,
 } from "@fp/engine";
-import type { queries } from "@fp/sync";
+import { htmlToText, type queries } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -581,6 +581,26 @@ export function systemColumns(ctx: ListContext): ListColumn[] {
       render: (i) => <span className="text-fg-muted tabular-nums">{time(i.updatedAt)}</span>,
       value: (i) => i.updatedAt ?? 0,
       text: (i) => time(i.updatedAt),
+    },
+    {
+      key: "latestComment",
+      title: "最新评论",
+      width: 240,
+      render: (i) => {
+        const c = i.comments[0];
+        if (!c) return none;
+        return (
+          <span className="min-w-0 truncate" title={htmlToText(c.body)}>
+            <span className="text-fg-muted">{c.author?.name ?? "—"}：</span>
+            {htmlToText(c.body) || "（附件）"}
+          </span>
+        );
+      },
+      value: (i) => i.comments[0]?.createdAt ?? null,
+      text: (i) => {
+        const c = i.comments[0];
+        return c ? `${c.author?.name ?? ""}：${htmlToText(c.body)}` : "";
+      },
     },
     {
       key: "creator",

@@ -1,5 +1,6 @@
 import { type Database, schema } from "@fp/db";
 import { type AutomationAction, pickActions, renderTemplate, resolveRecipients, ruleApplies } from "@fp/engine";
+import { textToHtml } from "@fp/sync";
 import { mustGetMutator } from "@rocicorp/zero";
 import { and, eq, inArray } from "drizzle-orm";
 import type { MutatorRunner } from "./index.ts";
@@ -80,7 +81,7 @@ async function perform(action: AutomationAction, c: ActionContext): Promise<void
       return call("comment.create", c, {
         id: stepId(c),
         workItemId,
-        body: renderTemplate(action.body, c.item),
+        body: textToHtml(renderTemplate(action.body, c.item)),
         mentions: [],
       });
     case "createTask":
