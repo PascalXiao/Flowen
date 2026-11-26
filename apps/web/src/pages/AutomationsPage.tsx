@@ -11,6 +11,7 @@ import {
   type NewItemField,
   NODE_TRIGGERS,
   nodeFlowOf,
+  type RelationDirection,
   type RequestHeader,
   type StatusFlowDefinition,
   statusFlowOf,
@@ -99,18 +100,37 @@ const flowOf = (type: AnyType | undefined): FlowDefinition | null => nodeFlowOf(
 /** 类型当前发布的状态流。 */
 const statusFlow = (type: AnyType | undefined): StatusFlowDefinition | null => statusFlowOf(definitionOf(type));
 
-/** 一个类型能用的关联：从它出发的和指向它的（两个方向都算），以及在这个类型上看到的名称和另一端的类型。 */
+/** 关联在一端看到的名称；两端同类型时按方向区分（in 是反向）。 */
+function relationName(d: RelDef, typeId: string | undefined, direction?: RelationDirection | null) {
+  if (d.fromTypeId === d.toTypeId) return direction === "in" ? (d.reverseName ?? `${d.name}（反向）`) : d.name;
+  return d.toTypeId === typeId ? (d.reverseName ?? d.name) : d.name;
+}
+
+/** 关联在选择框里的值：关联 id，两端同类型时带上方向。 */
+const relationKey = (relation: string | null | undefined, direction?: RelationDirection | null) =>
+  relation ? `${relation}${direction ? `|${direction}` : ""}` : "";
+const parseRelationKey = (key: string) => {
+  const [relation, direction] = key.split("|") as [string, RelationDirection | undefined];
+  return { relation, direction: direction ?? null };
+};
+
+/**
+ * 一个类型能用的关联：从它出发的和指向它的，以及在这个类型上看到的名称和另一端的类型。
+ * 两端是同一个类型的关联（前置 / 后续）拆成两个方向各一项。
+ */
 function relationsOf(type: AnyType | undefined, defs: readonly RelDef[]) {
   if (!type) return [];
   return defs
     .filter((d) => d.fromTypeId === type.id || d.toTypeId === type.id)
-    .map((d) => {
-      const forward = d.fromTypeId === type.id;
-      return {
+    .flatMap((d) => {
+      const directions: (RelationDirection | null)[] = d.fromTypeId === d.toTypeId ? ["out", "in"] : [null];
+      return directions.map((direction) => ({
         def: d,
-        name: forward ? d.name : (d.reverseName ?? d.name),
-        otherTypeId: forward ? d.toTypeId : d.fromTypeId,
-      };
+        direction,
+        key: relationKey(d.id, direction),
+        name: relationName(d, type.id, direction),
+        otherTypeId: d.fromTypeId === type.id ? d.toTypeId : d.fromTypeId,
+      }));
     });
 }
 
@@ -126,10 +146,9 @@ function namesFor(
     status: (key: string) => statusFlow(type)?.statuses.find((s) => s.key === key)?.name ?? key,
     field: (key: string) => type?.fields.find((f) => f.key === key)?.name ?? key,
     role: (key: string) => type?.roles.find((r) => r.key === key)?.name ?? key,
-    relation: (id: string) => {
+    relation: (id: string, direction?: RelationDirection | null) => {
       const d = defs.find((x) => x.id === id);
-      if (!d) return "已删除的关联";
-      return type && d.toTypeId === type.id && d.fromTypeId !== type.id ? (d.reverseName ?? d.name) : d.name;
+      return d ? relationName(d, type?.id, direction) : "已删除的关联";
     },
     type: (id: string) => types.find((t) => t.id === id)?.name ?? "已删除的类型",
     user: (id: string) => members.get(id) ?? id,
@@ -228,7 +247,7 @@ function describeTrigger(trigger: AutomationTrigger, names: Names): string {
 /** 取值来源的描述：「触发工作项的『X』」或「关联『Y』的『X』」。 */
 function describeSource(source: ValueSource, names: Names, what: (key: string) => string) {
   return source.relation
-    ? `关联「${names.relation(source.relation)}」的「${what(source.field)}」`
+    ? `关联「${names.relation(source.relation, source.direction)}」的「${what(source.field)}」`
     : `触发工作项的「${what(source.field)}」`;
 }
 
@@ -277,7 +296,7 @@ function describeAction(
   const where = a.target.condition
     ? `（${describeCondition(a.target.condition, n.field, (_k, v) => String(v))}的）`
     : "";
-  return `对关联「${names.relation(a.target.relation)}」的工作项${where}${body}`;
+  return `对关联「${names.relation(a.target.relation, a.target.direction)}」的工作项${where}${body}`;
 }
 
 /** 规则的一句话描述，列表里用。 */
@@ -686,16 +705,20 @@ function RuleForm({
       <>
         <Field label="来源工作项">
           <Select
-            value={source.relation ?? ""}
+            value={relationKey(source.relation, source.direction)}
             onChange={(e) => {
-              const relation = e.target.value || null;
+              const { relation, direction } = parseRelationKey(e.target.value);
               const next = relation ? partsOf(otherEnd(relation)) : self;
-              onChange({ relation, field: (pick === "field" ? next.fields : next.roles)[0]?.key ?? "" });
+              onChange({
+                relation: relation || null,
+                direction,
+                field: (pick === "field" ? next.fields : next.roles)[0]?.key ?? "",
+              });
             }}
           >
             <option value="">触发的工作项</option>
             {self.relations.map((r) => (
-              <option key={r.def.id} value={r.def.id}>
+              <option key={r.key} value={r.key}>
                 {`关联「${r.name}」的第一个工作项`}
               </option>
             ))}
@@ -745,10 +768,10 @@ function RuleForm({
             >
               <Field label="作用于">
                 <Select
-                  value={action.target?.relation ?? ""}
+                  value={relationKey(action.target?.relation, action.target?.direction)}
                   onChange={(e) => {
-                    const relation = e.target.value;
-                    const target = relation ? { relation, condition: null } : null;
+                    const { relation, direction } = parseRelationKey(e.target.value);
+                    const target = relation ? { relation, direction, condition: null } : null;
                     const nextParts = relation ? partsOf(otherEnd(relation)) : self;
                     const keep = actionTypesFor(nextParts, !!relation).includes(action.type) ? action.type : "setField";
                     update(i, newAction(keep, nextParts, target));
@@ -756,7 +779,7 @@ function RuleForm({
                 >
                   <option value="">触发的工作项</option>
                   {self.relations.map((r) => (
-                    <option key={r.def.id} value={r.def.id}>
+                    <option key={r.key} value={r.key}>
                       {`关联「${r.name}」的工作项${partsOf(r.otherTypeId).type && "foreign" in (partsOf(r.otherTypeId).type ?? {}) ? "（跨空间）" : ""}`}
                     </option>
                   ))}
@@ -954,7 +977,7 @@ function RuleForm({
                         >
                           <option value="">不关联</option>
                           {self.relations
-                            .filter((r) => r.otherTypeId === action.typeId)
+                            .filter((r) => r.otherTypeId === action.typeId && r.direction !== "in")
                             .map((r) => (
                               <option key={r.def.id} value={r.def.id}>
                                 {r.name}
@@ -1269,11 +1292,13 @@ function RuleForm({
                   onChange={(e) => setTrigger({ ...trigger, relation: e.target.value || undefined })}
                 >
                   <option value="">任意关联</option>
-                  {self.relations.map((r) => (
-                    <option key={r.def.id} value={r.def.id}>
-                      {r.name}
-                    </option>
-                  ))}
+                  {self.relations
+                    .filter((r) => r.direction !== "in")
+                    .map((r) => (
+                      <option key={r.def.id} value={r.def.id}>
+                        {r.name}
+                      </option>
+                    ))}
                 </Select>
               </Field>
             )}

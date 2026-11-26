@@ -5,6 +5,7 @@ import {
   type Fields,
   MAX_ACTION_TARGETS,
   pickActions,
+  type RelationDirection,
   renderTemplate,
   resolveRecipients,
   ruleApplies,
@@ -91,14 +92,22 @@ async function fieldsOf(c: ActionContext, workItemId: string): Promise<Record<st
   return Object.fromEntries(values.map((v) => [v.fieldKey, v.value]));
 }
 
-/** 通过一条关联（两个方向都算）关联着这个工作项的、没在回收站里的工作项。 */
-async function relatedItems(c: ActionContext, itemId: string, relationDefId: string): Promise<Item[]> {
+/** 通过一条关联关联着这个工作项的、没在回收站里的工作项；不指定方向时两个方向都算。 */
+async function relatedItems(
+  c: ActionContext,
+  itemId: string,
+  relationDefId: string,
+  direction?: RelationDirection | null,
+): Promise<Item[]> {
   const db = drizzleTx(c.tx);
+  const side =
+    direction === "out"
+      ? eq(schema.relation.fromId, itemId)
+      : direction === "in"
+        ? eq(schema.relation.toId, itemId)
+        : or(eq(schema.relation.fromId, itemId), eq(schema.relation.toId, itemId));
   const rows = await db.query.relation.findMany({
-    where: and(
-      eq(schema.relation.relationDefId, relationDefId),
-      or(eq(schema.relation.fromId, itemId), eq(schema.relation.toId, itemId)),
-    ),
+    where: and(eq(schema.relation.relationDefId, relationDefId), side),
   });
   const ids = [...new Set(rows.map((r) => (r.fromId === itemId ? r.toId : r.fromId)))].filter((id) => id !== itemId);
   if (ids.length === 0) return [];
@@ -111,7 +120,7 @@ async function relatedItems(c: ActionContext, itemId: string, relationDefId: str
 /** 「同步为」的来源工作项：触发的工作项，或者通过关联关联着它的第一个工作项。 */
 async function sourceItem(c: ActionContext, source: ValueSource): Promise<Item | undefined> {
   if (!source.relation) return c.trigger;
-  return (await relatedItems(c, c.trigger.id, source.relation))[0];
+  return (await relatedItems(c, c.trigger.id, source.relation, source.direction))[0];
 }
 
 /** 执行一个动作。改工作项的动作都走 mutator，和人手动操作走同样的校验，并写出带起因的事件。 */
@@ -287,7 +296,7 @@ async function requestAction(action: Extract<AutomationAction, { type: "httpRequ
 /** 动作作用的工作项：没有 target 是触发的工作项；有就是关联着它、满足条件的工作项（最多 MAX_ACTION_TARGETS 个）。 */
 async function targetsOf(action: AutomationAction, c: ActionContext): Promise<Item[]> {
   if (!action.target) return [c.trigger];
-  const related = await relatedItems(c, c.trigger.id, action.target.relation);
+  const related = await relatedItems(c, c.trigger.id, action.target.relation, action.target.direction);
   const out: Item[] = [];
   for (const item of related) {
     if (out.length >= MAX_ACTION_TARGETS) break;

@@ -101,8 +101,15 @@ export type AutomationRecipient =
  */
 export interface ActionTarget {
   relation: string;
+  /**
+   * 两端是同一个类型的关联（比如「前置项目 / 后续项目」）要分方向：out 是触发工作项在 from 端、找 to 端的，
+   * in 反过来。不填两个方向都算。
+   */
+  direction?: RelationDirection | null;
   condition?: Condition | null;
 }
+
+export type RelationDirection = "out" | "in";
 
 /** 一个动作最多作用到这么多个关联工作项上，多出来的不执行。 */
 export const MAX_ACTION_TARGETS = 200;
@@ -114,6 +121,7 @@ export const MAX_ACTION_TARGETS = 200;
 export interface ValueSource {
   field: string;
   relation?: string | null;
+  direction?: RelationDirection | null;
 }
 
 /** 新建工作项时给的字段值：固定值，或者从触发的工作项拷一个字段的值。 */
