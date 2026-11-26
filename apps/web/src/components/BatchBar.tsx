@@ -1,15 +1,16 @@
 import type { FieldDataType } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
-import { Ban, Eye, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { Ban, Eye, GitBranchPlus, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { fieldSurface, Select } from "@/components/ui/input";
 import { Popconfirm } from "@/components/ui/popconfirm";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
+import { cn, newId } from "@/lib/utils";
 
 /** 不能批量改的字段：关联、公式、附件、字段组由各自的地方维护。 */
 const NOT_BATCH: readonly FieldDataType[] = ["relation", "formula", "attachment", "fieldGroup", "multiPerson", "vote"];
@@ -18,23 +19,44 @@ interface BatchItem {
   id: string;
   name: string;
   status: string | null;
+  typeId: string;
+}
+
+/** 批量同步创建能走的一条关联：哪种工作项（itemTypeId）沿它在另一端新建。 */
+export interface BatchLink {
+  relationDefId: string;
+  side: "from" | "to";
+  itemTypeId: string;
+  /** 本端的字段名。 */
+  name: string;
+  /** 另一端的类型（别的空间的带空间名）。 */
+  target: string;
 }
 
 /**
- * 表格勾选后的批量操作栏：批量修改字段、关注、收藏、终止、恢复、删除。
+ * 表格勾选后的批量操作栏：批量修改字段、同步创建、关注、收藏、终止、恢复、删除。
  * 逐条执行，权限由服务端判断；有失败的条目时提示第一条原因。
  */
 export function BatchBar({
   items,
   fields,
   members,
+  links = [],
   onClear,
 }: {
   items: BatchItem[];
   fields: readonly FieldConfig[];
   members: readonly FieldMember[];
+  links?: readonly BatchLink[];
   onClear: () => void;
 }) {
+  const usable = links.filter((l) => items.some((i) => i.typeId === l.itemTypeId));
+  const linkKey = (l: BatchLink) => `${l.relationDefId}|${l.side}`;
+  const [syncKey, setSyncKey] = useState("");
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [copyFields, setCopyFields] = useState(true);
+  const link = usable.find((l) => linkKey(l) === syncKey) ?? usable[0];
+  const syncItems = link ? items.filter((i) => i.typeId === link.itemTypeId) : [];
   const zero = useZero();
   const editable = fields.filter((f) => !NOT_BATCH.includes(f.dataType as FieldDataType));
   const [fieldKey, setFieldKey] = useState(editable[0]?.key ?? "");
@@ -107,6 +129,54 @@ export function BatchBar({
     </div>
   );
 
+  const syncPanel = link && (
+    <div className="flex w-80 flex-col gap-3 p-3">
+      <span className="font-medium">批量同步创建</span>
+      <p className="text-xs text-fg-muted">
+        为每个工作项在关联的另一端新建一个同名工作项并关联上，跨空间关联就建在对方空间里。
+      </p>
+      <Select aria-label="沿哪个关联新建" value={linkKey(link)} onChange={(e) => setSyncKey(e.target.value)}>
+        {usable.map((l) => (
+          <option key={linkKey(l)} value={linkKey(l)}>
+            {l.name} → {l.target}
+          </option>
+        ))}
+      </Select>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox aria-label="带上同名字段" checked={copyFields} onChange={(e) => setCopyFields(e.target.checked)} />
+        带上同名字段的值
+      </label>
+      {syncItems.length < items.length && (
+        <p className="text-xs text-fg-subtle">选中的工作项里有 {syncItems.length} 项能用这个关联，其余跳过。</p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setSyncOpen(false)}>
+          取消
+        </Button>
+        <Button
+          size="sm"
+          disabled={syncItems.length === 0}
+          onClick={async () => {
+            setSyncOpen(false);
+            await each(syncItems, "同步创建", (item) =>
+              mutators.relation.createItem({
+                id: newId(),
+                relationId: newId(),
+                relationDefId: link.relationDefId,
+                itemId: item.id,
+                side: link.side,
+                name: item.name,
+                copyFields,
+              }),
+            );
+          }}
+        >
+          创建 {syncItems.length} 项
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     // biome-ignore lint/a11y/useSemanticElements: 只是给一组按钮起名，fieldset 会带上表单的默认样式
     <div
@@ -124,6 +194,17 @@ export function BatchBar({
           </PopoverTrigger>
           <PopoverContent align="center" side="top" className="p-0">
             {editPanel}
+          </PopoverContent>
+        </Popover>
+      )}
+      {syncPanel && (
+        <Popover open={syncOpen} onOpenChange={setSyncOpen}>
+          <PopoverTrigger className={barButton}>
+            <GitBranchPlus />
+            同步创建
+          </PopoverTrigger>
+          <PopoverContent align="center" side="top" className="p-0">
+            {syncPanel}
           </PopoverContent>
         </Popover>
       )}
