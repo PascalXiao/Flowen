@@ -101,6 +101,17 @@ test("configure a hierarchy across relations and expand the tree view by it", as
   await tree.getByRole("button", { name: "展开需求 S2" }).click();
   await expect(tree.getByRole("link", { name: "任务 T" })).toBeVisible();
   await expect(tree.getByRole("link")).toHaveCount(4);
+
+  // 分层筛选：第 4 层（任务）只看名称包含「设计」的，任务 T 不显示
+  await page.getByRole("button", { name: "分层筛选和排序" }).click();
+  const layerPanel = page.locator("[data-radix-popper-content-wrapper]").filter({ hasText: "第 4 层" });
+  await layerPanel.getByRole("button", { name: "筛选", exact: true }).nth(3).click();
+  await choose(page.getByLabel("条件 1-1 对象"), "名称");
+  await page.getByLabel("条件 1-1 文字").fill("设计");
+  await page.getByRole("button", { name: "应用" }).click();
+  await expect(tree.getByRole("link", { name: "任务 T" })).toHaveCount(0);
+  await expect(tree.getByRole("link")).toHaveCount(3);
+  await page.keyboard.press("Escape");
   await tree.getByRole("button", { name: "收起项目 P" }).click();
   await expect(tree.getByRole("link")).toHaveCount(1);
 });

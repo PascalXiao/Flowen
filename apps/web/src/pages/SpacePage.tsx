@@ -408,6 +408,14 @@ function WorkItems({
           hierarchies={space.hierarchies}
           typeId={type.id}
           timeZone={space.timezone ?? "Asia/Shanghai"}
+          types={space.workItemTypes.map((t) => ({
+            id: t.id,
+            name: t.name,
+            definitions: t.flowTemplates.flatMap((f) => (f.currentVersion ? [f.currentVersion.definition] : [])),
+            fields: t.fields,
+            roles: t.roles,
+          }))}
+          members={members.map((m) => ({ id: m.userId, name: m.name }))}
         />
       ) : view === "board" ? (
         <Board

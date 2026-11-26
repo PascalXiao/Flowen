@@ -60,7 +60,14 @@ function containsPattern(text: string) {
 
 /** 空间里当前用户能看到、并且符合筛选条件的工作项。 */
 function spaceItems({ spaceId, filter = {} }: z.output<typeof spaceItemsArgs>, userID: string) {
-  let q = zql.workItem.where("spaceId", spaceId).where(itemVisible(userID));
+  return applyFilter(zql.workItem.where("spaceId", spaceId).where(itemVisible(userID)), filter, userID);
+}
+
+type ItemQuery = ReturnType<typeof zql.workItem.where>;
+
+/** 把筛选条件加到工作项查询上（列表、看板、树形每一层共用）。 */
+function applyFilter(query: ItemQuery, filter: z.output<typeof workItemFilter>, userID: string): ItemQuery {
+  let q = query;
   if (filter.typeIds?.length) q = q.where("typeId", "IN", filter.typeIds);
   if (filter.statuses?.length) q = q.where("status", "IN", filter.statuses);
   if (filter.stages?.length) q = q.where("stage", "IN", filter.stages);
@@ -293,6 +300,8 @@ const layerArgs = z.object({
   step: stepArgs,
   next: z.array(stepArgs).max(2),
   plans: z.boolean().optional(),
+  /** 这一层自己的筛选条件。 */
+  filter: workItemFilter.optional(),
 });
 
 /** 一步用的是哪条关系。 */
@@ -710,9 +719,19 @@ export const queries = defineQueries({
     ),
     /** 按层级管理的树形视图：第一层的工作项，带上沿下一层的关系能找到的下级。 */
     layerRoots: defineQuery(
-      spaceItemsArgs.extend({ rootTypeId: z.string(), next: z.array(stepArgs).max(2), plans: z.boolean().optional() }),
+      spaceItemsArgs.extend({
+        rootTypeId: z.string(),
+        next: z.array(stepArgs).max(2),
+        plans: z.boolean().optional(),
+        /** 第一层自己的筛选条件（和视图的筛选同时满足）。 */
+        layerFilter: workItemFilter.optional(),
+      }),
       ({ args, ctx }) =>
-        spaceItems({ spaceId: args.spaceId, filter: { ...args.filter, typeIds: [args.rootTypeId] } }, ctx.userID)
+        applyFilter(
+          spaceItems({ spaceId: args.spaceId, filter: { ...args.filter, typeIds: [args.rootTypeId] } }, ctx.userID),
+          args.layerFilter ?? {},
+          ctx.userID,
+        )
           .related("type", (t) => t.related("space"))
           .related("nodes", treePlans(args.plans))
           .related("outgoing", (r) => r.where(stepEdges(args.next, false)))
@@ -727,7 +746,13 @@ export const queries = defineQueries({
       zql.relation
         .where("fromId", args.id)
         .where(stepEdge(args.step))
-        .whereExists("to", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
+        .whereExists("to", (w) =>
+          applyFilter(
+            w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)),
+            args.filter ?? {},
+            ctx.userID,
+          ),
+        )
         .related("to", (w) =>
           w
             .related("type", (t) => t.related("space"))
@@ -741,7 +766,13 @@ export const queries = defineQueries({
       zql.relation
         .where("toId", args.id)
         .where(stepEdge(args.step))
-        .whereExists("from", (w) => w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)))
+        .whereExists("from", (w) =>
+          applyFilter(
+            w.where("typeId", args.step.typeId).where(itemVisible(ctx.userID)),
+            args.filter ?? {},
+            ctx.userID,
+          ),
+        )
         .related("from", (w) =>
           w
             .related("type", (t) => t.related("space"))
