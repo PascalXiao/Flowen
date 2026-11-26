@@ -1,12 +1,16 @@
-import { type Day, dayInTimeZone, dayToIso } from "@fp/engine";
-import { type HierarchyLayerArgs, queries, type WorkItemFilterArgs } from "@fp/sync";
+import { type Day, dayInTimeZone, dayToIso, nodeFlowOf, statusFlowOf } from "@fp/engine";
+import { clockFor, type HierarchyLayerArgs, queries, usesClock, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Layers } from "lucide-react";
 import type * as React from "react";
 import { createContext, useContext, useState } from "react";
+import type { FieldConfig } from "@/components/FieldInput";
+import { FilterConditions, filterTargets, flowNodes } from "@/components/FilterConditions";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StageTag, StatusTag, Tag } from "@/components/ui/tag";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +31,39 @@ const toStep = (l: HierarchyLayerArgs): Step => ({
   reverse: l.reverse ?? false,
 });
 
+type Conds = WorkItemFilterArgs["conds"];
+/** 每层的筛选条件和排序（按层级管理展开时）。 */
+type LayerSort = "createdAt" | "-createdAt" | "updatedAt" | "-updatedAt" | "name";
+type LayerOpts = Record<number, { conds?: Conds; sort?: LayerSort }>;
+const LayerOptsContext = createContext<{ opts: LayerOpts; timeZone: string }>({ opts: {}, timeZone: "Asia/Shanghai" });
+
+const SORT_LABEL: Record<LayerSort, string> = {
+  "-createdAt": "创建时间从新到旧",
+  createdAt: "创建时间从旧到新",
+  "-updatedAt": "更新时间从新到旧",
+  updatedAt: "更新时间从旧到新",
+  name: "名称",
+};
+
+/** 一层的筛选：条件组（动态时间要带上空间时区的今天）。 */
+function layerFilter(opts: LayerOpts, level: number, timeZone: string): WorkItemFilterArgs | undefined {
+  const conds = opts[level]?.conds;
+  if (!conds?.groups.length) return undefined;
+  const f: WorkItemFilterArgs = { conds };
+  return usesClock(f) ? { ...f, clock: clockFor(timeZone) } : f;
+}
+
+/** 按这一层选的方式排序；没选时保持查询的顺序。 */
+function sortLayer<T extends TreeItem>(items: readonly T[], sort: LayerSort | undefined): readonly T[] {
+  if (!sort) return items;
+  const desc = sort.startsWith("-");
+  const key = sort.replace("-", "") as "createdAt" | "updatedAt" | "name";
+  return [...items].sort((a, b) => {
+    const cmp = key === "name" ? a.name.localeCompare(b.name, "zh") : (a[key] ?? 0) - (b[key] ?? 0);
+    return desc ? -cmp : cmp;
+  });
+}
+
 /** 第 level 层（0 是树根）的工作项往下能走的步：本层循环，以及下一层。 */
 function childSteps(h: LayeredHierarchy, level: number): { step: Step; level: number }[] {
   const out: { step: Step; level: number }[] = [];
@@ -40,6 +77,8 @@ function childSteps(h: LayeredHierarchy, level: number): { step: Step; level: nu
 interface TreeItem {
   id: string;
   name: string;
+  createdAt?: number | null;
+  updatedAt?: number | null;
   stage: string | null;
   status: string | null;
   type?: { name: string; spaceId?: string; space?: { name: string } | null } | null;
@@ -60,7 +99,18 @@ export function TreeView({
   hierarchies = [],
   typeId,
   timeZone = "Asia/Shanghai",
+  types = [],
+  members = [],
 }: {
+  /** 各类型的字段、角色和流程：每层筛选选条件用。 */
+  types?: readonly {
+    id: string;
+    name: string;
+    definitions: unknown[];
+    fields?: readonly FieldConfig[];
+    roles?: readonly { key: string; name: string }[];
+  }[];
+  members?: readonly { id: string; name: string }[];
   spaceId: string;
   filter: WorkItemFilterArgs;
   relationDefs: readonly { id: string; name: string; fromType: string; toType: string }[];
@@ -78,6 +128,7 @@ export function TreeView({
   const [scale, setScale] = useState<Scale>("week");
   const [from, setFrom] = useState<Day>(() => windowStart(today, "week"));
   const timeline: Timeline | null = schedule ? { from, ...SCALES[scale], today } : null;
+  const [layerOpts, setLayerOpts] = useState<LayerOpts>({});
 
   return (
     <div className="flex flex-col">
@@ -102,6 +153,9 @@ export function TreeView({
             ))}
           </optgroup>
         </Select>
+        {layered && (
+          <LayerOptions hierarchy={layered} types={types} members={members} value={layerOpts} onChange={setLayerOpts} />
+        )}
         <fieldset aria-label="显示模式" className="m-0 ml-auto flex min-w-0 gap-px rounded-lg border-0 bg-raised p-0.5">
           {(
             [
@@ -168,15 +222,17 @@ export function TreeView({
         )}
       </div>
       <SpaceContext.Provider value={spaceId}>
-        <TimelineContext.Provider value={timeline}>
-          <div className={cn(schedule && "overflow-x-auto")}>
-            {layered ? (
-              <LayeredTree key={layered.id} spaceId={spaceId} filter={filter} hierarchy={layered} typeId={typeId} />
-            ) : (
-              <SingleTree key={mode} spaceId={spaceId} filter={filter} hierarchy={{ relationDefId: mode || null }} />
-            )}
-          </div>
-        </TimelineContext.Provider>
+        <LayerOptsContext.Provider value={{ opts: layered ? layerOpts : {}, timeZone }}>
+          <TimelineContext.Provider value={timeline}>
+            <div className={cn(schedule && "overflow-x-auto")}>
+              {layered ? (
+                <LayeredTree key={layered.id} spaceId={spaceId} filter={filter} hierarchy={layered} typeId={typeId} />
+              ) : (
+                <SingleTree key={mode} spaceId={spaceId} filter={filter} hierarchy={{ relationDefId: mode || null }} />
+              )}
+            </div>
+          </TimelineContext.Provider>
+        </LayerOptsContext.Provider>
       </SpaceContext.Provider>
     </div>
   );
@@ -356,15 +412,19 @@ function LayeredTree({
   const rootFilter =
     hierarchy.rootTypeId === typeId ? filter : { statuses: filter.statuses, memberIds: filter.memberIds };
   const plans = useContext(TimelineContext) !== null;
-  const [items, result] = useQuery(
+  const { opts, timeZone } = useContext(LayerOptsContext);
+  const own = layerFilter(opts, 0, timeZone);
+  const [rows, result] = useQuery(
     queries.workItems.layerRoots({
       spaceId,
       filter: rootFilter,
       rootTypeId: hierarchy.rootTypeId,
       next: childSteps(hierarchy, 0).map((s) => s.step),
       plans,
+      ...(own && { layerFilter: own }),
     }),
   );
+  const items = sortLayer(rows, opts[0]?.sort);
   return (
     <>
       <table className="w-full text-sm" aria-label="工作项树">
@@ -413,6 +473,7 @@ function LayerRow({
           <LayerChildren
             key={`${step.relationDefId}-${step.reverse}-${step.typeId}-${childLevel}`}
             id={item.id}
+            level={childLevel}
             step={step}
             next={childSteps(hierarchy, childLevel).map((s) => s.step)}
             render={(child) => (
@@ -433,32 +494,122 @@ function LayerRow({
 
 function LayerChildren({
   id,
+  level,
   step,
   next,
   render,
 }: {
   id: string;
+  /** 下级所在的层（每层的筛选和排序按它取）。 */
+  level: number;
   step: Step;
   next: Step[];
   render: (item: TreeItem) => React.ReactNode;
 }) {
   return step.reverse ? (
-    <LayerUp id={id} step={step} next={next} render={render} />
+    <LayerUp id={id} level={level} step={step} next={next} render={render} />
   ) : (
-    <LayerDown id={id} step={step} next={next} render={render} />
+    <LayerDown id={id} level={level} step={step} next={next} render={render} />
   );
 }
 
-function LayerDown({ id, step, next, render }: Parameters<typeof LayerChildren>[0]) {
+function LayerDown({ id, level, step, next, render }: Parameters<typeof LayerChildren>[0]) {
   const plans = useContext(TimelineContext) !== null;
-  const [edges] = useQuery(queries.workItems.layerDown({ id, step, next, plans }));
-  return edges.map((e) => (e.to ? render(e.to) : null));
+  const { opts, timeZone } = useContext(LayerOptsContext);
+  const filter = layerFilter(opts, level, timeZone);
+  const [edges] = useQuery(queries.workItems.layerDown({ id, step, next, plans, ...(filter && { filter }) }));
+  return sortLayer(
+    edges.flatMap((e) => (e.to ? [e.to] : [])),
+    opts[level]?.sort,
+  ).map(render);
 }
 
-function LayerUp({ id, step, next, render }: Parameters<typeof LayerChildren>[0]) {
+function LayerUp({ id, level, step, next, render }: Parameters<typeof LayerChildren>[0]) {
   const plans = useContext(TimelineContext) !== null;
-  const [edges] = useQuery(queries.workItems.layerUp({ id, step, next, plans }));
-  return edges.map((e) => (e.from ? render(e.from) : null));
+  const { opts, timeZone } = useContext(LayerOptsContext);
+  const filter = layerFilter(opts, level, timeZone);
+  const [edges] = useQuery(queries.workItems.layerUp({ id, step, next, plans, ...(filter && { filter }) }));
+  return sortLayer(
+    edges.flatMap((e) => (e.from ? [e.from] : [])),
+    opts[level]?.sort,
+  ).map(render);
+}
+
+/** 分层设置：层级里每一层（第一层是树根类型）各自的筛选条件和排序。 */
+function LayerOptions({
+  hierarchy,
+  types,
+  members,
+  value,
+  onChange,
+}: {
+  hierarchy: LayeredHierarchy;
+  types: NonNullable<Parameters<typeof TreeView>[0]["types"]>;
+  members: readonly { id: string; name: string }[];
+  value: LayerOpts;
+  onChange: (next: LayerOpts) => void;
+}) {
+  const layerTypes = [hierarchy.rootTypeId, ...hierarchy.layers.map((l) => l.typeId)];
+  const active = Object.values(value).filter((o) => o.sort || o.conds?.groups.length).length;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" className={cn(active > 0 && "text-accent")}>
+          <Layers />
+          {active > 0 ? `分层筛选和排序 · ${active}` : "分层筛选和排序"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-[420px] flex-col gap-2 p-3">
+        <p className="text-fg-subtle text-xs">每一层单独设置筛选条件和排序，只影响这一层显示哪些、按什么顺序。</p>
+        {layerTypes.map((typeId, level) => {
+          const type = types.find((t) => t.id === typeId);
+          const scoped = type ? [type] : [];
+          const stages = [
+            ...new Set(
+              scoped.flatMap((t) =>
+                t.definitions.flatMap((d) => [
+                  ...(nodeFlowOf(d)?.nodes.flatMap((n) => (n.stageOnArrival ? [n.stageOnArrival] : [])) ?? []),
+                  ...(statusFlowOf(d)?.statuses.map((x) => x.name) ?? []),
+                ]),
+              ),
+            ),
+          ];
+          const opt = value[level] ?? {};
+          const set = (patch: Partial<LayerOpts[number]>) => onChange({ ...value, [level]: { ...opt, ...patch } });
+          return (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: 层按位置对应层级配置
+              key={level}
+              className="flex items-center gap-2 border-line-subtle border-b pb-2 last:border-0 last:pb-0"
+            >
+              <span className="w-24 shrink-0 truncate text-sm" title={type?.name}>
+                第 {level + 1} 层 · {type?.name ?? "?"}
+              </span>
+              <FilterConditions
+                targets={filterTargets({ types: scoped, members, stages })}
+                nodes={flowNodes(scoped)}
+                value={opt.conds}
+                onChange={(conds) => set({ conds })}
+              />
+              <Select
+                aria-label={`第 ${level + 1} 层排序`}
+                className="w-40"
+                value={opt.sort ?? ""}
+                onChange={(e) => set({ sort: (e.target.value || undefined) as LayerSort | undefined })}
+              >
+                <option value="">默认顺序</option>
+                {Object.entries(SORT_LABEL).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /** 只按一种关系（子工作项或一个自定义关联）分层。上级也在结果里的工作项不重复放在第一层。 */

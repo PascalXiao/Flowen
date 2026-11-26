@@ -45,6 +45,8 @@ export interface ListDisplay {
   columns?: { key: string; width?: number; group?: string }[];
   sort?: { key: string; desc?: boolean }[];
   groupBy?: string | null;
+  /** 第二、三级分组。 */
+  subGroupBy?: string[];
   colors?: { when: Condition; color: string; cells?: string[] }[];
   /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
   frozen?: number;
@@ -209,7 +211,7 @@ export function WorkItemList({
     [
       ...shown.map((c) => c.key),
       ...(display.sort ?? []).map((s) => s.key),
-      ...(display.groupBy ? [display.groupBy] : []),
+      ...(display.groupBy ? [display.groupBy, ...(display.subGroupBy ?? [])] : []),
     ],
     (display.colors ?? []).flatMap((c) => conditionFields(c.when)),
   );
@@ -244,7 +246,10 @@ export function WorkItemList({
   const more = paged && items.length >= limit;
   const stats = useListStats(space.id, filter.typeIds ?? [], items);
 
-  const groupCol = display.groupBy ? byKey.get(display.groupBy) : undefined;
+  // 分组的各级列（最多三级）
+  const groupCols = (display.groupBy ? [display.groupBy, ...(display.subGroupBy ?? [])] : []).flatMap(
+    (k) => byKey.get(k) ?? [],
+  );
   // 排序（不在服务端排的）、着色、分组在已经同步下来的行上做
   const rows = useMemo(() => {
     let out = [...items];
@@ -263,17 +268,26 @@ export function WorkItemList({
           return s.desc ? -cmp : cmp;
         });
       }
-    // 分组时同组的行排在一起（组按第一次出现的顺序，组内保持上面的排序）
-    if (groupCol) {
-      const order = new Map<string, number>();
-      for (const r of out) {
-        const key = groupOf(groupCol, r);
-        if (!order.has(key)) order.set(key, order.size);
-      }
-      out = [...out].sort((a, b) => (order.get(groupOf(groupCol, a)) ?? 0) - (order.get(groupOf(groupCol, b)) ?? 0));
+    // 分组时同组的行排在一起：逐级按组第一次出现的顺序排，组内保持上面的排序
+    if (groupCols.length > 0) {
+      const orders = groupCols.map((col) => {
+        const order = new Map<string, number>();
+        for (const r of out) {
+          const key = groupOf(col, r);
+          if (!order.has(key)) order.set(key, order.size);
+        }
+        return order;
+      });
+      out = [...out].sort((a, b) => {
+        for (const [i, col] of groupCols.entries()) {
+          const d = (orders[i]?.get(groupOf(col, a)) ?? 0) - (orders[i]?.get(groupOf(col, b)) ?? 0);
+          if (d) return d;
+        }
+        return 0;
+      });
     }
     return out;
-  }, [items, sort, tab, byKey, paged, groupCol]);
+  }, [items, sort, tab, byKey, paged, groupCols]);
   const rowKey = rows.map((r) => r.id).join(",");
   useEffect(() => {
     onRows?.(rowKey ? rowKey.split(",") : []);
@@ -479,23 +493,34 @@ export function WorkItemList({
 
   // 表体的行：分组时在每组前面插一行组标题（rows 已经按组排好）
   const gridRows: GridRow<ListItem>[] = [];
+  const pathOf = (item: ListItem) => groupCols.map((col) => groupOf(col, item));
   rows.forEach((item, index) => {
-    if (groupCol) {
-      const key = groupOf(groupCol, item);
-      const prev = rows[index - 1];
-      if (!prev || groupOf(groupCol, prev) !== key)
+    const path = pathOf(item);
+    const prev = index > 0 ? pathOf(rows[index - 1] as ListItem) : null;
+    // 从第一个和上一行不同的级别开始，每级插一行组标题
+    const from = prev ? path.findIndex((k, i) => k !== prev[i]) : 0;
+    if (from >= 0)
+      for (let level = from; level < groupCols.length; level++) {
+        const col = groupCols[level] as ListColumn;
+        const prefix = path.slice(0, level + 1);
         gridRows.push({
           kind: "group",
-          key,
+          key: prefix.join("\u0001"),
+          level,
           label: (
             <>
-              <span className="text-fg-muted">{groupCol.title}</span>
-              {key}
+              <span className="text-fg-muted">{col.title}</span>
+              {path[level]}
             </>
           ),
-          count: rows.filter((r) => groupOf(groupCol, r) === key).length,
+          count: rows.filter(
+            (r) =>
+              pathOf(r)
+                .slice(0, level + 1)
+                .join("\u0001") === prefix.join("\u0001"),
+          ).length,
         });
-    }
+      }
     gridRows.push({ kind: "item", item, index });
   });
 
@@ -555,8 +580,12 @@ export function WorkItemList({
             />
             <GroupButton
               columns={available}
-              value={display.groupBy ?? null}
-              onChange={(groupBy) => onDisplay({ ...display, groupBy })}
+              value={display.groupBy ? [display.groupBy, ...(display.subGroupBy ?? [])] : []}
+              onChange={(keys) => {
+                const [first, ...rest] = keys;
+                const { subGroupBy: _s, ...base } = display;
+                onDisplay({ ...base, groupBy: first ?? null, ...(rest.length && { subGroupBy: rest }) });
+              }}
             />
             <ColorButton
               fields={[...fields.values()]}
@@ -1133,30 +1162,49 @@ function SortButton({
   );
 }
 
+/** 分组：最多三级，每级选一列。 */
 function GroupButton({
   columns,
   value,
   onChange,
 }: {
   columns: ListColumn[];
-  value: string | null;
-  onChange: (groupBy: string | null) => void;
+  value: string[];
+  onChange: (keys: string[]) => void;
 }) {
+  const title = (k: string) => columns.find((c) => c.key === k)?.title ?? "";
+  const levels = ["第一级", "第二级", "第三级"];
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className={toolButton(!!value)}>
-        <Group />
-        {value ? `分组：${columns.find((c) => c.key === value)?.title ?? ""}` : "分组"}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem onSelect={() => onChange(null)}>不分组</DropdownMenuItem>
-        {columns.map((c) => (
-          <DropdownMenuItem key={c.key} active={value === c.key} onSelect={() => onChange(c.key)}>
-            {c.title}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ToolButton
+      icon={<Group />}
+      label={value.length ? `分组：${value.map(title).join(" / ")}` : "分组"}
+      active={value.length > 0}
+    >
+      <p className="text-xs text-fg-subtle">按列的值把行分组，最多三级。</p>
+      {levels.slice(0, Math.min(value.length + 1, 3)).map((name, i) => (
+        <div key={name} className="flex items-center gap-2">
+          <span className="w-12 shrink-0 text-fg-muted text-xs">{name}</span>
+          <Select
+            aria-label={`${name}分组`}
+            className="flex-1"
+            value={value[i] ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange(v ? [...value.slice(0, i), v].filter((k, j, all) => all.indexOf(k) === j) : value.slice(0, i));
+            }}
+          >
+            <option value="">{i === 0 ? "不分组" : "不再分组"}</option>
+            {columns
+              .filter((c) => c.key === value[i] || !value.includes(c.key))
+              .map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.title}
+                </option>
+              ))}
+          </Select>
+        </div>
+      ))}
+    </ToolButton>
   );
 }
 

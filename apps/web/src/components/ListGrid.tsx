@@ -22,7 +22,7 @@ export interface GridColumn<T> {
 /** 表体的一行：工作项，或分组的标题行。index 是工作项在全部行里的下标。 */
 export type GridRow<T> =
   | { kind: "item"; item: T; index: number }
-  | { kind: "group"; key: string; label: ReactNode; count: number };
+  | { kind: "group"; key: string; label: ReactNode; count: number; level?: number };
 
 const SELECT_WIDTH = 40;
 const GROUP_HEIGHT = 34;
@@ -66,12 +66,15 @@ export function ListGrid<T extends { id: string }>({
 
   const visible = useMemo(() => {
     const out: GridRow<T>[] = [];
-    let hidden = false;
+    // 收起的组：它下面更深的组和行都不显示，直到遇到同级或更浅的组
+    let hiddenBelow: number | null = null;
     for (const r of rows) {
       if (r.kind === "group") {
-        hidden = collapsed.has(r.key);
+        const level = r.level ?? 0;
+        if (hiddenBelow !== null && level > hiddenBelow) continue;
+        hiddenBelow = collapsed.has(r.key) ? level : null;
         out.push(r);
-      } else if (!hidden) out.push(r);
+      } else if (hiddenBelow === null) out.push(r);
     }
     return out;
   }, [rows, collapsed]);
@@ -245,11 +248,16 @@ export function ListGrid<T extends { id: string }>({
             const open = !collapsed.has(r.key);
             return (
               <div key={`g:${r.key}`} role="row" className="flex w-full" style={{ ...place, height: GROUP_HEIGHT }}>
-                <div role="gridcell" aria-colspan={columns.length + 1} className={cn(cellBase, "flex-1 bg-raised")}>
+                <div
+                  role="gridcell"
+                  aria-colspan={columns.length + 1}
+                  className={cn(cellBase, "flex-1", r.level ? "bg-raised/60" : "bg-raised")}
+                >
                   <button
                     type="button"
                     aria-expanded={open}
                     className={cn("sticky left-0 flex h-full items-center gap-1.5 font-medium text-fg", pad)}
+                    style={r.level ? { paddingLeft: (compact ? 8 : 12) + r.level * 20 } : undefined}
                     onClick={() =>
                       setCollapsed((prev) => {
                         const next = new Set(prev);

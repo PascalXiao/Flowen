@@ -542,6 +542,8 @@ export interface ViewDisplay {
   columns?: { key: string; width?: number; group?: string }[];
   sort?: { key: string; desc?: boolean }[];
   groupBy?: string | null;
+  /** 第二、三级分组（在 groupBy 之下）。 */
+  subGroupBy?: string[];
   /** 着色：满足条件的行（cells 为空）或这几列的单元格用这个颜色。 */
   colors?: { when: Condition; color: string; cells?: string[] }[];
   /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */

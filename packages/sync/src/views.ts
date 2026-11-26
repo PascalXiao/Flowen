@@ -149,6 +149,7 @@ export const viewDisplay = z.object({
     .max(5)
     .optional(),
   groupBy: z.string().nullable().optional(),
+  subGroupBy: z.array(z.string().max(100)).max(2).optional(),
   colors: z
     .array(
       z.object({ when: z.json(), color: z.string().max(32), cells: z.array(z.string().max(100)).max(50).optional() }),
