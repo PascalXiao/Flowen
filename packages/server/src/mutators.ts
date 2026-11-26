@@ -15,6 +15,8 @@ import {
   copyWorkItemArgs,
   createComment,
   createCommentArgs,
+  createLinkedItem,
+  createLinkedItemArgs,
   createNodeSubItem,
   createNodeSubItemArgs,
   createSubItem,
@@ -185,6 +187,26 @@ export const serverMutators = defineMutators(mutators, {
           workItemId: args.fromId,
           kind: "relationAdded",
           payload: { relationDefId: args.relationDefId, toId: args.toId, replaced },
+          actor: ctx.userID,
+        },
+      ]);
+    }),
+    createItem: defineMutator(createLinkedItemArgs, async ({ tx, args, ctx }) => {
+      const { created, typeId, fromId, toId, fromSpaceId, replaced } = await createLinkedItem(tx, args, ctx.userID);
+      await append(tx, ctx, [
+        {
+          spaceId: created.spaceId,
+          workItemId: args.id,
+          kind: "workItemCreated",
+          payload: { typeId, flowVersionId: created.flowVersionId, name: args.name, linkedFrom: args.itemId },
+          actor: ctx.userID,
+        },
+        ...flowEvents(created.spaceId, args.id, created.events),
+        {
+          spaceId: fromSpaceId,
+          workItemId: fromId,
+          kind: "relationAdded",
+          payload: { relationDefId: args.relationDefId, toId, replaced },
           actor: ctx.userID,
         },
       ]);

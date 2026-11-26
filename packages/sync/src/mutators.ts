@@ -100,6 +100,7 @@ import {
   setLinkRuleEnabled,
   setLinkRuleEnabledArgs,
 } from "./link-rules.ts";
+import { createLinkedItem, createLinkedItemArgs } from "./linked-items.ts";
 import { markArgs, recordVisit, setMark, visitArgs } from "./marks.ts";
 import { nudgeArgs, nudgeNode } from "./nudge.ts";
 import {
@@ -346,6 +347,9 @@ export const mutators = defineMutators({
     }),
     remove: defineMutator(removeRelationArgs, async ({ tx, args, ctx }) => {
       await removeRelation(tx, args, ctx.userID);
+    }),
+    createItem: defineMutator(createLinkedItemArgs, async ({ tx, args, ctx }) => {
+      await createLinkedItem(tx, args, ctx.userID);
     }),
   },
   workItemType: {

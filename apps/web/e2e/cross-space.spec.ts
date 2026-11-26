@@ -41,6 +41,17 @@ test("relate work items across two spaces and keep a link rule in the other spac
   await expect(page.getByRole("heading", { name: "SKU 一号" })).toBeVisible();
   await expect(panel.getByRole("region", { name: "来源项目" }).getByRole("link", { name: "新品 A" })).toBeVisible();
 
+  // 同步创建：在 SKU 空间新建一个 SKU 并直接关联上
+  await page.getByRole("link", { name: "新品 A" }).click();
+  await panel.getByRole("button", { name: "新建关联SKU" }).click();
+  const createLinked = page.locator("[role=dialog][aria-modal=true]");
+  await expect(createLinked).toContainText("新工作项会建在那个空间里");
+  await createLinked.getByRole("textbox", { name: "新工作项名称" }).fill("SKU 二号");
+  await createLinked.getByRole("button", { name: "创建并关联" }).click();
+  await panel.getByRole("region", { name: "关联SKU" }).getByRole("link", { name: "SKU 二号" }).click();
+  await expect(page.getByRole("heading", { name: "SKU 二号" })).toBeVisible();
+  await expect(panel.getByRole("region", { name: "来源项目" }).getByRole("link", { name: "新品 A" })).toBeVisible();
+
   // SKU 空间也能在这条关系上建联动规则
   await openSettings(page, "空间关联");
   await page.getByRole("button", { name: "新建规则" }).click();

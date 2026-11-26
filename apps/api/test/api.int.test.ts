@@ -3627,6 +3627,58 @@ describe("cross-space relations", () => {
     await run("node.confirm", { workItemId: project, nodeKey: "design" });
     await run("node.confirm", { workItemId: sku, nodeKey: "design" });
   });
+  it("creates a linked work item in the other space, carrying over same-key fields", async () => {
+    const project = await create(typeA, "新品 C", admin.userId);
+    await run("fieldValue.set", { workItemId: project, fieldKey: "brand", value: "示例品牌" });
+    // 只在项目空间的成员不能在 SKU 空间新建
+    await expect(
+      run(
+        "relation.createItem",
+        {
+          id: randomUUID(),
+          relationId: randomUUID(),
+          relationDefId: defId,
+          itemId: project,
+          side: "to",
+          name: "SKU-C",
+          copyFields: true,
+        },
+        memberA.userId,
+      ),
+    ).rejects.toThrow("工作项类型不存在或没有权限");
+    const sku = randomUUID();
+    await run("relation.createItem", {
+      id: sku,
+      relationId: randomUUID(),
+      relationDefId: defId,
+      itemId: project,
+      side: "to",
+      name: "SKU-C",
+      copyFields: true,
+    });
+    const [created] = await services.database.db.select().from(schema.workItem).where(eq(schema.workItem.id, sku));
+    expect(created).toMatchObject({ spaceId: spaceB, typeId: typeB, name: "SKU-C" });
+    const [brand] = await services.database.db
+      .select()
+      .from(schema.fieldValue)
+      .where(and(eq(schema.fieldValue.workItemId, sku), eq(schema.fieldValue.fieldKey, "brand")));
+    expect(brand?.value).toBe("示例品牌");
+    const links = await services.database.db.select().from(schema.relation).where(eq(schema.relation.toId, sku));
+    expect(links).toMatchObject([{ relationDefId: defId, fromId: project }]);
+    // 反方向：从 SKU 一端新建来源项目，不带字段
+    const back = randomUUID();
+    await run("relation.createItem", {
+      id: back,
+      relationId: randomUUID(),
+      relationDefId: defId,
+      itemId: sku,
+      side: "from",
+      name: "新品 D",
+    });
+    const reverse = await services.database.db.select().from(schema.relation).where(eq(schema.relation.fromId, back));
+    expect(reverse).toMatchObject([{ toId: sku }]);
+  });
+
   it("hierarchies follow cross-space relations into the other space and on along its own relations", async () => {
     const part = `${spaceB}/part`;
     await run("workItemType.create", { id: part, spaceId: spaceB, key: "part", name: "部件" }, otherAdmin.userId);

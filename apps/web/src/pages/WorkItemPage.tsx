@@ -647,6 +647,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
           <div key={`r-${index}`} className="col-span-full">
             <RelationsCard
               workItemId={item.id}
+              itemName={item.name}
               spaceId={item.spaceId}
               defs={defs}
               reverseDefs={reverseDefs}
