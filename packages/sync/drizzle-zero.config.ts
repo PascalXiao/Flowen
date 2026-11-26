@@ -37,6 +37,7 @@ export default drizzleZeroConfig(schema, {
     roleMember: true,
     workItemMark: true,
     workItemVisit: true,
+    workItemDraft: true,
     relation: true,
     nodeInstance: true,
     nodeConfirmation: true,

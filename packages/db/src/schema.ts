@@ -218,6 +218,12 @@ export interface TypeSettings {
   copyExcludeFields?: string[];
   /** 复制工作项时不带过去的角色。 */
   copyExcludeRoles?: string[];
+  /** 停用：不能再新建，导航里不显示；已有的工作项照常查看和推进。 */
+  disabled?: boolean;
+  /** 不在左侧导航里显示（仍可从空间配置、搜索、链接进入）。 */
+  navHidden?: boolean;
+  /** 已完成的工作项不能终止，也不能删除。 */
+  lockCompleted?: boolean;
 }
 
 export const workItemType = pgTable(
@@ -672,6 +678,32 @@ export const workItemMark = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.workItemId, t.userId, t.kind] }), index("work_item_mark_user").on(t.userId, t.kind)],
+);
+
+/** 新建表单的草稿内容：选的流程、填的字段、角色和人员。 */
+export interface WorkItemDraftData {
+  flowTemplateId?: string;
+  fields?: Record<string, unknown>;
+  roles?: Record<string, string[]>;
+  roleOverrides?: { added: string[]; removed: string[] };
+}
+
+/** 新建工作项的草稿箱：每人自己的，新建表单里自动或手动保存，下次接着填。 */
+export const workItemDraft = pgTable(
+  "work_item_draft",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    typeId: text("type_id")
+      .notNull()
+      .references(() => workItemType.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default(""),
+    data: jsonb("data").$type<WorkItemDraftData>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("work_item_draft_user").on(t.userId, t.typeId, t.updatedAt)],
 );
 
 /** 最近浏览：每人对每个工作项只留最后一次。 */

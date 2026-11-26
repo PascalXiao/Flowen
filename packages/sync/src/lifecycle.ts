@@ -48,6 +48,12 @@ async function ownedItem(
   return item;
 }
 
+/** 类型设置了「已完成的工作项不能终止和删除」。 */
+async function completedLocked(tx: Transaction, typeId: string) {
+  const type = await tx.run(zql.workItemType.where("id", typeId).one());
+  return !!type?.settings?.lockCompleted;
+}
+
 /** 写字段、确认节点、流转状态、改子任务之前的检查：冻结了就不能改。 */
 export function assertNotFrozen(item: { frozen?: boolean | null }) {
   if (item.frozen) throw new Error("工作项已冻结，解冻后才能修改。");
@@ -56,7 +62,8 @@ export function assertNotFrozen(item: { frozen?: boolean | null }) {
 export async function terminateWorkItem(tx: Transaction, args: z.output<typeof terminateArgs>, userID: string) {
   const item = await ownedItem(tx, args.workItemId, userID, "终止工作项", "terminate");
   if (item.status === "terminated") throw new Error("工作项已经终止了。");
-  if (item.status === "completed") throw new Error("已完成的工作项不能终止。");
+  if (item.status === "completed" && (await completedLocked(tx, item.typeId)))
+    throw new Error("已完成的工作项不能终止（工作项类型设置）。");
   await tx.mutate.workItem.update({
     id: item.id,
     status: "terminated",
@@ -119,6 +126,8 @@ export async function deleteWorkItem(tx: Transaction, args: z.output<typeof work
     },
     "你没有权限删除这个工作项（默认只有创建者、工作项负责人和空间管理员可以）。",
   );
+  if (item.status === "completed" && (await completedLocked(tx, item.typeId)))
+    throw new Error("已完成的工作项不能删除（工作项类型设置）。");
   await tx.mutate.workItem.update({ id: item.id, deletedAt: Date.now(), deletedBy: userID, updatedAt: Date.now() });
   await recomputeParentFormulas(tx, item.id);
   return { spaceId: item.spaceId, name: item.name };

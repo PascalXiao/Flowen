@@ -225,6 +225,8 @@ export function WorkItemView({ itemId }: { itemId: string }) {
   const ownerRoleKeys = (item.type?.roles ?? []).filter((r) => r.config?.isOwner).map((r) => r.key);
   const canManageItem = canWrite && (isAdmin || ownerRoleKeys.some((r) => myRoles.includes(r)));
   const frozen = !!item.frozen;
+  // 类型设置了「已完成的工作项不能终止和删除」
+  const completedLocked = item.status === "completed" && !!item.type?.settings?.lockCompleted;
 
   const members = space?.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId })) ?? [];
   // 访客不能担任角色
@@ -914,7 +916,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
                   恢复
                 </Button>
               ) : (
-                item.status !== "completed" && (
+                !completedLocked && (
                   <Button size="sm" variant="ghost" onClick={() => setTerminating(true)}>
                     终止
                   </Button>
@@ -930,7 +932,7 @@ export function WorkItemView({ itemId }: { itemId: string }) {
               </Button>
             </span>
           )}
-          {canWrite && (canManageItem || item.createdBy === me) && (
+          {canWrite && (canManageItem || item.createdBy === me) && !completedLocked && (
             <Popconfirm
               title="删除这个工作项？"
               content="删除后放进回收站，删除的人和空间管理员可以在「空间配置 → 回收站」里恢复。"

@@ -20,7 +20,7 @@ import { Tag } from "@/components/ui/tag";
 import { WebhooksCard } from "@/components/WebhooksCard";
 import { env } from "@/lib/env";
 import { foreignTypes } from "@/lib/relations";
-import { newId } from "@/lib/utils";
+import { cn, newId } from "@/lib/utils";
 import { AutomationsPanel } from "@/pages/AutomationsPage";
 import { ImportDemo } from "@/pages/SpacePage";
 
@@ -276,34 +276,49 @@ function TypesCard({ space, canManage }: { space: Space; canManage: boolean }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {space.workItemTypes.length > 0 ? (
-          <ul aria-label="工作项类型" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {space.workItemTypes.map((t) => {
-              const published = t.flowTemplates.filter((f) => f.currentVersionId).length;
-              return (
-                <li key={t.id}>
-                  <Link
-                    to="/spaces/$spaceId/setting/workObject/$typeKey"
-                    params={{ spaceId: space.id, typeKey: t.key }}
-                    className="flex h-16 items-center gap-3 rounded-lg border border-line-subtle px-3 hover:border-accent hover:bg-hover/50"
-                  >
-                    <span
-                      aria-hidden
-                      className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-500 text-sm font-medium text-white"
-                    >
-                      {t.name.slice(0, 1)}
-                    </span>
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate font-medium">{t.name}</span>
-                      <span className="truncate text-xs text-fg-subtle">
-                        {t.flowMode === "state" ? "状态流" : "节点流"} · {t.roles.length} 个角色 · {t.fields.length}{" "}
-                        个字段 · {published} 个已发布流程
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          (
+            [
+              ["工作项类型", space.workItemTypes.filter((t) => !t.settings?.disabled)],
+              ["已停用的工作项", space.workItemTypes.filter((t) => t.settings?.disabled)],
+            ] as const
+          ).map(([label, types]) =>
+            types.length === 0 ? null : (
+              <div key={label} className="flex flex-col gap-2">
+                {label !== "工作项类型" && <h3 className="font-medium text-fg-muted text-xs">{label}</h3>}
+                <ul aria-label={label} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {types.map((t) => {
+                    const published = t.flowTemplates.filter((f) => f.currentVersionId).length;
+                    return (
+                      <li key={t.id}>
+                        <Link
+                          to="/spaces/$spaceId/setting/workObject/$typeKey"
+                          params={{ spaceId: space.id, typeKey: t.key }}
+                          className="flex h-16 items-center gap-3 rounded-lg border border-line-subtle px-3 hover:border-accent hover:bg-hover/50"
+                        >
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "flex size-8 shrink-0 items-center justify-center rounded-md text-sm font-medium",
+                              t.settings?.disabled ? "bg-pressed text-fg-muted" : "bg-brand-500 text-white",
+                            )}
+                          >
+                            {t.name.slice(0, 1)}
+                          </span>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate font-medium">{t.name}</span>
+                            <span className="truncate text-xs text-fg-subtle">
+                              {t.flowMode === "state" ? "状态流" : "节点流"} · {t.roles.length} 个角色 ·{" "}
+                              {t.fields.length} 个字段 · {published} 个已发布流程
+                            </span>
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ),
+          )
         ) : (
           <div className="flex flex-col items-start gap-2 text-sm text-fg-muted">
             还没有工作项。

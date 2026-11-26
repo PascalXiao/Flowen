@@ -177,20 +177,24 @@ export const fieldConfigSchema = z.object({
     .nullish(),
 });
 
-/** 类型设置：复制时排除的字段和角色。 */
+/** 类型设置：复制时排除的字段和角色、启用状态、导航显示、已完成后锁定。只改传了的项，其余保留。 */
 export const setTypeSettingsArgs = z.object({
   id: z.string(),
   settings: z
     .object({
       copyExcludeFields: z.array(z.string().min(1)).max(500).optional(),
       copyExcludeRoles: z.array(z.string().min(1)).max(200).optional(),
+      disabled: z.boolean().optional(),
+      navHidden: z.boolean().optional(),
+      lockCompleted: z.boolean().optional(),
     })
     .nullable(),
 });
 
 export async function setTypeSettings(tx: Transaction, args: z.output<typeof setTypeSettingsArgs>, userID: string) {
-  await adminType(tx, args.id, userID);
-  await tx.mutate.workItemType.update({ id: args.id, settings: args.settings });
+  const type = await adminType(tx, args.id, userID);
+  const settings = args.settings ? { ...(type.settings ?? {}), ...args.settings } : null;
+  await tx.mutate.workItemType.update({ id: args.id, settings });
 }
 
 /** 改字段：名称、选项、必填和配置。字段类型和键建好后不能改。 */

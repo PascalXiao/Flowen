@@ -183,23 +183,25 @@ function Sidebar({
             </Link>
             {/* 每个工作项一个入口，点进去是它的主页（工作项列表 / 视图列表） */}
             <section aria-label="工作项" className="flex flex-col gap-0.5">
-              {visibleTypes(space, user.id).map((t) => (
-                <Link
-                  key={t.id}
-                  to="/spaces/$spaceId/$typeKey"
-                  params={{ spaceId: space.id, typeKey: t.key }}
-                  activeOptions={{ includeSearch: false }}
-                  className={navItem}
-                >
-                  <span
-                    aria-hidden
-                    className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-pressed font-semibold text-[10px] text-fg-muted"
+              {visibleTypes(space, user.id)
+                .filter((t) => !t.settings?.disabled && !t.settings?.navHidden)
+                .map((t) => (
+                  <Link
+                    key={t.id}
+                    to="/spaces/$spaceId/$typeKey"
+                    params={{ spaceId: space.id, typeKey: t.key }}
+                    activeOptions={{ includeSearch: false }}
+                    className={navItem}
                   >
-                    {t.name.slice(0, 1)}
-                  </span>
-                  <span className="truncate">{t.name}</span>
-                </Link>
-              ))}
+                    <span
+                      aria-hidden
+                      className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-pressed font-semibold text-[10px] text-fg-muted"
+                    >
+                      {t.name.slice(0, 1)}
+                    </span>
+                    <span className="truncate">{t.name}</span>
+                  </Link>
+                ))}
             </section>
           </>
         ) : (
