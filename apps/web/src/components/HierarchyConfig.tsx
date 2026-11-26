@@ -1,7 +1,7 @@
-import { type HierarchyLayerArgs, MAX_HIERARCHIES, MAX_HIERARCHY_DEPTH, mutators, nextSteps } from "@fp/sync";
-import { useZero } from "@rocicorp/zero/react";
+import { type HierarchyLayerArgs, MAX_HIERARCHIES, MAX_HIERARCHY_DEPTH, mutators, nextSteps, queries } from "@fp/sync";
+import { useQuery, useZero } from "@rocicorp/zero/react";
 import { ChevronRight } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
@@ -17,6 +17,13 @@ interface RelationDef {
   reverseName: string | null;
   fromTypeId: string;
   toTypeId: string;
+}
+
+/** 层级里能用的类型：别的空间的名称前面带空间名。 */
+export interface HierarchyType {
+  id: string;
+  name: string;
+  spaceId: string;
 }
 
 export interface HierarchyRow {
@@ -38,24 +45,79 @@ const stepKey = (s: { relationDefId: string | null; reverse?: boolean; typeId: s
   `${s.relationDefId ?? ""}|${s.reverse ? 1 : 0}|${s.typeId}`;
 
 /**
+ * 层级能走到的全部类型和关系：本空间的、跨空间关联另一端的，以及层级走进的别的空间里的
+ * （那个空间自己的类型和关系，层级可以在那边继续往下）。别的空间的配置只有是成员时才看得到。
+ */
+export function useHierarchyUniverse(
+  spaceId: string,
+  baseTypes: readonly HierarchyType[],
+  baseDefs: readonly RelationDef[],
+  hierarchies: readonly HierarchyRow[],
+): { types: HierarchyType[]; defs: RelationDef[] } {
+  const [ids, setIds] = useState<string[]>([]);
+  const [spaces] = useQuery(queries.spaces.hierarchyConfig({ ids: ids.length ? ids : [""] }));
+  const types = new Map<string, HierarchyType>(baseTypes.map((t) => [t.id, t]));
+  const defs = new Map<string, RelationDef>(baseDefs.map((d) => [d.id, d]));
+  const foreignName = (t: { name: string; space?: { name: string } | null | undefined }) =>
+    t.space ? `${t.space.name} / ${t.name}` : t.name;
+  for (const sp of spaces) {
+    if (sp.id === spaceId) continue;
+    for (const t of sp.workItemTypes) {
+      types.set(t.id, { id: t.id, name: `${sp.name} / ${t.name}`, spaceId: t.spaceId });
+      for (const d of t.relationDefs) {
+        defs.set(d.id, d);
+        if (d.toType && !types.has(d.toType.id))
+          types.set(d.toType.id, { id: d.toType.id, name: foreignName(d.toType), spaceId: d.toType.spaceId });
+      }
+      for (const d of t.incomingRelationDefs) {
+        defs.set(d.id, d);
+        if (d.fromType && !types.has(d.fromType.id))
+          types.set(d.fromType.id, {
+            id: d.fromType.id,
+            name: d.fromType.spaceId === spaceId ? d.fromType.name : foreignName(d.fromType),
+            spaceId: d.fromType.spaceId,
+          });
+      }
+    }
+  }
+  // 要加载的空间：跨空间关联另一端的空间，加上层级已经走到的空间（可能在更远处）
+  const used = new Set(hierarchies.flatMap((h) => h.layers.map((l) => l.typeId)));
+  const want = [
+    ...new Set(
+      [...baseTypes, ...[...types.values()].filter((t) => used.has(t.id))]
+        .map((t) => t.spaceId)
+        .filter((id) => id !== spaceId),
+    ),
+  ].sort();
+  const key = want.join(",");
+  useEffect(() => {
+    if (key !== ids.join(",")) setIds(key ? key.split(",") : []);
+  }, [key, ids]);
+  return { types: [...types.values()], defs: [...defs.values()] };
+}
+
+/**
  * 层级管理：按关系把工作项类型排成一棵多层的树（第一层是树根），树形视图按它展开。
  * 每一层沿一条关系从上一层找到，可以是自定义关系（两个方向都行）或子工作项关系；
  * 同类型的关系可以「层级循环」，一层套一层。只有空间管理员可以改。
  */
 export function HierarchyConfig({
   spaceId,
-  types,
-  defs,
+  types: baseTypes,
+  defs: baseDefs,
   hierarchies,
   isAdmin,
 }: {
   spaceId: string;
-  types: readonly { id: string; name: string }[];
+  /** 本空间的类型，加上跨空间关联另一端的类型（名称带空间名）。 */
+  types: readonly HierarchyType[];
   defs: readonly RelationDef[];
   hierarchies: readonly HierarchyRow[];
   isAdmin: boolean;
 }) {
   const zero = useZero();
+  const universe = useHierarchyUniverse(spaceId, baseTypes, baseDefs, hierarchies);
+  const ownTypes = baseTypes.filter((t) => t.spaceId === spaceId);
   const [error, setError] = useState<string | null>(null);
 
   async function run(request: Parameters<typeof zero.mutate>[0]) {
@@ -79,12 +141,19 @@ export function HierarchyConfig({
           </p>
         </div>
         {isAdmin && hierarchies.length < MAX_HIERARCHIES && (
-          <CreateHierarchy spaceId={spaceId} types={types} onCreate={run} />
+          <CreateHierarchy spaceId={spaceId} types={ownTypes} onCreate={run} />
         )}
       </div>
       <ul aria-label="层级列表" className="flex flex-col gap-3">
         {hierarchies.map((h) => (
-          <HierarchyCard key={h.id} hierarchy={h} types={types} defs={defs} isAdmin={isAdmin} run={run} />
+          <HierarchyCard
+            key={h.id}
+            hierarchy={h}
+            types={universe.types}
+            defs={universe.defs}
+            isAdmin={isAdmin}
+            run={run}
+          />
         ))}
         {hierarchies.length === 0 && (
           <li className="rounded-lg border border-line-subtle bg-surface px-4 py-8 text-center text-sm text-fg-muted">
@@ -92,7 +161,9 @@ export function HierarchyConfig({
           </li>
         )}
       </ul>
-      <p className="text-xs text-fg-subtle">自定义关系在「关系管理」里建；层级里用到的关系不能删除。</p>
+      <p className="text-xs text-fg-subtle">
+        自定义关系在「关系管理」里建；层级里用到的关系不能删除。沿跨空间关联可以走进别的空间，在那边接着往下（需要是那个空间的成员）。
+      </p>
     </div>
   );
 }
@@ -105,7 +176,7 @@ function HierarchyCard({
   run,
 }: {
   hierarchy: HierarchyRow;
-  types: readonly { id: string; name: string }[];
+  types: readonly HierarchyType[];
   defs: readonly RelationDef[];
   isAdmin: boolean;
   run: (request: Parameters<ReturnType<typeof useZero>["mutate"]>[0]) => Promise<boolean>;
@@ -230,17 +301,13 @@ function AddLayer({
   onCancel,
 }: {
   parentTypeId: string;
-  types: readonly { id: string; name: string }[];
+  types: readonly HierarchyType[];
   defs: readonly RelationDef[];
   onAdd: (layer: HierarchyLayerArgs) => void;
   onCancel: () => void;
 }) {
   const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "?";
-  const steps = nextSteps(
-    parentTypeId,
-    defs,
-    types.map((t) => t.id),
-  );
+  const steps = nextSteps(parentTypeId, defs, types);
   const [key, setKey] = useState(steps[0] ? stepKey(steps[0]) : "");
   const [repeat, setRepeat] = useState(false);
   const step = steps.find((s) => stepKey(s) === key);

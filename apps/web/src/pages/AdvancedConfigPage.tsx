@@ -76,7 +76,7 @@ export function AdvancedConfigPage() {
           <div className="mx-auto max-w-5xl p-6">
             <HierarchyConfig
               spaceId={spaceId}
-              types={space.workItemTypes}
+              types={types}
               defs={defs}
               hierarchies={space.hierarchies}
               isAdmin={isAdmin}
