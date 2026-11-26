@@ -10,7 +10,7 @@ import { ErrorBanner } from "@/components/ui/page";
 
 /** 节点完成时要填的东西：完成表单、完成结论和意见、节点字段。 */
 export function needsCompletionDialog(node: NodeDefinition): boolean {
-  return !!(node.form?.length || node.conclusion || node.fields?.length);
+  return !!(node.form?.length || node.conclusion || node.fields?.length || node.completeNotice);
 }
 
 /**
@@ -84,6 +84,11 @@ export function CompleteNodeDialog({
       <DialogContent title={`完成节点：${node.name}`} description="带 * 的必须填。">
         <form className="flex flex-col gap-4" onSubmit={submit}>
           {error && <ErrorBanner>{error}</ErrorBanner>}
+          {node.completeNotice && (
+            <p role="note" className="whitespace-pre-wrap rounded-md bg-brand-50 px-3 py-2 text-sm">
+              {node.completeNotice.text}
+            </p>
+          )}
           {(node.form ?? []).map(({ field: key, required }) => {
             const field = fields.find((f) => f.key === key);
             return (

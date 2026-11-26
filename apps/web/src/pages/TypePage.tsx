@@ -170,6 +170,13 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
     );
   const isAdmin = type.space?.members.some((m) => m.role === "admin") ?? false;
   const fields = withLineOptions(type.fields, type.space?.businessLines);
+  /** 关联对端类型的字段（同一空间里的才有），图表控件选维度用。 */
+  const otherEndFields = (typeId: string) =>
+    (space?.workItemTypes.find((t) => t.id === typeId)?.fields ?? []).map((f) => ({
+      key: f.key,
+      name: f.name,
+      dataType: f.dataType,
+    }));
   // 别的工作项（可能在别的空间）指向本工作项、并且在本端有字段名的互相关联
   const reverseDefs = type.incomingRelationDefs.filter((d) => d.reverseName);
   async function reorder(index: number, by: -1 | 1) {
@@ -635,7 +642,14 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
               dataType: f.dataType,
               options: f.options?.map((o) => ({ value: o.value, label: o.label || o.value })) ?? null,
             }))}
-            relationDefs={[...type.relationDefs, ...reverseDefs.map((d) => ({ ...d, name: d.reverseName ?? d.name }))]}
+            relationDefs={[
+              ...type.relationDefs.map((d) => ({ ...d, fields: otherEndFields(d.toTypeId) })),
+              ...reverseDefs.map((d) => ({
+                ...d,
+                name: d.reverseName ?? d.name,
+                fields: otherEndFields(d.fromTypeId),
+              })),
+            ]}
             layout={type.detailLayout ?? null}
             canManage={isAdmin}
             onSave={async (layout) => {

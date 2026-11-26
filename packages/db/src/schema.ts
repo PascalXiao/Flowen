@@ -966,7 +966,7 @@ export const notification = pgTable(
       .references(() => space.id, { onDelete: "cascade" }),
     workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "cascade" }),
     kind: text("kind")
-      .$type<"mentioned" | "nodeAssigned" | "taskAssigned" | "automation" | "nudge" | "replied">()
+      .$type<"mentioned" | "nodeAssigned" | "nodeCompleted" | "taskAssigned" | "automation" | "nudge" | "replied">()
       .notNull(),
     /** 列表里显示的一句话，生成时写好，避免前端再拼。 */
     text: text("text").notNull(),

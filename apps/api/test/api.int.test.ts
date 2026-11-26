@@ -1127,6 +1127,31 @@ describe("comments and notifications", () => {
     ]);
   });
 
+  it("sends a node's completion notice to the chosen roles", async () => {
+    const [item] = await services.database.db.select().from(schema.workItem).where(eq(schema.workItem.id, itemId));
+    const [version] = await services.database.db
+      .select()
+      .from(schema.flowVersion)
+      .where(eq(schema.flowVersion.id, item?.flowVersionId as string));
+    const definition = version?.definition as FlowDefinition;
+    await services.database.db
+      .update(schema.flowVersion)
+      .set({
+        definition: {
+          ...definition,
+          nodes: definition.nodes.map((n) =>
+            n.key === "start" ? { ...n, completeNotice: { text: "请在三天内提交立项材料", roles: ["NPD"] } } : n,
+          ),
+        },
+      })
+      .where(eq(schema.flowVersion.id, version?.id as string));
+    const completed = (await eventsOf()).find((e) => e.kind === "nodeCompleted" && e.payload.node === "start");
+    await notify(services.database, completed?.id as number);
+    expect((await inbox(member.userId)).filter((n) => n.kind === "nodeCompleted")).toMatchObject([
+      { text: "「新品 N」的节点「开始」已完成：请在三天内提交立项材料" },
+    ]);
+  });
+
   it("posts a comment, notifies the people it mentions once, and only space members can be mentioned", async () => {
     const outsider = await signUp(`note-outsider-${randomUUID()}@example.com`);
     await expect(

@@ -1,4 +1,7 @@
 import {
+  CHART_KIND_LABEL,
+  CHART_KINDS,
+  type ChartConfig,
   type DetailLayout,
   type LayoutItem,
   type LayoutSection,
@@ -24,6 +27,30 @@ interface Draft {
 }
 
 type LayoutField = { key: string; name: string; dataType?: string; options?: ConditionField["options"] };
+/** 一种关联：对端工作项的字段用来给图表控件选维度和指标。 */
+type LayoutRelation = { id: string; name: string; fields?: readonly LayoutField[] };
+
+/** 图表控件按这些维度分组：工作项自带的几项和对端的选项、人员、日期字段。 */
+const BUILTIN_DIMENSIONS: [string, string][] = [
+  ["status", "状态"],
+  ["stage", "阶段"],
+  ["creator", "创建人"],
+  ["createdAt", "创建时间"],
+];
+const DIMENSION_TYPES = [
+  "select",
+  "multiSelect",
+  "radio",
+  "cascadeSelect",
+  "cascadeMulti",
+  "businessLine",
+  "singleUser",
+  "user",
+  "bool",
+  "date",
+  "datetime",
+];
+const DEFAULT_CHART: ChartConfig = { kind: "ring", dimension: { by: "status" }, metric: { agg: "count" } };
 
 function initialDraft(fields: readonly LayoutField[], layout: DetailLayout | null): Draft {
   const resolved = resolveLayout(fields, layout);
@@ -44,7 +71,10 @@ function move<T>(list: readonly T[], index: number, by: number): T[] {
 }
 
 const CONTROL_LABEL: Record<
-  Exclude<LayoutItem["kind"], "field" | "relation" | "relatedField" | "nodeInfo" | "relationTable" | "nodeTable">,
+  Exclude<
+    LayoutItem["kind"],
+    "field" | "relation" | "relatedField" | "nodeInfo" | "relationTable" | "nodeTable" | "chart"
+  >,
   string
 > = {
   text: "提示文字",
@@ -67,7 +97,7 @@ export function LayoutEditor({
   onSave,
 }: {
   fields: readonly LayoutField[];
-  relationDefs: readonly { id: string; name: string }[];
+  relationDefs: readonly LayoutRelation[];
   layout: DetailLayout | null;
   canManage: boolean;
   onSave: (layout: DetailLayout | null) => Promise<boolean>;
@@ -95,15 +125,17 @@ export function LayoutEditor({
         ? `关联：${relationDefs.find((d) => d.id === item.relationDefId)?.name ?? "（已删除）"}`
         : item.kind === "nodeTable"
           ? `多节点视图：${item.title || item.nodes.join("、") || "（未选节点）"}`
-          : item.kind === "relationTable"
-            ? `关联工作项视图：${relationDefs.find((d) => d.id === item.relationDefId)?.name ?? "（已删除）"}`
-            : item.kind === "nodeInfo"
-              ? `节点信息：${item.label || item.node || "（未选节点）"}`
-              : item.kind === "relatedField"
-                ? `关联信息：${relationDefs.find((d) => d.id === item.relationDefId)?.name ?? "（已删除）"} · ${item.label || item.field || "（未选字段）"}`
-                : item.kind === "text"
-                  ? `提示文字：${item.text.slice(0, 20) || "（空）"}`
-                  : CONTROL_LABEL[item.kind];
+          : item.kind === "chart"
+            ? `图表：${item.title || relationDefs.find((d) => d.id === item.relationDefId)?.name || "（已删除）"}`
+            : item.kind === "relationTable"
+              ? `关联工作项视图：${relationDefs.find((d) => d.id === item.relationDefId)?.name ?? "（已删除）"}`
+              : item.kind === "nodeInfo"
+                ? `节点信息：${item.label || item.node || "（未选节点）"}`
+                : item.kind === "relatedField"
+                  ? `关联信息：${relationDefs.find((d) => d.id === item.relationDefId)?.name ?? "（已删除）"} · ${item.label || item.field || "（未选字段）"}`
+                  : item.kind === "text"
+                    ? `提示文字：${item.text.slice(0, 20) || "（空）"}`
+                    : CONTROL_LABEL[item.kind];
 
   const tab = draft.tabs.find((t) => t.key === tabKey) ?? draft.tabs[0];
   const setTabs = (tabs: LayoutTab[]) => update({ ...draft, tabs });
@@ -469,7 +501,7 @@ function SectionEditor({
   index: number;
   count: number;
   fields: readonly LayoutField[];
-  relationDefs: readonly { id: string; name: string }[];
+  relationDefs: readonly LayoutRelation[];
   conditionFields: ConditionField[];
   itemLabel: (item: LayoutItem) => string;
   onChange: (section: LayoutSection) => void;
@@ -538,7 +570,7 @@ function ItemsEditor({
 }: {
   items: readonly LayoutItem[];
   fields: readonly LayoutField[];
-  relationDefs: readonly { id: string; name: string }[];
+  relationDefs: readonly LayoutRelation[];
   conditionFields: ConditionField[];
   itemLabel: (item: LayoutItem) => string;
   forCreate?: boolean;
@@ -675,6 +707,13 @@ function ItemsEditor({
                     </Field>
                   </>
                 )}
+                {item.kind === "chart" && (
+                  <ChartItemEditor
+                    item={item}
+                    fields={relationDefs.find((d) => d.id === item.relationDefId)?.fields ?? []}
+                    onChange={(next) => patch(i, next)}
+                  />
+                )}
                 {item.kind === "relationTable" && (
                   <>
                     <Field label="列（对端字段名，逗号分隔）">
@@ -759,11 +798,14 @@ function ItemsEditor({
                       ? { kind: "nodeTable", nodes: [] }
                       : kind === "relationTable"
                         ? { kind: "relationTable", relationDefId: id, columns: ["名称", "状态"] }
-                        : kind === "text"
-                          ? { kind: "text", text: "提示文字" }
-                          : { kind: kind as "relations" | "roles" | "subItems" | "attachments" };
+                        : kind === "chart"
+                          ? { kind: "chart", relationDefId: id, chart: DEFAULT_CHART }
+                          : kind === "text"
+                            ? { kind: "text", text: "提示文字" }
+                            : { kind: kind as "relations" | "roles" | "subItems" | "attachments" };
           onChange([...items, item]);
-          if (["text", "relatedField", "nodeInfo", "relationTable", "nodeTable"].includes(kind)) setOpen(items.length);
+          if (["text", "relatedField", "nodeInfo", "relationTable", "nodeTable", "chart"].includes(kind))
+            setOpen(items.length);
         }}
       >
         <option value="">添加字段或控件…</option>
@@ -794,6 +836,11 @@ function ItemsEditor({
                   关联信息：{d.name}
                 </option>
               ))}
+              {relationDefs.map((d) => (
+                <option key={`chart-${d.id}`} value={`chart:${d.id}`}>
+                  图表：{d.name}
+                </option>
+              ))}
               <option value="nodeInfo:">节点信息</option>
               <option value="nodeTable:">多节点视图</option>
               <option value="subItems:">子工作项</option>
@@ -804,5 +851,89 @@ function ItemsEditor({
         </optgroup>
       </Select>
     </div>
+  );
+}
+
+/** 图表控件的设置：图表类型、按什么分组、算什么。数据范围是这个工作项通过这种关联关联的工作项。 */
+function ChartItemEditor({
+  item,
+  fields,
+  onChange,
+}: {
+  item: Extract<LayoutItem, { kind: "chart" }>;
+  fields: readonly LayoutField[];
+  onChange: (next: LayoutItem) => void;
+}) {
+  const chart = item.chart;
+  const set = (patch: Partial<ChartConfig>) => onChange({ ...item, chart: { ...chart, ...patch } });
+  const dimensionValue = chart.dimension
+    ? chart.dimension.by === "field"
+      ? `field:${chart.dimension.key}`
+      : chart.dimension.by
+    : "";
+  const numbers = fields.filter((f) => f.dataType === "number");
+  const metricValue = chart.metric.agg === "count" ? "count" : `${chart.metric.agg}:${chart.metric.field}`;
+  return (
+    <>
+      <Field label="图表类型">
+        <Select value={chart.kind} onChange={(e) => set({ kind: e.target.value as ChartConfig["kind"] })}>
+          {CHART_KINDS.filter((k) => k !== "table").map((k) => (
+            <option key={k} value={k}>
+              {CHART_KIND_LABEL[k]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {chart.kind !== "indicator" && (
+        <Field label="维度（按什么分组）">
+          <Select
+            value={dimensionValue}
+            onChange={(e) => {
+              const [by, key] = e.target.value.split(":");
+              set({
+                dimension:
+                  by === "field"
+                    ? { by: "field", key }
+                    : { by: by as "status", ...(by === "createdAt" && { grain: "month" as const }) },
+              });
+            }}
+          >
+            {BUILTIN_DIMENSIONS.map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+            {fields
+              .filter((f) => DIMENSION_TYPES.includes(f.dataType ?? ""))
+              .map((f) => (
+                <option key={f.key} value={`field:${f.key}`}>
+                  {f.name}
+                </option>
+              ))}
+          </Select>
+        </Field>
+      )}
+      <Field label="指标">
+        <Select
+          value={metricValue}
+          onChange={(e) => {
+            const [agg, field] = e.target.value.split(":");
+            set({ metric: agg === "count" ? { agg: "count" } : { agg: agg as "sum", field } });
+          }}
+        >
+          <option value="count">工作项数</option>
+          {numbers.flatMap((f) =>
+            (["sum", "avg"] as const).map((agg) => (
+              <option key={`${agg}:${f.key}`} value={`${agg}:${f.key}`}>
+                {f.name}（{agg === "sum" ? "求和" : "平均值"}）
+              </option>
+            )),
+          )}
+        </Select>
+      </Field>
+      <Field label="标题">
+        <Input value={item.title ?? ""} onChange={(e) => onChange({ ...item, title: e.target.value || undefined })} />
+      </Field>
+    </>
   );
 }

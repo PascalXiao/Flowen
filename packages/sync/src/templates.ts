@@ -26,6 +26,7 @@ import {
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { assertSpaceMembers, requireAdmin, syncFieldAccess } from "./access.ts";
+import { chartConfig } from "./charts.ts";
 import { compileTypeFormulas, fieldResolver, recomputeFormulas, recomputeParentFormulas } from "./formulas.ts";
 import { zql } from "./schema.gen.ts";
 
@@ -234,6 +235,12 @@ const layoutItem = z.union([
     title: z.string().max(60).optional(),
   }),
   z.object({
+    kind: z.literal("chart"),
+    relationDefId: z.string(),
+    chart: chartConfig,
+    title: z.string().max(60).optional(),
+  }),
+  z.object({
     kind: z.literal("nodeInfo"),
     node: z.string().min(1),
     info: z.array(z.enum(["owner", "schedule", "conclusion"])).optional(),
@@ -336,6 +343,9 @@ export const flowDefinitionSchema = z.object({
       duration: z.number().int().min(0).max(999).optional(),
       position: z.object({ x: z.number(), y: z.number() }).optional(),
       milestone: z.boolean().optional(),
+      completeNotice: z
+        .object({ text: z.string().trim().min(1).max(500), roles: z.array(z.string()).max(50).optional() })
+        .optional(),
       restricted: z.boolean().optional(),
       conclusion: z
         .object({

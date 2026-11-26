@@ -43,7 +43,7 @@ import { flowConditionFields, NodeAdvancedEditor, StageRulesEditor } from "@/com
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input, Label, SearchInput, Select } from "@/components/ui/input";
+import { Input, Label, SearchInput, Select, Textarea } from "@/components/ui/input";
 import { Tag } from "@/components/ui/tag";
 import { layoutByDepth } from "@/flow-demo/layout";
 import { cn, newId } from "@/lib/utils";
@@ -821,6 +821,47 @@ function NodePanel({
             onChange={(gate) => onChange({ gate })}
           />
           <FormEditor value={data.form ?? []} fields={type.fields} onChange={(form) => onChange({ form })} />
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-sm font-medium text-fg">完成提醒</legend>
+            <p className="text-xs text-fg-subtle">
+              负责人点「完成」时在确认弹窗里看到这段话；勾选角色后，节点完成时这些角色上的人会收到通知。
+            </p>
+            <Textarea
+              aria-label="完成提醒文案"
+              placeholder="如：请确认评审纪要已上传到附件，并@相关负责人"
+              value={data.completeNotice?.text ?? ""}
+              onChange={(e) =>
+                onChange({
+                  completeNotice: e.target.value ? { ...data.completeNotice, text: e.target.value } : undefined,
+                })
+              }
+            />
+            {data.completeNotice && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {type.roles.map((r) => {
+                  const roles = data.completeNotice?.roles ?? [];
+                  return (
+                    <Label key={r.key} className="flex items-center gap-1.5 font-normal">
+                      <Checkbox
+                        aria-label={`完成后通知：${r.name}`}
+                        checked={roles.includes(r.key)}
+                        onChange={(e) => {
+                          const next = e.target.checked ? [...roles, r.key] : roles.filter((k) => k !== r.key);
+                          onChange({
+                            completeNotice: {
+                              text: data.completeNotice?.text ?? "",
+                              ...(next.length > 0 && { roles: next }),
+                            },
+                          });
+                        }}
+                      />
+                      {r.name}
+                    </Label>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
           <TasksEditor value={data.tasks ?? []} onChange={(tasks) => onChange({ tasks })} />
           <RelatedInfoEditor value={data.relatedInfo ?? []} onChange={(relatedInfo) => onChange({ relatedInfo })} />
           <NodeAdvancedEditor

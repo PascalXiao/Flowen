@@ -1,6 +1,7 @@
 import {
   availableOptions,
   canEditRoleMembers,
+  computeChart,
   conditionView,
   type Day,
   dayFromDate,
@@ -37,6 +38,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ActivityCard } from "@/components/ActivityCard";
 import { useActiveSpace } from "@/components/AppShell";
 import { AttachmentsCard } from "@/components/AttachmentsCard";
+import { ChartView } from "@/components/ChartView";
 import { CommentsCard, liveCommentCount } from "@/components/CommentsCard";
 import { CompleteNodeDialog, needsCompletionDialog } from "@/components/CompleteNodeDialog";
 import { FieldInput, type FieldInputValue, FieldLabel, type FieldMember } from "@/components/FieldInput";
@@ -734,6 +736,51 @@ export function WorkItemView({ itemId }: { itemId: string }) {
               </tbody>
             </table>
           </div>
+        );
+      }
+      case "chart": {
+        const rows = [
+          ...item.outgoing.filter((r) => r.relationDefId === it.relationDefId).map((r) => r.to),
+          ...item.incoming.filter((r) => r.relationDefId === it.relationDefId).map((r) => r.from),
+        ].filter((w): w is Linked => !!w);
+        const def =
+          (item.type?.relationDefs ?? []).find((d) => d.id === it.relationDefId) ??
+          (space ? spaceRelationDefs(space) : []).find((d) => d.id === it.relationDefId);
+        const title =
+          it.title ||
+          (def && "reverseName" in def && def.toTypeId === item.typeId ? def.reverseName : def?.name) ||
+          "关联工作项";
+        const otherFields = rows[0]?.type?.fields ?? [];
+        const data = computeChart(
+          rows.map((w) => ({
+            id: w.id,
+            typeId: w.typeId,
+            status: w.status ?? "inProgress",
+            stage: w.stage ?? null,
+            createdBy: w.createdBy,
+            createdAt: w.createdAt ?? 0,
+            values: Object.fromEntries(w.fieldValues.map((v) => [v.fieldKey, v.value])),
+            roles: {},
+          })),
+          it.chart,
+          {
+            fields: otherFields,
+            typeName: (id) => rows.find((w) => w.typeId === id)?.type?.name ?? "",
+            userName: (id) => nameOf(id),
+            timeZone: item.space?.timezone ?? "Asia/Shanghai",
+          },
+        );
+        return (
+          <section key={`chart-${index}`} aria-label={`图表：${title}`} className="col-span-full flex flex-col gap-2">
+            <h4 className="font-medium text-fg-muted text-xs">
+              {title} · {data.count} 个
+            </h4>
+            {data.count === 0 ? (
+              <p className="text-fg-subtle text-sm">还没有关联的工作项。</p>
+            ) : (
+              <ChartView data={data} kind={it.chart.kind} label={title} className="h-56" />
+            )}
+          </section>
         );
       }
       case "relationTable": {

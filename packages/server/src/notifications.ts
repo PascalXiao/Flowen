@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 interface NewNotification {
   userId: string;
-  kind: "mentioned" | "nodeAssigned" | "taskAssigned" | "nudge" | "replied";
+  kind: "mentioned" | "nodeAssigned" | "nodeCompleted" | "taskAssigned" | "nudge" | "replied";
   text: string;
 }
 
@@ -49,6 +49,24 @@ export async function notify(database: Database, eventId: number): Promise<numbe
     const name = definition?.nodes.find((n) => n.key === payload.node)?.name ?? payload.node;
     for (const userId of node?.owners ?? [])
       notifications.push({ userId, kind: "nodeAssigned", text: `「${item.name}」的节点「${name}」轮到你了` });
+  } else if (event.kind === "nodeCompleted" && typeof payload.node === "string") {
+    // 节点的完成提醒：通知选定角色上的人
+    const version = item.flowVersionId
+      ? await db.query.flowVersion.findFirst({ where: eq(schema.flowVersion.id, item.flowVersionId) })
+      : null;
+    const node = nodeFlowOf(version?.definition)?.nodes.find((n) => n.key === payload.node);
+    const roles = node?.completeNotice?.roles ?? [];
+    if (node?.completeNotice && roles.length > 0) {
+      const members = await db.query.roleMember.findMany({
+        where: and(eq(schema.roleMember.workItemId, item.id), inArray(schema.roleMember.roleKey, roles)),
+      });
+      for (const userId of new Set(members.map((m) => m.userId)))
+        notifications.push({
+          userId,
+          kind: "nodeCompleted",
+          text: `「${item.name}」的节点「${node.name}」已完成：${node.completeNotice.text}`,
+        });
+    }
   } else if (event.kind === "nodeNudged" && typeof payload.node === "string") {
     const actor = event.actor ? await db.query.user.findFirst({ where: eq(schema.user.id, event.actor) }) : null;
     const version = item.flowVersionId
