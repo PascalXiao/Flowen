@@ -150,7 +150,7 @@ function useChart(space: Space, filter: WorkItemFilterArgs, config: ChartConfig)
         .map((n) => ({
           key: n.nodeKey,
           name: nodeInfo.get(n.nodeKey)?.name ?? n.nodeKey,
-          state: n.state,
+          state: n.state ?? "notStarted",
           owners: (n.owners as string[] | null) ?? [],
           plannedStart: ms(n.plannedStart),
           plannedEnd: ms(n.plannedEnd),
