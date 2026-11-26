@@ -20,6 +20,7 @@ import { PermissionsEditor } from "@/components/PermissionsEditor";
 import { RoleConfigSheet } from "@/components/RoleConfigSheet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Label, Select } from "@/components/ui/input";
 import { ErrorBanner, PageBody } from "@/components/ui/page";
 import { Tabs } from "@/components/ui/tabs";
@@ -217,6 +218,52 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
               {type.fields.length} 个字段 · {type.roles.length} 个角色 · {type.flowTemplates.length} 套流程
             </dd>
           </dl>
+        </Section>
+      )}
+      {tab === "baseInfo" && (
+        <Section title="使用设置">
+          <div className="flex flex-col gap-3 text-sm">
+            {(
+              [
+                ["enabled", "启用", "停用后不能再新建这种工作项，导航里也不显示；已有的工作项照常查看和推进。"],
+                ["nav", "在左侧导航中显示", "关掉后导航里不显示，仍可从空间配置、搜索和链接进入。"],
+                [
+                  "lockCompleted",
+                  "已完成的工作项不能终止和删除",
+                  "开启后，完成状态的工作项上不再出现「终止」和「删除」。",
+                ],
+              ] as const
+            ).map(([key, label, hint]) => {
+              const settings = type.settings ?? {};
+              const checked =
+                key === "enabled" ? !settings.disabled : key === "nav" ? !settings.navHidden : !!settings.lockCompleted;
+              return (
+                <div key={key} className="flex flex-col gap-0.5">
+                  <Checkbox
+                    checked={checked}
+                    disabled={!isAdmin || (key === "nav" && !!settings.disabled)}
+                    onChange={async (e) => {
+                      const on = e.target.checked;
+                      const patch =
+                        key === "enabled"
+                          ? { disabled: !on }
+                          : key === "nav"
+                            ? { navHidden: !on }
+                            : { lockCompleted: on };
+                      setError(null);
+                      const outcome = await zero.mutate(
+                        mutators.workItemType.setSettings({ id: type.id, settings: patch }),
+                      ).client;
+                      if (outcome.type === "error") setError(outcome.error.message);
+                    }}
+                  >
+                    <span className="font-medium">{label}</span>
+                  </Checkbox>
+                  <p className="pl-6 text-fg-subtle text-xs">{hint}</p>
+                </div>
+              );
+            })}
+          </div>
         </Section>
       )}
       {tab === "baseInfo" && (

@@ -86,6 +86,7 @@ export async function createWorkItem(
       .one(),
   );
   if (!type) throw new Error("工作项类型不存在或没有权限。");
+  if (type.settings?.disabled) throw new Error(`「${type.name}」已停用，不能新建。`);
   await requireWriter(tx, type.spaceId, userID);
   await requireCreate(tx, type.spaceId, type.id, userID);
   // 字段值先按类型整理成规范形式，流程引擎按整理后的值判断出现条件

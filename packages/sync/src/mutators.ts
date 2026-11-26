@@ -48,6 +48,7 @@ import {
   removeDependency,
   removeDependencyArgs,
 } from "./dependencies.ts";
+import { deleteItemDraft, deleteItemDraftArgs, saveItemDraft, saveItemDraftArgs } from "./drafts.ts";
 import { fieldDefOf, withRuntimeOptions, writeFieldValue } from "./field-values.ts";
 import {
   completeBySubItems,
@@ -255,6 +256,10 @@ async function assertNotRequired(
 }
 
 export const mutators = defineMutators({
+  draft: {
+    save: defineMutator(saveItemDraftArgs, ({ tx, args, ctx }) => saveItemDraft(tx, args, ctx.userID)),
+    delete: defineMutator(deleteItemDraftArgs, ({ tx, args, ctx }) => deleteItemDraft(tx, args, ctx.userID)),
+  },
   mark: {
     set: defineMutator(markArgs, ({ tx, args, ctx }) => setMark(tx, args, ctx.userID)),
     visit: defineMutator(visitArgs, ({ tx, args, ctx }) => recordVisit(tx, args, ctx.userID)),

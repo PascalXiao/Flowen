@@ -710,6 +710,12 @@ export const queries = defineQueries({
         .limit(30);
     }),
   },
+  drafts: {
+    /** 自己在某种工作项上的新建草稿，最近的在前。 */
+    mine: defineQuery(z.object({ typeId: z.string() }), ({ args, ctx }) =>
+      zql.workItemDraft.where("userId", ctx.userID).where("typeId", args.typeId).orderBy("updatedAt", "desc"),
+    ),
+  },
   notifications: {
     /** 自己最近的通知。 */
     mine: defineQuery(({ ctx }) =>

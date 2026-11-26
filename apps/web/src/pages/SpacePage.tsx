@@ -1,44 +1,26 @@
-import {
-  applyDefaults,
-  availableOptions,
-  conditionView,
-  defaultRoleMembers,
-  evaluate,
-  fieldStates,
-  type LayoutItem,
-  missingRequired,
-  resolveLayout,
-  roleAppears,
-  roleRemovable,
-  TEMPLATE_CONDITION_KEY,
-} from "@fp/engine";
 import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, Columns3, GanttChartSquare, List, ListTree, Plus } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { ChevronDown, ChevronUp, Columns3, GanttChartSquare, List, ListTree } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { Board } from "@/components/Board";
-import { FieldInput, type FieldInputValue, FieldLabel } from "@/components/FieldInput";
+import { CreateWorkItem } from "@/components/CreateWorkItem";
 import { FilterBar } from "@/components/FilterBar";
 import { ImportDialog } from "@/components/ImportDialog";
-import { type PickerMember, RolePicker, toggled } from "@/components/RolePicker";
+import type { PickerMember } from "@/components/RolePicker";
 import { SpaceGantt } from "@/components/SpaceGantt";
 import { TreeView } from "@/components/TreeView";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { Field, Input, Select } from "@/components/ui/input";
-import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
+import { Input } from "@/components/ui/input";
+import { EmptyState, PageBody, PageHeader } from "@/components/ui/page";
 import { Sheet } from "@/components/ui/sheet";
 import { Segmented, Tabs } from "@/components/ui/tabs";
-import { Toast } from "@/components/ui/toast";
 import { type ListDisplay, WorkItemList } from "@/components/WorkItemList";
 import { env } from "@/lib/env";
 import { withLineOptions } from "@/lib/fields";
 import { foreignTypes, spaceRelationDefs } from "@/lib/relations";
-import { newId } from "@/lib/utils";
 import { WorkItemView } from "@/pages/WorkItemPage";
 
 const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
@@ -78,10 +60,11 @@ export function WorkItemHomePage() {
   return (
     <>
       <PageHeader
-        title={type.name}
+        title={type.settings?.disabled ? `${type.name}（已停用）` : type.name}
         actions={
           published &&
-          myRole !== "guest" && (
+          myRole !== "guest" &&
+          !type.settings?.disabled && (
             <div className="flex items-center gap-2">
               <ImportDialog type={type} lines={space.businessLines} members={members} spaceName={space.name} />
               <CreateWorkItem
@@ -473,264 +456,5 @@ export function ImportDemo({ spaceId }: { spaceId: string }) {
       <Button onClick={run}>导入示例模板</Button>
       {error && <span className="text-sm text-danger-600">{error}</span>}
     </>
-  );
-}
-
-/** 新建工作项：选类型（有已发布流程的才可选）、填名称和选项字段、按角色选人。 */
-type Lines = Space["businessLines"];
-
-function CreateWorkItem({
-  types,
-  members,
-  lines,
-  label,
-  title,
-}: {
-  types: ItemType[];
-  members: PickerMember[];
-  lines: Lines;
-  label: string;
-  title?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [typeId, setTypeId] = useState(types[0]?.id ?? "");
-  const type = types.find((t) => t.id === typeId) ?? types[0];
-  if (!type) return null;
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          {label}
-        </Button>
-      </DialogTrigger>
-      <DialogContent title={title ?? label} className="max-w-2xl">
-        <div className="flex flex-col gap-4">
-          {types.length > 1 && (
-            <Field label="类型">
-              <Select value={type.id} onChange={(e) => setTypeId(e.target.value)}>
-                {types.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-          <CreateWorkItemForm
-            key={type.id}
-            type={type}
-            members={members}
-            lines={lines}
-            onCancel={() => setOpen(false)}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CreateWorkItemForm({
-  type,
-  members,
-  lines,
-  onCancel,
-}: {
-  type: ItemType;
-  members: PickerMember[];
-  lines: Lines;
-  onCancel: () => void;
-}) {
-  const typeFields = withLineOptions(type.fields, lines);
-  const zero = useZero();
-  const navigate = useNavigate();
-  const [name, setName] = useState("");
-  const [keepCreating, setKeepCreating] = useState(false);
-  // 一个类型有多套已发布的流程（如标准、快速、变更）时，新建时选用哪套
-  const flows = type.flowTemplates.filter((t) => t.currentVersionId);
-  const [templateId, setTemplateId] = useState(flows[0]?.id ?? "");
-  // 用户动过的字段；没动过的字段按默认值规则补上（条件默认值随别的字段变化）
-  const [touched, setTouched] = useState<Record<string, FieldInputValue>>({});
-  const [error, setError] = useState<string | null>(null);
-  // 选的流程类型（流程模板名）也能当条件用
-  const templateCondition = { [TEMPLATE_CONDITION_KEY]: flows.find((t) => t.id === templateId)?.name ?? "" };
-  const { [TEMPLATE_CONDITION_KEY]: _template, ...defaulted } = applyDefaults(typeFields, {
-    ...Object.fromEntries(Object.entries(touched).filter(([, v]) => v !== null)),
-    ...templateCondition,
-  });
-  const fields: Record<string, unknown> = { ...defaulted, ...touched };
-  const states = fieldStates(typeFields, { ...fields, ...templateCondition });
-  // 角色：按出现规则和分配方式算默认成员（随字段变化），用户改过的角色以用户的为准
-  const me = String(zero.userID);
-  const [touchedRoles, setTouchedRoles] = useState<Record<string, string[]>>({});
-  const [overrides, setOverrides] = useState<{ added: string[]; removed: string[] }>({ added: [], removed: [] });
-  const view = conditionView(typeFields, { ...fields, ...templateCondition });
-  const shownRoles = type.roles.filter((r) => roleAppears(r, view, overrides));
-  const assigned = Object.fromEntries(
-    shownRoles.map((r) => [r.key, touchedRoles[r.key] ?? defaultRoleMembers(r, view, me)]),
-  );
-  // 新建时可以直接填的字段（公式字段由系统计算），按详情页布局的顺序，布局里隐藏的不显示
-  // 系统外信号由外部系统写入，附件要先有工作项才能上传，都不在新建表单里；按规则不显示的也不显示
-  // 按新建页布局：字段（布局可以改显示名、加说明、设显示条件）和提示文字
-  type CreateRow = { item: LayoutItem; field: (typeof typeFields)[number] | undefined };
-  const createItems = resolveLayout(typeFields, type.detailLayout).create.flatMap((item): CreateRow[] => {
-    if (item.kind === "text") return [{ item, field: undefined }];
-    if (item.kind !== "field") return [];
-    const field = typeFields.find((f) => f.key === item.field);
-    if (!field || ["formula", "relation", "signal", "multiSignal", "vote", "multiPerson"].includes(field.dataType))
-      return [];
-    if (states[field.key]?.visible === false || (item.showWhen && !evaluate(item.showWhen, view))) return [];
-    return [{ item, field }];
-  });
-
-  async function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    if (!name.trim()) return;
-    const missing = missingRequired(
-      typeFields.filter((f) => f.dataType !== "attachment"),
-      fields,
-    );
-    if (missing.length > 0) return setError(`请填写必填字段：${missing.map((f) => f.name).join("、")}。`);
-    const id = newId();
-    // 只交可见（有效且显示）字段的值，被规则藏起来的字段不带
-    const values = Object.fromEntries(
-      Object.entries(fields).filter(
-        ([k, v]) => states[k]?.visible !== false && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0),
-      ),
-    );
-    setError(null);
-    const outcome = await zero.mutate(
-      mutators.workItem.create({
-        id,
-        typeId: type.id,
-        name: name.trim(),
-        ...(templateId && { flowTemplateId: templateId }),
-        fields: values as never,
-        roles: assigned,
-        roleOverrides: overrides,
-      }),
-    ).client;
-    if (outcome.type === "error") return setError(outcome.error.message);
-    // 连续新建：留在表单里，只清空名称，接着建下一个
-    if (keepCreating) {
-      Toast.success({ content: `已创建「${name.trim()}」`, duration: 2 });
-      setName("");
-      (form.elements.namedItem("itemName") as HTMLInputElement | null)?.focus();
-      return;
-    }
-    await navigate({
-      to: "/spaces/$spaceId/$typeKey/detail/$itemId",
-      params: { spaceId: type.spaceId, typeKey: type.key, itemId: id },
-    });
-  }
-
-  return (
-    <form className="flex flex-col gap-4" onSubmit={create}>
-      {error && <ErrorBanner>{error}</ErrorBanner>}
-      {flows.length > 1 && (
-        <Field label="流程类型">
-          <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            {flows.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      )}
-      <Field label={`${type.name}名称`}>
-        <Input name="itemName" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-      </Field>
-      {createItems.length > 0 && (
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-          {createItems.map(({ item, field: f }, i) =>
-            !f ? (
-              <p
-                // biome-ignore lint/suspicious/noArrayIndexKey: 提示文字没有 id，按位置渲染
-                key={i}
-                role="note"
-                className="rounded-md bg-brand-50 px-3 py-2 text-sm text-accent sm:col-span-2"
-              >
-                {item.kind === "text" ? item.text : ""}
-              </p>
-            ) : (
-              <Field
-                key={f.key}
-                label={
-                  <FieldLabel
-                    name={(item.kind === "field" && item.label) || f.name}
-                    required={states[f.key]?.required}
-                    description={f.config?.description}
-                  />
-                }
-                hint={item.kind === "field" ? item.hint : undefined}
-                className={
-                  f.dataType === "richText" ||
-                  f.dataType === "textarea" ||
-                  f.dataType === "fieldGroup" ||
-                  (item.kind === "field" && item.wide)
-                    ? "sm:col-span-2"
-                    : undefined
-                }
-              >
-                <FieldInput
-                  field={f}
-                  label={(item.kind === "field" && item.label) || f.name}
-                  value={fields[f.key] ?? null}
-                  members={members}
-                  options={availableOptions(f, fields, fields[f.key])}
-                  live
-                  onChange={(value) => setTouched((prev) => ({ ...prev, [f.key]: value }))}
-                />
-              </Field>
-            ),
-          )}
-        </div>
-      )}
-      {type.roles.length > 0 && (
-        <details className="group rounded-md border border-line-subtle">
-          <summary className="cursor-pointer px-3 py-2 text-sm text-fg-muted select-none hover:text-fg">
-            角色和负责人（{shownRoles.length}）
-          </summary>
-          <div className="border-t border-line-subtle px-3 py-2">
-            <RolePicker
-              roles={shownRoles.map((r) => ({
-                key: r.key,
-                name: r.name,
-                single: !!r.config?.single,
-                isOwner: !!r.config?.isOwner,
-                removable: roleRemovable(r),
-              }))}
-              members={members}
-              value={assigned}
-              onToggle={(roleKey, userId, selected) => {
-                const role = type.roles.find((r) => r.key === roleKey);
-                setTouchedRoles((prev) => ({
-                  ...prev,
-                  [roleKey]: toggled(assigned[roleKey], userId, selected, !!role?.config?.single),
-                }));
-              }}
-              onRemove={(roleKey) =>
-                setOverrides((o) => ({ added: o.added.filter((k) => k !== roleKey), removed: [...o.removed, roleKey] }))
-              }
-              addable={type.roles.filter((r) => !shownRoles.includes(r))}
-              onAdd={(roleKey) =>
-                setOverrides((o) => ({ added: [...o.added, roleKey], removed: o.removed.filter((k) => k !== roleKey) }))
-              }
-            />
-          </div>
-        </details>
-      )}
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Checkbox className="mr-auto" checked={keepCreating} onChange={(e) => setKeepCreating(e.target.checked)}>
-          连续新建
-        </Checkbox>
-        <Button variant="outline" onClick={onCancel}>
-          取消
-        </Button>
-        <Button type="submit">创建</Button>
-      </div>
-    </form>
   );
 }

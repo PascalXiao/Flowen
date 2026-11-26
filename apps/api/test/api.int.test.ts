@@ -1956,6 +1956,55 @@ describe("status-flow work items", () => {
       ["workItemReopened", {}],
     ]);
   });
+  it("follows the type's settings: completed items locked, disabled types can't create", async () => {
+    await run("workItemType.setSettings", { id: typeId, settings: { lockCompleted: true } });
+    await run("workItemType.setSettings", { id: typeId, settings: { navHidden: true } });
+    const [type] = await services.database.db
+      .select()
+      .from(schema.workItemType)
+      .where(eq(schema.workItemType.id, typeId));
+    // 只改传了的项
+    expect(type?.settings).toMatchObject({ lockCompleted: true, navHidden: true });
+    await run("workItem.transition", { workItemId: itemId, to: "resolved" }, dev.userId);
+    expect(await item()).toMatchObject({ status: "completed" });
+    await expect(run("workItem.terminate", { workItemId: itemId })).rejects.toThrow("已完成的工作项不能终止");
+    await expect(run("workItem.delete", { workItemId: itemId })).rejects.toThrow("已完成的工作项不能删除");
+    await run("workItemType.setSettings", { id: typeId, settings: { lockCompleted: false } });
+    await run("workItem.terminate", { workItemId: itemId, reason: "重复" });
+    expect(await item()).toMatchObject({ status: "terminated" });
+
+    await run("workItemType.setSettings", { id: typeId, settings: { disabled: true } });
+    await expect(
+      run("workItem.create", { id: randomUUID(), typeId, name: "新缺陷", fields: {}, roles: {} }, dev.userId),
+    ).rejects.toThrow("已停用");
+    await expect(
+      run("workItemType.setSettings", { id: typeId, settings: { disabled: false } }, dev.userId),
+    ).rejects.toThrow();
+    await run("workItemType.setSettings", { id: typeId, settings: { disabled: false } });
+  });
+
+  it("keeps create-form drafts per person and type", async () => {
+    const draftId = randomUUID();
+    const save = (name: string, userId = dev.userId) =>
+      run("draft.save", { id: draftId, typeId, name, data: { fields: { 修复版本: "1.3" } } }, userId);
+    await save("半成品");
+    await save("半成品 2");
+    const rows = await services.database.db
+      .select()
+      .from(schema.workItemDraft)
+      .where(eq(schema.workItemDraft.userId, dev.userId));
+    expect(rows).toMatchObject([{ id: draftId, name: "半成品 2", data: { fields: { 修复版本: "1.3" } } }]);
+    // 别人的草稿改不了、删不掉
+    await expect(save("抢走", qa.userId)).rejects.toThrow("草稿不存在");
+    await run("draft.delete", { id: draftId }, qa.userId);
+    expect(
+      await services.database.db.select().from(schema.workItemDraft).where(eq(schema.workItemDraft.id, draftId)),
+    ).toHaveLength(1);
+    await run("draft.delete", { id: draftId }, dev.userId);
+    expect(
+      await services.database.db.select().from(schema.workItemDraft).where(eq(schema.workItemDraft.id, draftId)),
+    ).toHaveLength(0);
+  });
 });
 
 describe("permissions", () => {
