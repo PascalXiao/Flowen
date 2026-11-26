@@ -12,10 +12,12 @@ import {
   syncFieldAccess,
 } from "./access.ts";
 import {
+  checkManualRun,
   createAutomation,
   createAutomationArgs,
   deleteAutomation,
   deleteAutomationArgs,
+  runAutomationArgs,
   updateAutomation,
   updateAutomationArgs,
 } from "./automations.ts";
@@ -317,6 +319,10 @@ export const mutators = defineMutators({
     create: defineMutator(createAutomationArgs, ({ tx, args, ctx }) => createAutomation(tx, args, ctx.userID)),
     update: defineMutator(updateAutomationArgs, ({ tx, args, ctx }) => updateAutomation(tx, args, ctx.userID)),
     delete: defineMutator(deleteAutomationArgs, ({ tx, args, ctx }) => deleteAutomation(tx, args, ctx.userID)),
+    /** 手动运行：浏览器里只做检查，事件由服务端写出。 */
+    run: defineMutator(runAutomationArgs, async ({ tx, args, ctx }) => {
+      await checkManualRun(tx, args, ctx.userID);
+    }),
   },
   webhook: {
     create: defineMutator(createWebhookArgs, ({ tx, args, ctx }) => createWebhook(tx, args, ctx.userID)),

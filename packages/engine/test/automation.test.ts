@@ -10,6 +10,7 @@ import {
   renderTemplate,
   resolveRecipients,
   ruleApplies,
+  type ScheduleTrigger,
   scheduleDue,
   triggerMatches,
 } from "../src/index.ts";
@@ -84,6 +85,17 @@ describe("notify recipients", () => {
   it("renders the work item name into text", () => {
     expect(renderTemplate("「{{name}}」要验收了", { name: "新品 A" })).toBe("「新品 A」要验收了");
   });
+  it("renders id, status and field values", () => {
+    const text = "{{ id }}/{{status}}: {{field:sku}} {{field:tags}} {{field:none}}";
+    expect(renderTemplate(text, { name: "A", id: "w1", status: "inProgress" }, { sku: "S-1", tags: ["x", "y"] })).toBe(
+      "w1/inProgress: S-1 x,y ",
+    );
+  });
+  it("resolves node owners and the owners of in-progress nodes", () => {
+    const nodes = { dev: { owners: ["d1"], state: "inProgress" }, qa: { owners: ["q1"], state: "notStarted" } };
+    expect(resolveRecipients(["currentNodeOwners"], { ...context, nodes })).toEqual(["d1"]);
+    expect(resolveRecipients(["node:qa", "user:u9"], { ...context, nodes }).sort()).toEqual(["q1", "u9"]);
+  });
 });
 
 describe("time triggers", () => {
@@ -104,6 +116,23 @@ describe("time triggers", () => {
     expect(scheduleDue({ kind: "schedule", frequency: "month", monthDays: [3], hour: 9 }, slot)).toBe(true);
   });
 
+  it("honours the interval and the effective dates", () => {
+    const day = { kind: "schedule", frequency: "day", hour: 9 } as const;
+    expect(scheduleDue({ ...day, every: 2, startDate: "2026-11-01" }, slot)).toBe(true);
+    expect(scheduleDue({ ...day, every: 2, startDate: "2026-11-02" }, slot)).toBe(false);
+    expect(scheduleDue({ ...day, startDate: "2026-11-04" }, slot)).toBe(false);
+    expect(scheduleDue({ ...day, endDate: "2026-11-02" }, slot)).toBe(false);
+    expect(scheduleDue({ ...day, startDate: "2026-11-03", endDate: "2026-11-03" }, slot)).toBe(true);
+    // 2026-10-27 是上一周的周二：隔一周的话本周不触发，隔两周的从 10-20 那周算起本周触发
+    const week: ScheduleTrigger = { kind: "schedule", frequency: "week", weekdays: [2], hour: 9 };
+    expect(scheduleDue({ ...week, every: 2, startDate: "2026-10-27" }, slot)).toBe(false);
+    expect(scheduleDue({ ...week, every: 2, startDate: "2026-10-20" }, slot)).toBe(true);
+    expect(scheduleDue({ ...week, every: 2, startDate: "2026-11-02" }, slot)).toBe(true);
+    const month: ScheduleTrigger = { kind: "schedule", frequency: "month", monthDays: [3], hour: 9 };
+    expect(scheduleDue({ ...month, every: 3, startDate: "2026-08-15" }, slot)).toBe(true);
+    expect(scheduleDue({ ...month, every: 3, startDate: "2026-09-15" }, slot)).toBe(false);
+  });
+
   it("targets due-soon, due and overdue dates", () => {
     const base = { kind: "dateReached", date: "due", hour: 9 } as const;
     expect(dateTriggerTarget({ ...base, when: "before", days: 2 }, slot)).toBe(dayFromIso("2026-11-05"));
@@ -122,6 +151,13 @@ describe("time triggers", () => {
     expect(triggerMatches(trigger, event, "t1", "r1")).toBe(true);
     expect(triggerMatches(trigger, event, "t1", "r2")).toBe(false);
     expect(triggerMatches(trigger, event, "t1")).toBe(false);
+  });
+
+  it("claims manual runs addressed to the rule", () => {
+    const event = { kind: "manual", payload: { ruleId: "r1" } };
+    expect(triggerMatches({ kind: "manual", typeId: "t1" }, event, "t1", "r1")).toBe(true);
+    expect(triggerMatches({ kind: "manual", typeId: "t1" }, event, "t1", "r2")).toBe(false);
+    expect(triggerMatches({ kind: "manual", typeId: "t2" }, event, "t1", "r1")).toBe(false);
   });
 });
 

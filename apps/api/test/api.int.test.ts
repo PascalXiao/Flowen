@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { schema } from "@fp/db";
@@ -12,7 +14,9 @@ import {
   createMutatorRunner,
   matchRules,
   notify,
+  pendingRequests,
   runRule,
+  sendAutomationRequest,
   tickAutomations,
 } from "@fp/server";
 import { and, desc, eq } from "drizzle-orm";
@@ -4033,5 +4037,293 @@ describe("cross-space relations", () => {
     );
     await run("hierarchy.delete", { id });
     await run("relationDef.delete", { id: partDef }, otherAdmin.userId);
+  });
+});
+
+describe("automation on related items, across spaces and calling external APIs", () => {
+  const spaceA = randomUUID();
+  const spaceB = randomUUID();
+  const typeA = `${spaceA}/project`;
+  const typeB = `${spaceB}/sku`;
+  const defId = `${spaceA}/rel/sku`;
+  let admin: { cookie: string; userId: string };
+  let otherAdmin: { cookie: string; userId: string };
+  const run = (name: string, args: unknown, userId = admin.userId) => services.zero.run(name, args, userId);
+  const runner = () => createMutatorRunner(services.database);
+
+  async function setupType(spaceId: string, typeId: string, key: string, name: string, userId: string) {
+    await run("workItemType.create", { id: typeId, spaceId, key, name }, userId);
+    await run("roleDef.create", { id: `${typeId}/role/owner`, typeId, key: "owner", name: "负责人" }, userId);
+    for (const [k, n] of [
+      ["brand", "品牌"],
+      ["note", "备注"],
+    ])
+      await run("fieldDef.create", { id: `${typeId}/field/${k}`, typeId, key: k, name: n, dataType: "text" }, userId);
+    await run("flowTemplate.create", { id: `${typeId}/default`, typeId, key: "default", name: "默认流程" }, userId);
+    await run(
+      "flowTemplate.saveDraft",
+      {
+        templateId: `${typeId}/default`,
+        definition: {
+          key,
+          version: 0,
+          nodes: [
+            { key: "start", name: "开始", completion: "auto", ownerRoles: [] },
+            { key: "design", name: "设计", completion: "singleConfirm", ownerRoles: ["owner"] },
+          ],
+          edges: [{ from: "start", to: "design" }],
+        },
+      },
+      userId,
+    );
+    await run("flowTemplate.publish", { versionId: `${typeId}/default/v1` }, userId);
+  }
+
+  beforeAll(async () => {
+    admin = await signUp(`xauto-admin-${spaceA}@example.com`);
+    otherAdmin = await signUp(`xauto-other-${spaceA}@example.com`);
+    await run("space.create", { id: spaceA, name: "项目空间" });
+    await run("space.create", { id: spaceB, name: "SKU 空间" }, otherAdmin.userId);
+    await services.database.db
+      .insert(schema.spaceMember)
+      .values({ spaceId: spaceB, userId: admin.userId, role: "admin" });
+    await setupType(spaceA, typeA, "project", "项目", admin.userId);
+    await setupType(spaceB, typeB, "sku", "SKU", otherAdmin.userId);
+    await run("relationDef.create", {
+      id: defId,
+      fromTypeId: typeA,
+      toTypeId: typeB,
+      name: "关联SKU",
+      reverseName: "所属项目",
+      cardinality: "many",
+    });
+  });
+
+  const create = async (typeId: string, name: string, fields: Record<string, unknown> = {}, owner = admin.userId) => {
+    const id = randomUUID();
+    await run("workItem.create", { id, typeId, name, fields, roles: { owner: [owner] } });
+    return id;
+  };
+  const link = (project: string, sku: string) =>
+    run("relation.add", { id: randomUUID(), relationDefId: defId, fromId: project, toId: sku });
+  const lastEvent = async (workItemId: string, kind: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.eventLog)
+        .where(and(eq(schema.eventLog.workItemId, workItemId), eq(schema.eventLog.kind, kind)))
+        .orderBy(desc(schema.eventLog.id))
+        .limit(1)
+    )[0];
+  const storedValue = async (workItemId: string, fieldKey: string) =>
+    (
+      await services.database.db
+        .select()
+        .from(schema.fieldValue)
+        .where(and(eq(schema.fieldValue.workItemId, workItemId), eq(schema.fieldValue.fieldKey, fieldKey)))
+    )[0]?.value;
+  const disable = (ruleId: string, body: Record<string, unknown>) =>
+    run("automation.update", { id: ruleId, enabled: false, ...body });
+
+  it("acts on related items in another space, filtered by their own fields, with values copied from the trigger", async () => {
+    const rule = {
+      name: "品牌同步到 SKU",
+      trigger: { kind: "fieldChanged", typeId: typeA, field: "brand" },
+      actions: [
+        {
+          type: "setField",
+          field: "brand",
+          value: null,
+          copy: { field: "brand" },
+          target: { relation: defId, condition: { kind: "notEmpty", field: "note" } },
+        },
+        { type: "addComment", body: "品牌改成了 {{field:brand}}", target: { relation: defId } },
+      ],
+    };
+    const ruleId = randomUUID();
+    await run("automation.create", { id: ruleId, spaceId: spaceA, ...rule });
+    const project = await create(typeA, "新品");
+    const sku1 = await create(typeB, "SKU-1", { note: "在产" });
+    const sku2 = await create(typeB, "SKU-2");
+    await link(project, sku1);
+    await link(project, sku2);
+    await run("fieldValue.set", { workItemId: project, fieldKey: "brand", value: "北极星" });
+    const changed = await lastEvent(project, "fieldChanged");
+    expect(await matchRules(services.database, changed?.id as number)).toContain(ruleId);
+    expect(await runRule(runner(), ruleId, changed?.id as number, "wf-x1")).toBe("succeeded");
+
+    expect(await storedValue(sku1, "brand")).toBe("北极星");
+    expect(await storedValue(sku2, "brand")).toBeUndefined();
+    // 动作在 SKU 空间写出事件，带着起因
+    expect(await lastEvent(sku1, "fieldChanged")).toMatchObject({ spaceId: spaceB, causedBy: changed?.id });
+    const comments = await services.database.db
+      .select()
+      .from(schema.comment)
+      .where(eq(schema.comment.workItemId, sku2));
+    expect(comments.map((c) => c.body).join()).toContain("品牌改成了 北极星");
+    await disable(ruleId, rule);
+  });
+
+  it("triggers on work items of another space when its admin keeps the rule here", async () => {
+    const rule = {
+      name: "SKU 备注回写项目",
+      trigger: { kind: "fieldChanged", typeId: typeB, field: "note" },
+      actions: [
+        { type: "setField", field: "note", value: null, copy: { field: "note" }, target: { relation: defId } },
+        { type: "setRole", role: "owner", userIds: [], copy: { field: "owner" }, target: { relation: defId } },
+      ],
+    };
+    // 只是 SKU 空间管理员的人，不能把规则放在项目空间
+    await expect(
+      run("automation.create", { id: randomUUID(), spaceId: spaceA, ...rule }, otherAdmin.userId),
+    ).rejects.toThrow("管理员");
+    // 项目空间管理员不是 SKU 空间管理员时，不能拿 SKU 类型做触发
+    const onlyA = await signUp(`xauto-only-a-${spaceA}@example.com`);
+    await services.database.db
+      .insert(schema.spaceMember)
+      .values({ spaceId: spaceA, userId: onlyA.userId, role: "admin" });
+    await expect(
+      run("automation.create", { id: randomUUID(), spaceId: spaceA, ...rule }, onlyA.userId),
+    ).rejects.toThrow("管理员");
+
+    const ruleId = randomUUID();
+    await run("automation.create", { id: ruleId, spaceId: spaceA, ...rule });
+    // 角色成员必须是项目空间的成员
+    await services.database.db.insert(schema.spaceMember).values({ spaceId: spaceA, userId: otherAdmin.userId });
+    const project = await create(typeA, "新品 2");
+    const sku = await create(typeB, "SKU-3", {}, otherAdmin.userId);
+    await link(project, sku);
+    await run("fieldValue.set", { workItemId: sku, fieldKey: "note", value: "停产" });
+    const changed = await lastEvent(sku, "fieldChanged");
+    expect(await matchRules(services.database, changed?.id as number)).toEqual([ruleId]);
+    expect(await runRule(runner(), ruleId, changed?.id as number, "wf-x2")).toBe("succeeded");
+    expect(await storedValue(project, "note")).toBe("停产");
+    const owners = await services.database.db
+      .select()
+      .from(schema.roleMember)
+      .where(and(eq(schema.roleMember.workItemId, project), eq(schema.roleMember.roleKey, "owner")));
+    expect(owners.map((o) => o.userId)).toEqual([otherAdmin.userId]);
+    await disable(ruleId, rule);
+  });
+
+  it("creates a work item with fixed and copied field values", async () => {
+    const rule = {
+      name: "新项目建跟进",
+      trigger: { kind: "workItemCreated", typeId: typeA },
+      condition: { kind: "equal", field: "note", value: "需要跟进" },
+      actions: [
+        {
+          type: "createWorkItem",
+          typeId: typeA,
+          name: "{{name}} 跟进",
+          fields: [
+            { field: "brand", from: "brand" },
+            { field: "note", value: "由 {{name}} 创建" },
+          ],
+        },
+      ],
+    };
+    const ruleId = randomUUID();
+    await run("automation.create", { id: ruleId, spaceId: spaceA, ...rule });
+    const project = await create(typeA, "新品 3", { brand: "南十字", note: "需要跟进" });
+    const created = await lastEvent(project, "workItemCreated");
+    expect(await runRule(runner(), ruleId, created?.id as number, "wf-x3")).toBe("succeeded");
+    const [follow] = await services.database.db
+      .select()
+      .from(schema.workItem)
+      .where(eq(schema.workItem.name, "新品 3 跟进"));
+    expect(follow).toBeTruthy();
+    expect(await storedValue(follow?.id as string, "brand")).toBe("南十字");
+    expect(await storedValue(follow?.id as string, "note")).toBe("由 新品 3 创建");
+    await disable(ruleId, rule);
+  });
+
+  it("runs a manual rule that calls an external API after the rule commits, and retries are idempotent", async () => {
+    const received: { headers: Record<string, unknown>; body: string }[] = [];
+    let reply = 500;
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => {
+        body += c;
+      });
+      req.on("end", () => {
+        received.push({ headers: req.headers, body });
+        res.statusCode = reply;
+        res.end(reply === 200 ? '{"ok":true}' : "busy");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`;
+    try {
+      const rule = {
+        name: "推送到 ERP",
+        trigger: { kind: "manual", typeId: typeA },
+        actions: [
+          { type: "httpRequest", url, headers: [{ name: "Authorization", value: "Bearer t-{{id}}" }] },
+          { type: "httpRequest", url, body: "项目 {{name}} 品牌 {{field:brand}}" },
+        ],
+      };
+      await expect(
+        run("automation.create", {
+          id: randomUUID(),
+          spaceId: spaceA,
+          ...rule,
+          actions: [{ type: "httpRequest", url, headers: [{ name: "Host", value: "x" }] }],
+        }),
+      ).rejects.toThrow("这个请求头由系统设置");
+      const ruleId = randomUUID();
+      await run("automation.create", { id: ruleId, spaceId: spaceA, ...rule });
+      const project = await create(typeA, "新品 4", { brand: "北斗" });
+
+      await run("automation.run", { ruleId, workItemId: project });
+      const manual = await lastEvent(project, "manual");
+      expect(manual).toMatchObject({ actor: admin.userId, payload: { ruleId } });
+      expect(await matchRules(services.database, manual?.id as number)).toEqual([ruleId]);
+      expect(await runRule(runner(), ruleId, manual?.id as number, "wf-x4")).toBe("succeeded");
+      const ids = await pendingRequests(services.database, ruleId, manual?.id as number);
+      expect(ids).toHaveLength(2);
+      // 规则重试不会登记第二份
+      expect(await runRule(runner(), ruleId, manual?.id as number, "wf-x4")).toBe("succeeded");
+      expect(await pendingRequests(services.database, ruleId, manual?.id as number)).toHaveLength(2);
+
+      const [json, text] = ids.sort() as [string, string];
+      // 默认不许调用内网地址
+      await expect(sendAutomationRequest(services.database, json)).rejects.toThrow("内网");
+      await expect(sendAutomationRequest(services.database, json, { allowPrivate: true })).rejects.toThrow("HTTP 500");
+      reply = 200;
+      expect(await sendAutomationRequest(services.database, json, { allowPrivate: true })).toBe("succeeded");
+      expect(await sendAutomationRequest(services.database, json, { allowPrivate: true })).toBe("skipped");
+      expect(await sendAutomationRequest(services.database, text, { allowPrivate: true })).toBe("succeeded");
+
+      const [first, , second] = received;
+      expect(first?.headers.authorization).toBe(`Bearer t-${project}`);
+      expect(first?.headers["x-fp-delivery"]).toBe(json);
+      const payload = JSON.parse(first?.body ?? "{}");
+      expect(payload).toMatchObject({
+        rule: { id: ruleId, name: "推送到 ERP" },
+        event: { kind: "manual" },
+        workItem: { id: project, name: "新品 4", fields: { brand: "北斗" } },
+      });
+      expect(second?.body).toBe("项目 新品 4 品牌 北斗");
+      expect(second?.headers["content-type"]).toContain("text/plain");
+      const [record] = await services.database.db
+        .select()
+        .from(schema.automationRequest)
+        .where(eq(schema.automationRequest.id, json));
+      expect(record).toMatchObject({
+        status: "succeeded",
+        responseStatus: 200,
+        responseBody: '{"ok":true}',
+        attempts: 3,
+      });
+
+      // 别的类型的工作项、停用的规则不能手动运行
+      const sku = await create(typeB, "SKU-9");
+      await expect(run("automation.run", { ruleId, workItemId: sku })).rejects.toThrow("类型");
+      await disable(ruleId, rule);
+      await expect(run("automation.run", { ruleId, workItemId: project })).rejects.toThrow("停用");
+    } finally {
+      server.close();
+    }
   });
 });

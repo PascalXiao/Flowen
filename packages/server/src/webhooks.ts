@@ -80,11 +80,16 @@ export interface DeliverOptions {
   allowPrivate?: boolean;
 }
 
-interface Sent {
+export interface Sent {
   status: number;
+  /** 返回内容的前 500 个字符。 */
+  body: string;
 }
 
-function post(url: URL, body: string, headers: Record<string, string>, allowPrivate: boolean): Promise<Sent> {
+const KEEP_BODY = 500;
+
+/** 发一个 POST 请求；不允许时拒绝内网地址（包括解析到内网的域名）。 */
+export function post(url: URL, body: string, headers: Record<string, string>, allowPrivate: boolean): Promise<Sent> {
   // 地址直接写 IP 时不会走 lookup，单独检查
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (!allowPrivate && isIP(host) && isPrivateAddress(host))
@@ -100,8 +105,12 @@ function post(url: URL, body: string, headers: Record<string, string>, allowPriv
         ...(!allowPrivate && { lookup: guardedLookup as never }),
       },
       (res) => {
-        res.resume();
-        res.on("end", () => resolve({ status: res.statusCode ?? 0 }));
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          if (body.length < KEEP_BODY) body += chunk;
+        });
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: body.slice(0, KEEP_BODY) }));
         res.on("error", reject);
       },
     );

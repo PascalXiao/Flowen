@@ -29,11 +29,21 @@ export async function tickAutomations(database: Database, slot: number): Promise
     where: inArray(schema.space.id, [...new Set(rules.map((r) => r.spaceId))]),
   });
   const zoneOf = new Map(spaces.map((s) => [s.id, s.timezone]));
+  // 触发类型可以在别的空间（跨空间自动化）：按类型所在的空间找工作项
+  const types = await db.query.workItemType.findMany({
+    columns: { id: true, spaceId: true },
+    where: inArray(schema.workItemType.id, [
+      ...new Set(rules.map((r) => r.trigger.typeId).filter((t): t is string => !!t)),
+    ]),
+  });
+  const typeSpace = new Map(types.map((t) => [t.id, t.spaceId]));
 
   let written = 0;
   for (const rule of rules) {
     const trigger = rule.trigger as ScheduleTrigger | DateTrigger;
     if (!trigger.typeId) continue;
+    const itemSpace = typeSpace.get(trigger.typeId);
+    if (!itemSpace) continue;
     const local = localSlot(at, zoneOf.get(rule.spaceId) ?? "Asia/Shanghai");
     let itemIds: string[];
     if (trigger.kind === "schedule") {
@@ -42,7 +52,7 @@ export async function tickAutomations(database: Database, slot: number): Promise
         await db.query.workItem.findMany({
           columns: { id: true },
           where: and(
-            eq(schema.workItem.spaceId, rule.spaceId),
+            eq(schema.workItem.spaceId, itemSpace),
             eq(schema.workItem.typeId, trigger.typeId),
             ne(schema.workItem.status, "terminated"),
             isNull(schema.workItem.deletedAt),
@@ -52,7 +62,7 @@ export async function tickAutomations(database: Database, slot: number): Promise
     } else {
       const target = dateTriggerTarget(trigger, local);
       if (target === null) continue;
-      itemIds = await dueItems(database, rule.spaceId, trigger, target);
+      itemIds = await dueItems(database, itemSpace, trigger, target);
     }
     for (const workItemId of itemIds) {
       const fired = await db.transaction(async (tx) => {
@@ -63,7 +73,7 @@ export async function tickAutomations(database: Database, slot: number): Promise
           .returning();
         if (claimed.length === 0) return false;
         await appendEvents(tx, [
-          { spaceId: rule.spaceId, workItemId, kind: trigger.kind, payload: { ruleId: rule.id, slot: at } },
+          { spaceId: itemSpace, workItemId, kind: trigger.kind, payload: { ruleId: rule.id, slot: at } },
         ]);
         return true;
       });

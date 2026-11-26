@@ -1133,6 +1133,36 @@ export const automationRun = pgTable(
 );
 
 /**
+ * 自动化「调用外部接口」动作的一次请求：规则的事务里登记（和其他动作一起提交），提交后由 worker 发出，失败按退避重试。
+ * id 由事件、规则、动作位置决定，重试规则时不会登记出第二份；接收方可以用请求头 X-FP-Delivery（就是 id）去重。
+ */
+export const automationRequest = pgTable(
+  "automation_request",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id")
+      .notNull()
+      .references(() => automationRule.id, { onDelete: "cascade" }),
+    eventId: bigint("event_id", { mode: "number" })
+      .notNull()
+      .references(() => eventLog.id),
+    workItemId: text("work_item_id").references(() => workItem.id, { onDelete: "set null" }),
+    url: text("url").notNull(),
+    headers: jsonb("headers").$type<{ name: string; value: string }[]>().notNull().default([]),
+    body: text("body").notNull(),
+    status: text("status").$type<WebhookDeliveryStatus>().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    responseStatus: integer("response_status"),
+    /** 接收方返回的内容，最多留前 500 个字符，排查用。 */
+    responseBody: text("response_body"),
+    error: text("error"),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [index("automation_request_rule").on(t.ruleId, t.createdAt), index("automation_request_event").on(t.eventId)],
+);
+
+/**
  * 事务性 Outbox：和业务写入、event_log 在同一个事务里插入，中继程序把它按顺序交给 Temporal。
  * stream 决定顺序和归属：同一个 stream 的事件由同一个 Temporal workflow 依次处理。
  * 投递失败的行留在原处，attempts 和 last_error 记录原因，下一轮从它开始重试，保证同一个 stream 不乱序。
@@ -1321,6 +1351,12 @@ export const automationRuleRelations = relations(automationRule, ({ one, many })
   space: one(space, { fields: [automationRule.spaceId], references: [space.id] }),
   creator: one(user, { fields: [automationRule.createdBy], references: [user.id] }),
   runs: many(automationRun),
+  requests: many(automationRequest),
+}));
+
+export const automationRequestRelations = relations(automationRequest, ({ one }) => ({
+  rule: one(automationRule, { fields: [automationRequest.ruleId], references: [automationRule.id] }),
+  workItem: one(workItem, { fields: [automationRequest.workItemId], references: [workItem.id] }),
 }));
 
 /**

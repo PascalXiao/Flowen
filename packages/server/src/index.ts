@@ -7,6 +7,7 @@ import { serverMutators } from "./mutators.ts";
 
 export { matchRules, runRule } from "./automation.ts";
 export { HOUR_MS, tickAutomations } from "./automation-clock.ts";
+export { failAutomationRequest, pendingRequests, sendAutomationRequest } from "./automation-requests.ts";
 export { cascadeDependencies } from "./dependencies.ts";
 export { cascadeLinks } from "./links.ts";
 export { drizzleTx, serverMutators } from "./mutators.ts";

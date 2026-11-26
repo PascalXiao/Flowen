@@ -8,6 +8,7 @@ import {
   addRelationArgs,
   castVote,
   castVoteArgs,
+  checkManualRun,
   completeBySubItems,
   confirmNode,
   confirmNodeArgs,
@@ -52,6 +53,7 @@ import {
   revealVote,
   revealVoteArgs,
   rollbackNode,
+  runAutomationArgs,
   saveBaseline,
   saveBaselineArgs,
   setCalendarArgs,
@@ -120,6 +122,15 @@ function flowEvents(spaceId: string, workItemId: string, events: (FlowEvent | St
  * 事件经 Outbox 中继交给 Temporal，流程推进和自动化都从那里开始。
  */
 export const serverMutators = defineMutators(mutators, {
+  automation: {
+    run: defineMutator(runAutomationArgs, async ({ tx, args, ctx }) => {
+      const { spaceId } = await checkManualRun(tx, args, ctx.userID);
+      // 事件带着规则 id，只认领给这一条规则；不带 causedBy，所以会被 matchRules 处理
+      await appendEvents(drizzleTx(tx), [
+        { spaceId, workItemId: args.workItemId, kind: "manual", payload: { ruleId: args.ruleId }, actor: ctx.userID },
+      ]);
+    }),
+  },
   vote: {
     cast: defineMutator(castVoteArgs, async ({ tx, args, ctx }) => {
       const { spaceId } = await castVote(tx, args, ctx.userID);

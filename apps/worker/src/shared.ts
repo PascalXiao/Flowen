@@ -31,6 +31,10 @@ export function webhookWorkflowId({ webhookId, eventId }: WebhookWorkflowInput):
   return `webhook:${webhookId}:${eventId}`;
 }
 
+export function automationRequestWorkflowId(requestId: string): string {
+  return `automation-request:${requestId}`;
+}
+
 /** 自动化时钟：全局只有一个，每个整点触发定时和动态时间规则。 */
 export const CLOCK_WORKFLOW_ID = "automation-clock";
 export const HOUR = 3_600_000;

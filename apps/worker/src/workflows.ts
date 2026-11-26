@@ -12,6 +12,7 @@ import {
 } from "@temporalio/workflow";
 import type { Activities } from "./activities.ts";
 import {
+  automationRequestWorkflowId,
   EVENT_SIGNAL,
   HOUR,
   type StreamEvent,
@@ -36,7 +37,7 @@ const webhook = proxyActivities<Activities>({
     nonRetryableErrorTypes: ["WebhookBlocked"],
   },
 });
-const { failWebhook } = proxyActivities<Activities>({
+const { failWebhook, failAutomationRequest } = proxyActivities<Activities>({
   startToCloseTimeout: "1 minute",
   retry: { initialInterval: "1 second", maximumInterval: "1 minute" },
 });
@@ -69,7 +70,11 @@ export async function streamWorkflow(input: StreamWorkflowInput): Promise<void> 
     const next = pending.shift() as StreamEvent;
     // 规则按创建顺序逐条执行，前一条规则的改动后一条能看到
     const { matchedRuleIds, webhookIds = [] } = await processEvent(next.eventId);
-    for (const ruleId of matchedRuleIds) await runRule(ruleId, next.eventId);
+    for (const ruleId of matchedRuleIds) {
+      const { requestIds } = await runRule(ruleId, next.eventId);
+      // 外部接口请求和 Webhook 一样在子 workflow 里发出和重试
+      for (const requestId of requestIds) await startRequest(requestId);
+    }
     // Webhook 各自在子 workflow 里推送和重试，接收方慢或挂了都不耽误这个流后面的事件
     for (const webhookId of webhookIds) await startWebhook({ webhookId, eventId: next.eventId });
     processed++;
@@ -91,6 +96,27 @@ async function startWebhook(input: WebhookWorkflowInput) {
   } catch (error) {
     // 重复投递的事件：这次推送已经开始了
     if (!(error instanceof Error && error.name === "WorkflowExecutionAlreadyStartedError")) throw error;
+  }
+}
+
+async function startRequest(requestId: string) {
+  try {
+    await startChild(automationRequestWorkflow, {
+      workflowId: automationRequestWorkflowId(requestId),
+      args: [requestId],
+      parentClosePolicy: ParentClosePolicy.ABANDON,
+    });
+  } catch (error) {
+    if (!(error instanceof Error && error.name === "WorkflowExecutionAlreadyStartedError")) throw error;
+  }
+}
+
+/** 发出自动化「调用外部接口」动作登记的一次请求，失败按退避重试，用完重试次数记为失败。 */
+export async function automationRequestWorkflow(requestId: string): Promise<void> {
+  try {
+    await webhook.sendAutomationRequest(requestId);
+  } catch {
+    await failAutomationRequest(requestId);
   }
 }
 
