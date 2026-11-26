@@ -134,7 +134,9 @@ test("advanced metrics: several metrics, metric formula, calculated field, node 
   await dialog.getByRole("tablist", { name: "度量对象" }).getByRole("tab", { name: "节点" }).click();
   await choose(dialog.getByLabel("分组维度"), "nodeState");
   await dialog.getByRole("tab", { name: "条形图" }).click();
-  await expect(dialog.getByRole("list", { name: "节点分布预览" }).getByRole("button", { name: /^进行中：计数 3$/ })).toBeVisible();
+  await expect(
+    dialog.getByRole("list", { name: "节点分布预览" }).getByRole("button", { name: /^进行中：计数 3$/ }),
+  ).toBeVisible();
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByRole("region", { name: "节点分布" }).getByText("项目 · 按节点 · 计数")).toBeVisible();
 
