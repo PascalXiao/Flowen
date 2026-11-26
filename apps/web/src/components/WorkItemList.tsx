@@ -4,7 +4,7 @@ import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { BatchBar } from "@/components/BatchBar";
+import { BatchBar, type BatchLink } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
 import { type GridColumn, type GridRow, ListGrid } from "@/components/ListGrid";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import {
   type ListItem,
   listNeeds,
 } from "@/lib/list-columns";
-import { foreignTypes, type RelDef } from "@/lib/relations";
+import { foreignTypes, type RelDef, spaceRelationDefs } from "@/lib/relations";
 import { cn } from "@/lib/utils";
 
 /** 列表的显示设置：列、排序、分组、行着色（和视图里存的一样）。 */
@@ -109,6 +109,36 @@ type SpaceLike = {
   incomingRelationDefs?: readonly (RelDef & { fromType?: ForeignTypeSource | null })[];
 };
 type ForeignTypeSource = NonNullable<Parameters<typeof foreignTypes>[0]["incomingRelationDefs"]>[number]["fromType"];
+
+/**
+ * 批量同步创建能走的关联：本端有字段的每条关联（正向用关联名，反向用对端字段名），
+ * 新工作项建在另一端的类型里（跨空间关联就在另一个空间）。
+ */
+function batchLinks(space: SpaceLike): BatchLink[] {
+  const types = [...space.workItemTypes, ...foreignTypes(space)];
+  const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? "?";
+  const own = new Set(space.workItemTypes.map((t) => t.id));
+  const out: BatchLink[] = [];
+  for (const d of spaceRelationDefs(space)) {
+    if (own.has(d.fromTypeId))
+      out.push({
+        relationDefId: d.id,
+        side: "to",
+        itemTypeId: d.fromTypeId,
+        name: d.name,
+        target: typeName(d.toTypeId),
+      });
+    if (d.reverseName && own.has(d.toTypeId))
+      out.push({
+        relationDefId: d.id,
+        side: "from",
+        itemTypeId: d.toTypeId,
+        name: d.reverseName,
+        target: typeName(d.fromTypeId),
+      });
+  }
+  return out;
+}
 
 /**
  * 工作项列表（表格）：页签（全部、最近浏览、我创建的…）、筛选之外的
@@ -567,6 +597,7 @@ export function WorkItemList({
           items={items.filter((i) => selected.includes(i.id))}
           fields={[...fields.values()]}
           members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
+          links={batchLinks(space)}
           onClear={() => setSelected([])}
         />
       )}

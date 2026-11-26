@@ -103,4 +103,21 @@ test("relate work items across two spaces and keep a link rule in the other spac
   await panorama.getByRole("button", { name: "展开新品 A" }).click();
   await expect(panorama.getByRole("row", { name: /新品 A/ })).toContainText(`研发 ${suffix}`);
   await expect(panorama.getByRole("row", { name: /SKU 一号/ })).toContainText(`SKU ${suffix}`);
+
+  // 列表里勾选后批量同步创建：每个勾选的项目在 SKU 空间建一个同名 SKU 并关联
+  await page.goto(`/spaces/${spaceA}/project`);
+  await openItems(page, "项目");
+  await createItem(page, "新品 B");
+  await openItems(page, "项目");
+  const grid = page.getByRole("grid");
+  await grid.getByRole("row").filter({ hasText: "新品 B" }).getByRole("checkbox").check();
+  const bar = page.getByRole("group", { name: "批量操作" });
+  await bar.getByRole("button", { name: "同步创建" }).click();
+  await choose(page.getByLabel("沿哪个关联新建"), { label: `关联SKU → SKU ${suffix} / 项目` });
+  await page.getByRole("button", { name: "创建 1 项" }).click();
+  await expect(page.getByText("已同步创建 1 项")).toBeVisible();
+  await page.getByRole("link", { name: "新品 B" }).first().click();
+  await expect(
+    page.getByRole("main").getByRole("region", { name: "关联SKU" }).getByRole("link", { name: "新品 B" }),
+  ).toBeVisible();
 });
