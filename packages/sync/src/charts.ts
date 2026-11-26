@@ -1,5 +1,5 @@
 import type { WorkItemFilter } from "@fp/db/schema";
-import { CHART_KINDS, type ChartConfig, checkChartConfig, TIME_GRAINS } from "@fp/engine";
+import { CHART_KINDS, type ChartConfig, COMPARE_PERIODS, checkChartConfig, METRIC_AGGS, TIME_GRAINS } from "@fp/engine";
 import type { Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { spaceMemberOf } from "./access.ts";
@@ -7,22 +7,65 @@ import { zql } from "./schema.gen.ts";
 import { compactFilter, workItemFilter } from "./views.ts";
 
 const dimension = z.object({
-  by: z.enum(["type", "status", "stage", "creator", "createdAt", "role", "field"]),
+  by: z.enum([
+    "type",
+    "status",
+    "stage",
+    "creator",
+    "createdAt",
+    "role",
+    "field",
+    "node",
+    "nodeOwner",
+    "nodeState",
+    "nodeEnd",
+  ]),
   key: z.string().min(1).max(100).optional(),
   grain: z.enum(TIME_GRAINS).optional(),
 });
 
-/** 图表设置：样式、维度、二级分组、指标、排序和只看前几个。 */
+const metric = z.object({
+  agg: z.enum(METRIC_AGGS),
+  field: z.string().min(1).max(100).optional(),
+  expr: z.string().max(2000).optional(),
+  label: z.string().max(50).optional(),
+});
+
+/**
+ * 图表设置：样式、度量对象（工作项 / 节点）、计算字段、维度、二级分组、指标（可多个）、排序、只看前几个，
+ * 以及堆叠方式、累计、数值标签、参考线、指标对比卡的周期。
+ */
 export const chartConfig = z.object({
   kind: z.enum(CHART_KINDS),
+  object: z.enum(["item", "node"]).optional(),
+  nodeKeys: z.array(z.string().min(1).max(100)).max(100).optional(),
+  calcFields: z
+    .array(
+      z.object({ key: z.string().min(1).max(40), name: z.string().trim().min(1).max(50), expr: z.string().max(2000) }),
+    )
+    .max(20)
+    .optional(),
   dimension: dimension.nullish(),
+  dimension2: dimension.nullish(),
   series: dimension.nullish(),
-  metric: z.object({
-    agg: z.enum(["count", "sum", "avg", "max", "min"]),
-    field: z.string().min(1).max(100).optional(),
-  }),
+  metric,
+  metrics: z.array(metric).max(10).optional(),
   sort: z.enum(["valueDesc", "valueAsc", "label"]).optional(),
   limit: z.number().int().min(1).max(100).nullish(),
+  stack: z.enum(["stacked", "grouped", "percent"]).optional(),
+  accumulate: z.boolean().optional(),
+  labels: z.boolean().optional(),
+  refLine: z.object({ kind: z.enum(["avg", "median", "max", "min", "const"]), value: z.number().optional() }).nullish(),
+  compare: z
+    .object({
+      time: z.string().min(1).max(100),
+      period: z.enum(COMPARE_PERIODS),
+      days: z.number().int().min(1).max(366).optional(),
+      against: z.array(z.enum(["prev", "yoy"])).max(2),
+      target: z.number().nullish(),
+      better: z.enum(["up", "down"]).optional(),
+    })
+    .nullish(),
 });
 
 export const createChartArgs = z.object({

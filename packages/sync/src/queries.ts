@@ -539,8 +539,10 @@ export const queries = defineQueries({
      */
     forChart: defineQuery(
       spaceItemsArgs.extend({
-        fields: z.array(z.string()).max(10).optional(),
+        fields: z.array(z.string()).max(40).optional(),
         roles: z.array(z.string()).max(10).optional(),
+        /** 按节点度量：带上节点实例。 */
+        nodes: z.boolean().optional(),
       }),
       ({ args, ctx }) =>
         spaceItems(args, ctx.userID)
@@ -551,7 +553,8 @@ export const queries = defineQueries({
               : args.roles.length
                 ? r.where("roleKey", "IN", args.roles)
                 : r.where("workItemId", "IS", null),
-          ),
+          )
+          .related("nodes", (n) => (args.nodes ? n : n.where("workItemId", "IS", null))),
     ),
     /** 空间甘特图：工作项连同节点排期和流程定义。改排期的 mutator 在前端乐观执行时也要读这些。 */
     /**

@@ -44,14 +44,21 @@ export function Segmented<K extends string>({
   onChange,
   items,
   label,
+  className,
 }: {
   value: K;
   onChange: (key: K) => void;
   items: readonly (readonly [K, React.ReactNode])[];
   label?: string;
+  /** 选项多时可传 flex-wrap 换行。 */
+  className?: string;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="inline-flex shrink-0 gap-px rounded-lg bg-raised p-0.5">
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cn("inline-flex shrink-0 gap-px rounded-lg bg-raised p-0.5", className)}
+    >
       {items.map(([key, text]) => (
         <button
           key={key}
