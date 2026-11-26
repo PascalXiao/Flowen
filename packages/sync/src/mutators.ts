@@ -128,6 +128,14 @@ import {
   removeRelationArgs,
 } from "./relations.ts";
 import { zql } from "./schema.gen.ts";
+
+const adjustRoleArgs = z.object({
+  workItemId: z.string(),
+  roleKey: z.string(),
+  add: z.array(z.string()).max(100).optional(),
+  remove: z.array(z.string()).max(100).optional(),
+});
+
 import { setBusinessLines, setBusinessLinesArgs, setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
 import { transitionArgs, transitionStatus } from "./status.ts";
 import { createNodeSubItem, createNodeSubItemArgs, createSubItem, createSubItemArgs } from "./subitems.ts";
@@ -175,7 +183,19 @@ import {
   updateRole,
   updateRoleArgs,
 } from "./templates.ts";
-import { createView, createViewArgs, deleteView, deleteViewArgs, updateView, updateViewArgs } from "./views.ts";
+import {
+  addViewItems,
+  createView,
+  createViewArgs,
+  deleteView,
+  deleteViewArgs,
+  removeViewItems,
+  setViewMembers,
+  setViewMembersArgs,
+  updateView,
+  updateViewArgs,
+  viewItemsArgs,
+} from "./views.ts";
 import { castVote, castVoteArgs, revealVote, revealVoteArgs } from "./vote.ts";
 import {
   createWebhook,
@@ -335,6 +355,9 @@ export const mutators = defineMutators({
     create: defineMutator(createViewArgs, ({ tx, args, ctx }) => createView(tx, args, ctx.userID)),
     update: defineMutator(updateViewArgs, ({ tx, args, ctx }) => updateView(tx, args, ctx.userID)),
     delete: defineMutator(deleteViewArgs, ({ tx, args, ctx }) => deleteView(tx, args, ctx.userID)),
+    setMembers: defineMutator(setViewMembersArgs, ({ tx, args, ctx }) => setViewMembers(tx, args, ctx.userID)),
+    addItems: defineMutator(viewItemsArgs, ({ tx, args, ctx }) => addViewItems(tx, args, ctx.userID)),
+    removeItems: defineMutator(viewItemsArgs, ({ tx, args, ctx }) => removeViewItems(tx, args, ctx.userID)),
   },
   relationDef: {
     create: defineMutator(createRelationDefArgs, ({ tx, args, ctx }) => createRelationDef(tx, args, ctx.userID)),
@@ -494,6 +517,14 @@ export const mutators = defineMutators({
   role: {
     set: defineMutator(setRoleArgs, async ({ tx, args, ctx }) => {
       await setRoleMembers(tx, args, ctx.userID);
+    }),
+    /** 在现有成员上加人、减人（批量改角色用），权限和校验同 set。 */
+    adjust: defineMutator(adjustRoleArgs, async ({ tx, args, ctx }) => {
+      const current = await tx.run(zql.roleMember.where("workItemId", args.workItemId).where("roleKey", args.roleKey));
+      const ids = new Set(current.map((m) => m.userId));
+      for (const id of args.add ?? []) ids.add(id);
+      for (const id of args.remove ?? []) ids.delete(id);
+      await setRoleMembers(tx, { workItemId: args.workItemId, roleKey: args.roleKey, userIds: [...ids] }, ctx.userID);
     }),
     setPresence: defineMutator(setRolePresenceArgs, async ({ tx, args, ctx }) => {
       await setRolePresence(tx, args, ctx.userID);

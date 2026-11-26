@@ -22,6 +22,8 @@ export default drizzleZeroConfig(schema, {
     flowVersion: true,
     automationRule: true,
     savedView: true,
+    savedViewMember: true,
+    savedViewItem: true,
     metricChart: true,
     attachment: true,
     comment: true,

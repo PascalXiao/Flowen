@@ -1,11 +1,12 @@
 import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
-import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
+import { compactFilter, mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BatchBar, type BatchLink } from "@/components/BatchBar";
 import { ConditionEditor, type ConditionField } from "@/components/ConditionEditor";
+import { MultiPick } from "@/components/FilterConditions";
 import { type GridColumn, type GridRow, ListGrid } from "@/components/ListGrid";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,10 +42,10 @@ import { cn } from "@/lib/utils";
 
 /** 列表的显示设置：列、排序、分组、行着色（和视图里存的一样）。 */
 export interface ListDisplay {
-  columns?: { key: string; width?: number }[];
+  columns?: { key: string; width?: number; group?: string }[];
   sort?: { key: string; desc?: boolean }[];
   groupBy?: string | null;
-  colors?: { when: Condition; color: string }[];
+  colors?: { when: Condition; color: string; cells?: string[] }[];
   /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
   frozen?: number;
   /** 行高：低、中、高、超高。 */
@@ -53,6 +54,8 @@ export interface ListDisplay {
   summary?: Record<string, SummaryKind>;
   /** 看板：泳道（creator、role:角色键、field:字段键）和卡片上显示的字段。 */
   board?: BoardDisplay;
+  /** 快捷筛选：显示在筛选条上的字段键。 */
+  quick?: string[];
 }
 export interface BoardDisplay {
   lanes?: string | null;
@@ -151,7 +154,10 @@ export function WorkItemList({
   onDisplay,
   toolbar,
   onRows,
+  fixedViews = [],
 }: {
+  /** 自己能编辑的固定视图（批量加入、移出用）。 */
+  fixedViews?: readonly { id: string; name: string }[];
   space: SpaceLike;
   filter: WorkItemFilterArgs;
   display: ListDisplay;
@@ -193,10 +199,10 @@ export function WorkItemList({
   };
   const available = allColumns(ctx);
   const byKey = new Map(available.map((c) => [c.key, c]));
-  const shown: { key: string; width?: number }[] = (
+  const shown: { key: string; width?: number; group?: string }[] = (
     display.columns ?? defaultColumnKeys(fields).map((key) => ({ key }))
   ).filter((c) => byKey.has(c.key));
-  const setColumns = (columns: { key: string; width?: number }[]) => onDisplay({ ...display, columns });
+  const setColumns = (columns: { key: string; width?: number; group?: string }[]) => onDisplay({ ...display, columns });
 
   // 只同步要用的数据：显示的列、排序、分组、着色条件用到的字段、节点和关联
   const needs = listNeeds(
@@ -273,8 +279,11 @@ export function WorkItemList({
     onRows?.(rowKey ? rowKey.split(",") : []);
   }, [rowKey, onRows]);
   const valuesOf = (i: ListItem) => Object.fromEntries(i.fieldValues.map((v) => [v.fieldKey, v.value]));
-  const colorOf = (i: ListItem) =>
-    display.colors?.find((c) => evaluate(c.when, { ...valuesOf(i), $stage: i.stage, $status: i.status }))?.color;
+  const matches = (c: { when: Condition }, i: ListItem) =>
+    evaluate(c.when, { ...valuesOf(i), $stage: i.stage, $status: i.status });
+  const colorOf = (i: ListItem) => display.colors?.find((c) => !c.cells?.length && matches(c, i))?.color;
+  const cellColorOf = (i: ListItem, key: string) =>
+    display.colors?.find((c) => c.cells?.includes(key) && matches(c, i))?.color;
 
   const marks = (i: ListItem) => new Set(i.marks.map((m) => m.kind));
 
@@ -430,6 +439,7 @@ export function WorkItemList({
       return {
         key: col.key,
         header: col.title,
+        ...(c.group && { group: c.group }),
         width: c.width ?? col.width,
         frozen: index < frozen,
         // 拖完列宽记进显示设置
@@ -489,7 +499,7 @@ export function WorkItemList({
     gridRows.push({ kind: "item", item, index });
   });
 
-  const filtered = !!search || Object.values(filter).some((v) => v?.length);
+  const filtered = !!search || Object.keys(compactFilter(filter)).length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -550,6 +560,10 @@ export function WorkItemList({
             />
             <ColorButton
               fields={[...fields.values()]}
+              columns={[
+                { key: "name", title: "名称" },
+                ...shown.map((c) => ({ key: c.key, title: byKey.get(c.key)?.title ?? c.key })),
+              ]}
               value={display.colors ?? []}
               onChange={(colors) => onDisplay({ ...display, colors })}
             />
@@ -598,6 +612,13 @@ export function WorkItemList({
           fields={[...fields.values()]}
           members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
           links={batchLinks(space)}
+          types={space.workItemTypes.map((t) => ({
+            id: t.id,
+            roles: t.roles,
+            definitions: t.flowTemplates.flatMap((f) => (f.currentVersion ? [f.currentVersion.definition] : [])),
+          }))}
+          fixedViews={fixedViews.filter((v) => v.id !== filter.viewId)}
+          inView={fixedViews.find((v) => v.id === filter.viewId)}
           onClear={() => setSelected([])}
         />
       )}
@@ -622,6 +643,7 @@ export function WorkItemList({
           selected={selected}
           onSelect={setSelected}
           rowTint={(item) => tintOf(colorOf(item))}
+          cellTint={(item, key) => tintOf(cellColorOf(item, key), 22)}
           footer={{
             label: "汇总",
             cell: (key) => {
@@ -675,10 +697,10 @@ export function WorkItemList({
 const groupOf = (col: ListColumn, item: ListItem) => String(col.value(item) ?? "") || "（空）";
 
 /** 着色规则里存的是浅色底色，按它找到色相，在当前主题的表面色上叠一层淡色（深色主题里也不刺眼）。 */
-function tintOf(color: string | undefined) {
+function tintOf(color: string | undefined, strength = 14) {
   if (!color) return undefined;
   const hue = ROW_COLORS.find(([c]) => c === color)?.[2] ?? color;
-  return `color-mix(in srgb, ${hue} 14%, transparent)`;
+  return `color-mix(in srgb, ${hue} ${strength}%, transparent)`;
 }
 
 /** 分批加载时每批几条。 */
@@ -736,8 +758,8 @@ function ColumnPicker({
   onChange,
 }: {
   available: ListColumn[];
-  shown: { key: string; width?: number }[];
-  onChange: (columns: { key: string; width?: number }[]) => void;
+  shown: { key: string; width?: number; group?: string }[];
+  onChange: (columns: { key: string; width?: number; group?: string }[]) => void;
 }) {
   const [keyword, setKeyword] = useState("");
   const on = new Set(shown.map((c) => c.key));
@@ -795,6 +817,7 @@ function ColumnPicker({
               );
             })}
           </ul>
+          <HeaderGroups available={available} shown={shown} onChange={onChange} />
           <div className="text-xs text-fg-muted">可以加的列</div>
           <ul className="flex flex-col gap-0.5 overflow-y-auto">
             {available
@@ -810,6 +833,88 @@ function ColumnPicker({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * 表头分组：给几列起一个组名，表头上方合并显示。保存时把同组的列挪到一起（排在组里第一列的位置）。
+ */
+function HeaderGroups({
+  available,
+  shown,
+  onChange,
+}: {
+  available: ListColumn[];
+  shown: { key: string; width?: number; group?: string }[];
+  onChange: (columns: { key: string; width?: number; group?: string }[]) => void;
+}) {
+  const [name, setName] = useState("");
+  const [keys, setKeys] = useState<string[]>([]);
+  const groups = [...new Set(shown.flatMap((c) => (c.group ? [c.group] : [])))];
+  const title = (key: string) => available.find((a) => a.key === key)?.title ?? key;
+  /** 改分组后让同组的列相邻：组按第一列出现的位置排。 */
+  const regroup = (cols: { key: string; width?: number; group?: string }[]) => {
+    const out: typeof cols = [];
+    for (const c of cols) {
+      if (out.includes(c)) continue;
+      if (!c.group) out.push(c);
+      else out.push(...cols.filter((x) => x.group === c.group));
+    }
+    return out;
+  };
+  return (
+    <div className="flex flex-col gap-1.5 border-line-subtle border-t pt-2">
+      <div className="text-xs text-fg-muted">表头分组</div>
+      {groups.map((g) => (
+        <div key={g} className="flex items-center gap-1 text-sm">
+          <span className="font-medium">{g}</span>
+          <span className="min-w-0 flex-1 truncate text-fg-subtle text-xs">
+            {shown
+              .filter((c) => c.group === g)
+              .map((c) => title(c.key))
+              .join("、")}
+          </span>
+          <button
+            type="button"
+            aria-label={`取消分组 ${g}`}
+            className="px-1 text-fg-subtle hover:text-danger-600"
+            onClick={() => onChange(shown.map(({ group, ...c }) => (group === g ? c : { ...c, group })))}
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1">
+        <Input
+          aria-label="分组名称"
+          placeholder="组名"
+          className="w-20"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <MultiPick
+          label="分组的列"
+          placeholder="选列"
+          className="min-w-0"
+          choices={shown.map((c) => ({ value: c.key, label: title(c.key) }))}
+          value={keys}
+          onChange={setKeys}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!name.trim() || keys.length === 0}
+          onClick={() => {
+            const g = name.trim();
+            onChange(regroup(shown.map((c) => (keys.includes(c.key) ? { ...c, group: g } : c))));
+            setName("");
+            setKeys([]);
+          }}
+        >
+          添加分组
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1055,14 +1160,19 @@ function GroupButton({
   );
 }
 
+type ColorRule = { when: Condition; color: string; cells?: string[] };
+
 function ColorButton({
   fields,
+  columns,
   value,
   onChange,
 }: {
   fields: ListField[];
-  value: { when: Condition; color: string }[];
-  onChange: (colors: { when: Condition; color: string }[]) => void;
+  /** 显示着的列：可以只给这些列的单元格上色。 */
+  columns: { key: string; title: string }[];
+  value: ColorRule[];
+  onChange: (colors: ColorRule[]) => void;
 }) {
   const conditionFields: ConditionField[] = fields.map((f) => ({
     key: f.key,
@@ -1076,7 +1186,9 @@ function ColorButton({
       label={value.length ? `设置颜色 ${value.length}` : "设置颜色"}
       active={value.length > 0}
     >
-      <p className="text-xs text-fg-subtle">满足条件的行显示成对应的底色，从上到下第一个满足的生效。</p>
+      <p className="text-xs text-fg-subtle">
+        满足条件的行（或选中的列的单元格）显示成对应的底色，从上到下第一个满足的生效。
+      </p>
       {value.map((rule, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 着色规则没有 id
         <div key={i} className="flex flex-col gap-2 rounded-md border border-line-subtle p-2">
@@ -1106,6 +1218,22 @@ function ColorButton({
               <Trash2 className="size-4" />
             </button>
           </div>
+          <MultiPick
+            label="着色范围"
+            placeholder="整行"
+            placeholderClass="text-fg"
+            choices={columns.map((c) => ({ value: c.key, label: c.title }))}
+            value={rule.cells ?? []}
+            onChange={(cells) =>
+              onChange(
+                value.map((x, j) => {
+                  if (j !== i) return x;
+                  const { cells: _old, ...rest } = x;
+                  return cells.length ? { ...rest, cells } : rest;
+                }),
+              )
+            }
+          />
           <ConditionEditor
             label="满足"
             value={rule.when}

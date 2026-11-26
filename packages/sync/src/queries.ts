@@ -1,9 +1,9 @@
 import { fieldIndex } from "@fp/engine";
-import { defineQueries, defineQuery, type ExpressionBuilder } from "@rocicorp/zero";
+import { type Condition, defineQueries, defineQuery, type ExpressionBuilder } from "@rocicorp/zero";
 import { z } from "zod";
 import { itemVisible } from "./permissions.ts";
 import { type Schema, zql } from "./schema.gen.ts";
-import { workItemFilter } from "./views.ts";
+import { dayOf, type FilterCondArgs, presetDays, workItemFilter } from "./views.ts";
 
 /*
  * 前端只能通过这里定义的查询读数据。每个查询都在服务端按登录用户再执行一遍，
@@ -66,6 +66,8 @@ function spaceItems({ spaceId, filter = {} }: z.output<typeof spaceItemsArgs>, u
   if (filter.stages?.length) q = q.where("stage", "IN", filter.stages);
   const memberIds = filter.memberIds;
   if (memberIds?.length) q = q.whereExists("roleMembers", (r) => r.where("userId", "IN", memberIds));
+  const viewId = filter.viewId;
+  if (viewId) q = q.whereExists("viewItems", (v) => v.where("viewId", viewId));
   // 字段条件查检索列；只在自己能看到的字段值里找，受限字段不会被用来探测
   for (const f of filter.fields ?? [])
     q = q.whereExists("fieldValues", (v) => {
@@ -85,7 +87,137 @@ function spaceItems({ spaceId, filter = {} }: z.output<typeof spaceItemsArgs>, u
         }
       }
     });
+  const conds = filter.conds;
+  const groups = conds?.groups.filter((g) => g.items.length > 0) ?? [];
+  if (conds && groups.length > 0) {
+    const clock = filter.clock ?? { today: new Date().toISOString().slice(0, 10), offset: 0 };
+    q = q.where((eb) => {
+      const parts = groups.map((g) => {
+        const items = g.items.map((c) => condition(eb, c, userID, clock));
+        return g.conj === "or" ? eb.or(...items) : eb.and(...items);
+      });
+      return conds.conj === "or" ? eb.or(...parts) : eb.and(...parts);
+    });
+  }
   return q;
+}
+
+type ItemExpr = ExpressionBuilder<"workItem", Schema>;
+type Clock = { today: string; offset: number };
+
+/** 条件里的日期范围换成天数 [起, 止]：动态时间按 clock 算，固定日期按 YYYY-MM-DD 算。 */
+function condDays(c: FilterCondArgs, clock: Clock): [number | null, number | null] {
+  if (c.op === "date" && c.date) return presetDays(clock.today, c.date.preset, c.date.n);
+  const day = (v: number | string | undefined) =>
+    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? dayOf(v) : null;
+  return [day(c.min), day(c.max)];
+}
+
+/** 时间戳列（毫秒）落在天数范围里的比较：起那天 0 点到止那天结束，按空间时区。 */
+function tsBounds([a, b]: [number | null, number | null], offset: number) {
+  const ms = (day: number) => day * 86_400_000 - offset * 60_000;
+  const parts: [">=" | "<", number][] = [];
+  if (a !== null) parts.push([">=", ms(a)]);
+  if (b !== null) parts.push(["<", ms(b + 1)]);
+  return parts;
+}
+
+/** 人员值里的 $me 换成当前登录的人。 */
+const people = (values: readonly string[] | undefined, userID: string) =>
+  (values ?? []).map((v) => (v === "$me" ? userID : v));
+
+/** 一个条件对应的查询表达式（见 db 的 FilterCond）。 */
+function condition(eb: ItemExpr, c: FilterCondArgs, userID: string, clock: Clock): Condition {
+  const negate = c.op === "notIn" || c.op === "notContains" || c.op === "empty";
+  const wrap = (x: Condition) => (negate ? eb.not(x) : x);
+  const values = c.values ?? [];
+  const pattern = containsPattern(c.text ?? "");
+  const none = eb.cmp("id", "IS", null);
+  switch (true) {
+    case c.field === "$type":
+      return c.op === "in" || c.op === "notIn" ? wrap(eb.cmp("typeId", "IN", values)) : none;
+    case c.field === "$status":
+      return c.op === "in" || c.op === "notIn" ? wrap(eb.cmp("status", "IN", values as never)) : none;
+    case c.field === "$stage":
+      if (c.op === "in" || c.op === "notIn")
+        return negate
+          ? eb.or(eb.cmp("stage", "IS", null), eb.not(eb.cmp("stage", "IN", values)))
+          : eb.cmp("stage", "IN", values);
+      return wrap(eb.cmp("stage", "IS NOT", null));
+    case c.field === "$name":
+      return c.op === "contains" || c.op === "notContains" ? wrap(eb.cmp("name", "ILIKE", pattern)) : none;
+    case c.field === "$createdBy":
+      return c.op === "in" || c.op === "notIn" ? wrap(eb.cmp("createdBy", "IN", people(values, userID))) : none;
+    case c.field === "$createdAt" || c.field === "$updatedAt": {
+      if (c.op !== "date" && c.op !== "range") return none;
+      const col = c.field === "$createdAt" ? "createdAt" : "updatedAt";
+      return eb.and(...tsBounds(condDays(c, clock), clock.offset).map(([op, v]) => eb.cmp(col, op, v)));
+    }
+    case c.field === "$member" || c.field.startsWith("$role:"): {
+      const role = c.field.startsWith("$role:") ? c.field.slice(6) : null;
+      return wrap(
+        eb.exists("roleMembers", (r) => {
+          let m = role ? r.where("roleKey", role) : r;
+          if (c.op === "in" || c.op === "notIn") m = m.where("userId", "IN", people(values, userID));
+          return m;
+        }),
+      );
+    }
+    case c.field.startsWith("$node:"): {
+      const [, prop = "", ...rest] = c.field.split(":");
+      const nodeKey = rest.join(":");
+      return wrap(
+        eb.exists("nodes", (n) => {
+          let m = nodeKey && nodeKey !== "*" ? n.where("nodeKey", nodeKey) : n;
+          // 跳过的节点不算排期
+          m = m.where("state", "!=", "skipped");
+          if (prop === "state") return c.op === "in" || c.op === "notIn" ? m.where("state", "IN", values as never) : m;
+          const col = prop === "plannedStart" ? "plannedStart" : prop === "actualEnd" ? "actualEnd" : "plannedEnd";
+          if (c.op === "empty" || c.op === "notEmpty") return m.where(col, "IS NOT", null);
+          m = m.where(col, "IS NOT", null);
+          for (const [op, v] of tsBounds(condDays(c, clock), clock.offset)) m = m.where(col, op, v);
+          return m;
+        }),
+      );
+    }
+    case c.field.startsWith("$"):
+      return none;
+  }
+  // 普通字段：查检索列，只在自己能看到的字段值里找
+  return wrap(
+    eb.exists("fieldValues", (v) => {
+      const fv = visibleFieldValues(userID)(v.where("fieldKey", c.field));
+      switch (c.op) {
+        case "in":
+        case "notIn":
+          return fv.whereExists("items", (i) => i.where("item", "IN", people(values, userID)));
+        case "contains":
+        case "notContains":
+          return fv.where("str", "ILIKE", pattern);
+        case "empty":
+        case "notEmpty":
+          return fv.where(({ or, cmp, exists }) =>
+            or(cmp("num", "IS NOT", null), cmp("str", "IS NOT", null), exists("items")),
+          );
+        case "range": {
+          const days = condDays(c, clock);
+          let r = fv.where("num", "IS NOT", null);
+          const min = days[0] ?? (typeof c.min === "number" ? c.min : null);
+          const max = days[1] ?? (typeof c.max === "number" ? c.max : null);
+          if (min !== null) r = r.where("num", ">=", min);
+          if (max !== null) r = r.where("num", days[1] !== null ? "<" : "<=", days[1] !== null ? max + 1 : max);
+          return r;
+        }
+        case "date": {
+          const [a, b] = condDays(c, clock);
+          let r = fv.where("num", "IS NOT", null);
+          if (a !== null) r = r.where("num", ">=", a);
+          if (b !== null) r = r.where("num", "<", b + 1);
+          return r;
+        }
+      }
+    }),
+  );
 }
 
 /**
@@ -205,7 +337,19 @@ export const queries = defineQueries({
         .whereExists("members", (m) => m.where("userId", ctx.userID))
         .related("members", (m) => m.related("user"))
         .related("businessLines", (b) => b.orderBy("sort", "asc"))
-        .related("views", (v) => v.orderBy("createdAt", "asc"))
+        // 公共视图和自己能看到的个人视图（自己建的、被加为协作者的）
+        .related("views", (v) =>
+          v
+            .where(({ or, cmp, exists }) =>
+              or(
+                cmp("visibility", "public"),
+                cmp("createdBy", ctx.userID),
+                exists("members", (m) => m.where("userId", ctx.userID)),
+              ),
+            )
+            .related("members", (m) => m.related("user"))
+            .orderBy("createdAt", "asc"),
+        )
         .related("charts", (c) => c.orderBy("sort", "asc").orderBy("createdAt", "asc"))
         // 用户组和成员：权限配置要用，前端也按它算自己能看到哪些工作项类型
         .related("userGroups", (g) => g.related("members").orderBy("createdAt", "asc"))
