@@ -1,12 +1,21 @@
 import { nodeFlowOf, statusFlowOf } from "@fp/engine";
-import { mutators, type WorkItemFilterArgs } from "@fp/sync";
+import { compactFilter, mutators, type WorkItemFilterArgs } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
-import { Bookmark, SlidersHorizontal, X } from "lucide-react";
+import { Bookmark, Lock, MoreHorizontal, Pin, X, Zap } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import type { FieldConfig } from "@/components/FieldInput";
+import { FilterConditions, filterTargets, flowNodes, MultiPick } from "@/components/FilterConditions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input, Select } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, newId } from "@/lib/utils";
 
@@ -20,27 +29,38 @@ interface Option {
   id: string;
   name: string;
 }
-interface View {
+export interface FilterView {
   id: string;
   name: string;
   filter: WorkItemFilterArgs;
   createdBy: string;
+  description?: string | null;
+  kind?: string | null;
+  visibility?: string | null;
+  members?: readonly { userId: string; role: string | null }[];
   /** 列表的显示设置（列、排序、分组、着色）。 */
   display?: unknown;
 }
 
+/** 选中视图时用的筛选：固定视图只看视图里的工作项。 */
+export const viewFilter = (view: FilterView): WorkItemFilterArgs =>
+  view.kind === "fixed" ? { ...view.filter, viewId: view.id } : view.filter;
+
 /** 是否和当前筛选条件相同（按有值的条件比较）。 */
 function same(a: WorkItemFilterArgs, b: WorkItemFilterArgs) {
-  const keys = ["typeIds", "statuses", "stages", "memberIds"] as const;
-  return (
-    keys.every((k) => (a[k] ?? []).join() === (b[k] ?? []).join()) &&
-    JSON.stringify(a.fields ?? []) === JSON.stringify(b.fields ?? [])
-  );
+  const ca = compactFilter(a) as Record<string, unknown>;
+  const cb = compactFilter(b) as Record<string, unknown>;
+  const keys = new Set([...Object.keys(ca), ...Object.keys(cb)]);
+  return [...keys].every((k) => JSON.stringify(ca[k]) === JSON.stringify(cb[k]));
 }
 
+type FieldFilter = NonNullable<WorkItemFilterArgs["fields"]>[number];
+/** 快捷筛选能用的字段类型：选项、人员、是否。 */
+const QUICK_TYPES = new Set(["select", "radio", "multiSelect", "bool", "user", "singleUser", "businessLine", "signal"]);
+
 /**
- * 工作项列表的筛选条和保存的视图。每个条件先做成单选（“全部”表示不限），存储格式支持多选。
- * 筛选在服务端查询里执行，切换条件只同步命中的工作项。
+ * 工作项列表的筛选条和保存的视图。上面一排是视图页签，下面是快捷筛选（阶段、状态、参与人和选出来的字段）、
+ * 条件组筛选和列表工具。筛选在服务端查询里执行，切换条件只同步命中的工作项。
  */
 export function FilterBar({
   spaceId,
@@ -50,21 +70,30 @@ export function FilterBar({
   members,
   views,
   isAdmin,
+  isGuest,
   actions,
   tools,
   search,
   display,
   onView,
   fixedTypeId,
+  quick = [],
+  onQuick,
+  rowIds = [],
 }: {
   spaceId: string;
   filter: WorkItemFilterArgs;
   onChange: (filter: WorkItemFilterArgs) => void;
-  /** definitions：类型已发布的流程定义（节点流或状态流），用来列出可筛的阶段。 */
-  types: (Option & { definitions: unknown[]; fields?: readonly FieldConfig[] })[];
+  /** definitions：类型已发布的流程定义（节点流或状态流），用来列出可筛的阶段和节点。 */
+  types: (Option & {
+    definitions: unknown[];
+    fields?: readonly FieldConfig[];
+    roles?: readonly { key: string; name: string }[];
+  })[];
   members: Option[];
-  views: readonly View[];
+  views: readonly FilterView[];
   isAdmin: boolean;
+  isGuest?: boolean;
   /** 视图页签右边的操作，如切换列表和甘特图。 */
   actions?: ReactNode;
   /** 接在筛选后面的列表工具（排序、分组…）和搜索框，只有列表视图有。 */
@@ -73,17 +102,24 @@ export function FilterBar({
   /** 当前列表的显示设置，保存视图时一起存。 */
   display?: unknown;
   /** 选中一个视图（除了筛选，还要套用它的显示设置）。 */
-  onView?: (view: View) => void;
+  onView?: (view: FilterView) => void;
   /** 在某个工作项的主页里：只看这一种类型，类型筛选不显示，切换条件和视图时都保留。 */
   fixedTypeId?: string;
+  /** 快捷筛选：显示在筛选条上的字段键。 */
+  quick?: readonly string[];
+  onQuick?: (keys: string[]) => void;
+  /** 列表当前的工作项，存成固定视图时放进去。 */
+  rowIds?: readonly string[];
 }) {
   const zero = useZero();
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FilterView | null>(null);
+  const [sharing, setSharing] = useState<FilterView | null>(null);
   const change = (next: WorkItemFilterArgs) => onChange(fixedTypeId ? { ...next, typeIds: [fixedTypeId] } : next);
+  const scoped = types.filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id));
   const stages = [
     ...new Set(
-      types
-        .filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id))
+      scoped
         .flatMap((t) =>
           t.definitions.flatMap((d) => [
             ...(nodeFlowOf(d)?.nodes.map((n) => n.stageOnArrival) ?? []),
@@ -93,20 +129,27 @@ export function FilterBar({
         .filter((s): s is string => !!s),
     ),
   ];
-  const empty = Object.entries(filter).every(([k, v]) => (fixedTypeId && k === "typeIds") || !v?.length);
-  // 可筛的字段：筛了类型时只列这些类型的字段；同键字段只列一次
-  const fields = [
-    ...new Map(
-      types
-        .filter((t) => !filter.typeIds?.length || filter.typeIds.includes(t.id))
-        .flatMap((t) => t.fields ?? [])
-        .filter((f) => FILTER_OP[f.dataType])
-        .map((f) => [f.key, f]),
-    ).values(),
-  ];
+  const empty = Object.entries(compactFilter(filter)).every(([k]) => fixedTypeId && k === "typeIds");
+  const targets = filterTargets({ types: scoped, members, stages });
+  const nodes = flowNodes(scoped);
+  const quickFields = new Map(
+    scoped
+      .flatMap((t) => t.fields ?? [])
+      .filter((f) => QUICK_TYPES.has(f.dataType))
+      .map((f) => [f.key, f]),
+  );
+  const active = views.find((v) => !empty && same(viewFilter(v), filter));
+  const canEdit = (v: FilterView) =>
+    isAdmin || v.createdBy === zero.userID || !!v.members?.some((m) => m.userId === zero.userID && m.role === "edit");
+  const isOwner = (v: FilterView) => isAdmin || v.createdBy === zero.userID;
 
   const pick = (key: keyof WorkItemFilterArgs, value: string) =>
     change({ ...filter, [key]: value ? [value] : undefined });
+  const setFieldFilter = (key: string, values: string[]) => {
+    const rest = (filter.fields ?? []).filter((f) => f.field !== key);
+    const next: FieldFilter[] = values.length ? [...rest, { field: key, op: "in", values }] : rest;
+    change({ ...filter, fields: next.length ? next : undefined });
+  };
 
   async function run(request: Parameters<typeof zero.mutate>[0]) {
     setError(null);
@@ -119,23 +162,22 @@ export function FilterBar({
     return true;
   }
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const name = String(new FormData(form).get("name") ?? "").trim();
-    if (
-      name &&
-      (await run(
-        mutators.view.create({ id: newId(), spaceId, name, filter, ...(display ? { display: display as never } : {}) }),
-      ))
-    )
-      form.reset();
-  }
+  const choices = (f: FieldConfig) =>
+    f.dataType === "bool"
+      ? [
+          { value: "true", label: "是" },
+          { value: "false", label: "否" },
+        ]
+      : f.dataType === "user" || f.dataType === "singleUser"
+        ? [{ value: "$me", label: "我" }, ...members.map((m) => ({ value: m.id, label: m.name }))]
+        : (f.options ?? []).map((o) => ({ value: o.value, label: o.label ?? o.value }));
+  // 不在快捷筛选里的字段条件（旧视图里存的）显示成标签，可以去掉
+  const extraFields = (filter.fields ?? []).filter((f) => !quick.includes(f.field));
 
-  const tab = (active: boolean) =>
+  const tab = (on: boolean) =>
     cn(
       "inline-flex h-7 cursor-pointer items-center rounded-md px-2.5 text-sm transition-colors",
-      active ? "bg-brand-50 font-medium text-accent" : "text-fg-muted hover:bg-hover hover:text-fg",
+      on ? "bg-brand-50 font-medium text-accent" : "text-fg-muted hover:bg-hover hover:text-fg",
     );
 
   return (
@@ -146,30 +188,69 @@ export function FilterBar({
             全部
           </button>
           {views.map((view) => {
-            const active = !empty && same(view.filter, filter);
+            const on = active?.id === view.id;
             return (
-              <span key={view.id} className={cn(tab(active), "group gap-1 pr-1")}>
+              <span key={view.id} className={cn(tab(on), "group gap-1 pr-1")}>
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={active}
+                  aria-selected={on}
+                  title={view.description ?? undefined}
                   onClick={() => {
-                    change(view.filter);
+                    change(viewFilter(view));
                     onView?.(view);
                   }}
-                  className="cursor-pointer"
+                  className="inline-flex cursor-pointer items-center gap-1"
                 >
+                  {view.visibility === "personal" && <Lock aria-label="个人视图" className="size-3 opacity-70" />}
+                  {view.kind === "fixed" && <Pin aria-label="固定视图" className="size-3 opacity-70" />}
                   {view.name}
                 </button>
-                {(isAdmin || view.createdBy === zero.userID) && (
-                  <button
-                    type="button"
-                    aria-label={`删除视图 ${view.name}`}
-                    onClick={() => run(mutators.view.delete({ id: view.id }))}
-                    className="cursor-pointer rounded p-0.5 text-fg-subtle opacity-0 group-hover:opacity-100 hover:bg-pressed hover:text-fg focus-visible:opacity-100"
-                  >
-                    <X className="size-3" />
-                  </button>
+                {canEdit(view) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      aria-label={`视图操作 ${view.name}`}
+                      className={cn(
+                        "cursor-pointer rounded p-0.5 text-fg-subtle hover:bg-pressed hover:text-fg focus-visible:opacity-100",
+                        !on && "opacity-0 group-hover:opacity-100",
+                      )}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      {on && (
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            const { viewId: _v, ...rest } = filter;
+                            run(
+                              mutators.view.update({
+                                id: view.id,
+                                filter: rest,
+                                ...(display ? { display: display as never } : {}),
+                              }),
+                            );
+                          }}
+                        >
+                          用当前条件和显示更新视图
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onSelect={() => setEditing(view)}>编辑名称和说明</DropdownMenuItem>
+                      {isOwner(view) && view.visibility === "personal" && (
+                        <DropdownMenuItem onSelect={() => setSharing(view)}>协作者</DropdownMenuItem>
+                      )}
+                      {isOwner(view) && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-danger-600"
+                            onSelect={() => run(mutators.view.delete({ id: view.id }))}
+                          >
+                            删除视图 {view.name}
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </span>
             );
@@ -178,6 +259,7 @@ export function FilterBar({
         {search}
         {actions}
       </div>
+      {active?.description && <p className="-mt-1.5 text-fg-muted text-xs">{active.description}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         {!fixedTypeId && (
@@ -190,6 +272,7 @@ export function FilterBar({
                 typeIds: e.target.value ? [e.target.value] : undefined,
                 stages: undefined,
                 fields: undefined,
+                conds: undefined,
               })
             }
           >
@@ -237,12 +320,81 @@ export function FilterBar({
             </option>
           ))}
         </Select>
-        <FieldFilters
-          fields={fields}
-          members={members}
-          value={filter.fields ?? []}
-          onChange={(next) => change({ ...filter, fields: next.length > 0 ? next : undefined })}
+        {quick.flatMap((key) => {
+          const f = quickFields.get(key);
+          if (!f) return [];
+          const current = filter.fields?.find((x) => x.field === key);
+          return [
+            <MultiPick
+              key={key}
+              label={`快捷筛选 ${f.name}`}
+              className={cn("max-w-48 flex-none", current && "border-accent text-accent")}
+              choices={choices(f)}
+              value={current?.op === "in" ? current.values : []}
+              onChange={(values) => setFieldFilter(key, values)}
+              placeholder={f.name}
+            />,
+          ];
+        })}
+        {extraFields.map((f) => {
+          const name = quickFields.get(f.field)?.name ?? targets.find((t) => t.key === f.field)?.name ?? f.field;
+          const text =
+            f.op === "in"
+              ? `${name}：${f.values.join("、")}`
+              : f.op === "contains"
+                ? `${name}包含“${f.text}”`
+                : `${name}：${f.min ?? "不限"} ~ ${f.max ?? "不限"}`;
+          return (
+            <span
+              key={f.field}
+              className="inline-flex h-7 items-center gap-1 rounded-md bg-brand-50 pr-1 pl-2.5 text-sm text-accent"
+            >
+              {text}
+              <button
+                type="button"
+                aria-label={`去掉条件 ${text}`}
+                className="rounded p-0.5 hover:bg-brand-100"
+                onClick={() => setFieldFilter(f.field, [])}
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          );
+        })}
+        <FilterConditions
+          targets={targets}
+          nodes={nodes}
+          value={filter.conds}
+          onChange={(conds) => change({ ...filter, conds })}
         />
+        {onQuick && quickFields.size > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="设置快捷筛选" title="设置快捷筛选">
+                <Zap />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="flex w-56 flex-col gap-1 p-2">
+              <p className="px-1 pb-1 text-fg-subtle text-xs">选几个常用字段，显示在筛选条上一键筛选。</p>
+              <ul aria-label="快捷筛选字段" className="flex max-h-64 flex-col overflow-y-auto">
+                {[...quickFields.values()].map((f) => (
+                  <li key={f.key}>
+                    <Checkbox
+                      className="h-7 w-full px-1"
+                      checked={quick.includes(f.key)}
+                      onChange={(e) => {
+                        onQuick(e.target.checked ? [...quick, f.key] : quick.filter((k) => k !== f.key));
+                        if (!e.target.checked) setFieldFilter(f.key, []);
+                      }}
+                    >
+                      {f.name}
+                    </Checkbox>
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
         {!empty && (
           <Button variant="ghost" onClick={() => change({})}>
             清空
@@ -254,171 +406,236 @@ export function FilterBar({
             <div className="flex flex-wrap items-center gap-0.5">{tools}</div>
           </>
         )}
-        {!empty && (
-          <>
-            <form className="ml-auto flex items-center gap-2" onSubmit={save}>
-              <Input name="name" aria-label="视图名称" placeholder="视图名称" className="w-36" />
-              <Button type="submit" variant="outline">
-                <Bookmark />
-                保存为视图
-              </Button>
-            </form>
-          </>
+        {(!empty || rowIds.length > 0) && (
+          <SaveView
+            isGuest={!!isGuest}
+            rowCount={rowIds.length}
+            onSave={(v) => {
+              const { viewId: _v, ...rest } = filter;
+              return run(
+                mutators.view.create({
+                  id: newId(),
+                  spaceId,
+                  filter: v.kind === "fixed" ? { typeIds: filter.typeIds } : rest,
+                  ...(display ? { display: display as never } : {}),
+                  ...v,
+                  ...(v.kind === "fixed" && { itemIds: rowIds.slice(0, 500) }),
+                }),
+              );
+            }}
+          />
         )}
       </div>
       {error && <p className="text-sm text-danger-600">{error}</p>}
+      {editing && (
+        <EditView
+          view={editing}
+          canPublish={isOwner(editing) && !isGuest}
+          onClose={() => setEditing(null)}
+          onSave={async (patch) => {
+            if (await run(mutators.view.update({ id: editing.id, ...patch }))) setEditing(null);
+          }}
+        />
+      )}
+      {sharing && (
+        <ShareView
+          view={sharing}
+          members={members.filter((m) => m.id !== sharing.createdBy)}
+          onClose={() => setSharing(null)}
+          onSave={async (list) => {
+            if (await run(mutators.view.setMembers({ id: sharing.id, members: list }))) setSharing(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-type FieldFilter = NonNullable<WorkItemFilterArgs["fields"]>[number];
+type NewView = { name: string; description?: string; visibility: "public" | "personal"; kind: "condition" | "fixed" };
 
-/** 各字段类型用哪种筛选：属于某些值、范围、包含文字。 */
-const FILTER_OP: Record<string, FieldFilter["op"] | undefined> = {
-  select: "in",
-  multiSelect: "in",
-  bool: "in",
-  user: "in",
-  number: "range",
-  date: "range",
-  text: "contains",
-  link: "contains",
-};
-
-/** 字段筛选：已加的条件显示成标签，点“字段筛选”再加一个。 */
-function FieldFilters({
-  fields,
-  members,
-  value,
-  onChange,
+/** 保存为视图：名称、说明、可见范围（公共 / 个人）、类型（按条件 / 固定这些工作项）。 */
+function SaveView({
+  isGuest,
+  rowCount,
+  onSave,
 }: {
-  fields: readonly FieldConfig[];
-  members: readonly Option[];
-  value: readonly FieldFilter[];
-  onChange: (next: FieldFilter[]) => void;
+  isGuest: boolean;
+  rowCount: number;
+  onSave: (view: NewView) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
-  const [key, setKey] = useState("");
-  const [values, setValues] = useState<string[]>([]);
-  const [min, setMin] = useState("");
-  const [max, setMax] = useState("");
-  const [text, setText] = useState("");
-  const field = fields.find((f) => f.key === key) ?? fields[0];
-  if (fields.length === 0 && value.length === 0) return null;
-
-  const choices = (f: FieldConfig) =>
-    f.dataType === "bool"
-      ? [
-          { value: "true", label: "是" },
-          { value: "false", label: "否" },
-        ]
-      : f.dataType === "user"
-        ? members.map((m) => ({ value: m.id, label: m.name }))
-        : (f.options ?? []);
-  const describe = (filter: FieldFilter) => {
-    const f = fields.find((x) => x.key === filter.field);
-    const name = f?.name ?? filter.field;
-    if (filter.op === "in")
-      return `${name}：${filter.values.map((v) => (f ? choices(f).find((c) => c.value === v)?.label : v) ?? v).join("、")}`;
-    if (filter.op === "contains") return `${name}包含“${filter.text}”`;
-    if (filter.min !== undefined && filter.max !== undefined) return `${name}：${filter.min} ~ ${filter.max}`;
-    return filter.min !== undefined ? `${name} ≥ ${filter.min}` : `${name} ≤ ${filter.max}`;
-  };
-  const reset = (nextKey: string) => {
-    setKey(nextKey);
-    setValues([]);
-    setMin("");
-    setMax("");
-    setText("");
-  };
-  const build = (): FieldFilter | null => {
-    if (!field) return null;
-    const op = FILTER_OP[field.dataType];
-    if (op === "in") return values.length > 0 ? { field: field.key, op, values } : null;
-    if (op === "contains") return text.trim() ? { field: field.key, op, text: text.trim() } : null;
-    const bound = (v: string) => (v === "" ? undefined : field.dataType === "number" ? Number(v) : v);
-    const range = { field: field.key, op: "range" as const, min: bound(min), max: bound(max) };
-    return range.min === undefined && range.max === undefined ? null : range;
-  };
-  const inputType = field?.dataType === "date" ? "date" : "number";
-
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const name = String(data.get("name") ?? "").trim();
+    if (!name) return;
+    const description = String(data.get("description") ?? "").trim();
+    const ok = await onSave({
+      name,
+      ...(description && { description }),
+      visibility: isGuest ? "personal" : (String(data.get("visibility")) as NewView["visibility"]),
+      kind: String(data.get("kind")) as NewView["kind"],
+    });
+    if (ok) setOpen(false);
+  }
   return (
-    <>
-      {value.map((filter, i) => (
-        <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: 条件没有自己的 id，按位置删除
-          key={i}
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-brand-50 pr-1 pl-2.5 text-sm text-accent"
-        >
-          {describe(filter)}
-          <button
-            type="button"
-            aria-label={`去掉条件 ${describe(filter)}`}
-            className="rounded p-0.5 hover:bg-brand-100"
-            onClick={() => onChange(value.filter((_, j) => j !== i))}
-          >
-            <X className="size-3" />
-          </button>
-        </span>
-      ))}
-      {fields.length > 0 && (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost">
-              <SlidersHorizontal />
-              字段筛选
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="flex w-72 flex-col gap-2 p-3">
-            <Select aria-label="筛选字段" value={field?.key ?? ""} onChange={(e) => reset(e.target.value)}>
-              {fields.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.name}
-                </option>
-              ))}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="ml-auto">
+          <Bookmark />
+          保存为视图
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-3">
+        <form className="flex flex-col gap-3" onSubmit={submit}>
+          <Field label="视图名称">
+            <Input name="name" required maxLength={50} />
+          </Field>
+          <Field label="说明">
+            <Textarea name="description" rows={2} maxLength={500} placeholder="这个视图看什么、给谁用（可不填）" />
+          </Field>
+          <Field label="可见范围" hint={isGuest ? "访客只能建个人视图。" : "个人视图只有你和你加的协作者能看到。"}>
+            <Select name="visibility" defaultValue={isGuest ? "personal" : "public"} disabled={isGuest}>
+              <option value="public">公共视图</option>
+              <option value="personal">个人视图</option>
             </Select>
-            {field && FILTER_OP[field.dataType] === "in" && (
-              <ul aria-label="筛选值" className="flex max-h-48 flex-col overflow-y-auto">
-                {choices(field).map((c) => (
-                  <li key={c.value}>
-                    <label className="flex h-7 items-center gap-2">
-                      <Checkbox
-                        checked={values.includes(c.value)}
-                        onChange={(e) =>
-                          setValues(e.target.checked ? [...values, c.value] : values.filter((v) => v !== c.value))
-                        }
-                      />
-                      {c.label}
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {field && FILTER_OP[field.dataType] === "range" && (
-              <div className="flex items-center gap-1.5">
-                <Input aria-label="最小值" type={inputType} value={min} onChange={(e) => setMin(e.target.value)} />
-                <span className="text-fg-subtle">~</span>
-                <Input aria-label="最大值" type={inputType} value={max} onChange={(e) => setMax(e.target.value)} />
-              </div>
-            )}
-            {field && FILTER_OP[field.dataType] === "contains" && (
-              <Input aria-label="包含文字" value={text} onChange={(e) => setText(e.target.value)} />
-            )}
-            <Button
-              size="sm"
-              onClick={() => {
-                const next = build();
-                if (!next) return;
-                onChange([...value.filter((f) => f.field !== next.field), next]);
-                setOpen(false);
-                reset(field?.key ?? "");
-              }}
-            >
-              应用
-            </Button>
-          </PopoverContent>
-        </Popover>
-      )}
-    </>
+          </Field>
+          <Field
+            label="视图类型"
+            hint={`固定视图把当前列表的 ${rowCount} 个工作项放进去，之后可以手动加入、移出，不随条件变化。`}
+          >
+            <Select name="kind" defaultValue="condition">
+              <option value="condition">条件视图</option>
+              <option value="fixed" disabled={rowCount === 0}>
+                固定视图
+              </option>
+            </Select>
+          </Field>
+          <Button type="submit" className="self-end">
+            保存
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function EditView({
+  view,
+  canPublish,
+  onClose,
+  onSave,
+}: {
+  view: FilterView;
+  canPublish: boolean;
+  onClose: () => void;
+  onSave: (patch: { name: string; description: string | null; visibility?: "public" | "personal" }) => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title="编辑视图">
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const data = new FormData(e.currentTarget);
+            onSave({
+              name: String(data.get("name") ?? "").trim(),
+              description: String(data.get("description") ?? "").trim() || null,
+              ...(canPublish && { visibility: String(data.get("visibility")) as "public" | "personal" }),
+            });
+          }}
+        >
+          <Field label="视图名称">
+            <Input name="name" required maxLength={50} defaultValue={view.name} />
+          </Field>
+          <Field label="说明">
+            <Textarea name="description" rows={3} maxLength={500} defaultValue={view.description ?? ""} />
+          </Field>
+          {canPublish && (
+            <Field label="可见范围">
+              <Select name="visibility" defaultValue={view.visibility ?? "public"}>
+                <option value="public">公共视图</option>
+                <option value="personal">个人视图</option>
+              </Select>
+            </Field>
+          )}
+          <Button type="submit" className="self-end">
+            保存
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 个人视图的协作者：选空间成员，各给「可编辑」或「仅查看」。 */
+function ShareView({
+  view,
+  members,
+  onClose,
+  onSave,
+}: {
+  view: FilterView;
+  members: readonly Option[];
+  onClose: () => void;
+  onSave: (list: { userId: string; role: "edit" | "view" }[]) => void;
+}) {
+  const [list, setList] = useState(
+    (view.members ?? []).map((m) => ({
+      userId: m.userId,
+      role: m.role === "edit" ? ("edit" as const) : ("view" as const),
+    })),
+  );
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        title={`协作者：${view.name}`}
+        description="协作者能看到这个个人视图；可编辑的还能改条件和显示设置。"
+      >
+        <div className="flex flex-col gap-3">
+          <MultiPick
+            label="添加协作者"
+            choices={members.map((m) => ({ value: m.id, label: m.name }))}
+            value={list.map((m) => m.userId)}
+            onChange={(ids) =>
+              setList(ids.map((id) => list.find((m) => m.userId === id) ?? { userId: id, role: "view" as const }))
+            }
+          />
+          <ul aria-label="协作者" className="flex flex-col">
+            {list.map((m) => (
+              <li key={m.userId} className="flex h-9 items-center gap-2 border-line-subtle border-b last:border-0">
+                <span className="flex-1">{members.find((x) => x.id === m.userId)?.name ?? m.userId}</span>
+                <Select
+                  aria-label={`${members.find((x) => x.id === m.userId)?.name ?? m.userId} 的权限`}
+                  className="w-28"
+                  value={m.role}
+                  onChange={(e) =>
+                    setList(
+                      list.map((x) => (x.userId === m.userId ? { ...x, role: e.target.value as "edit" | "view" } : x)),
+                    )
+                  }
+                >
+                  <option value="view">仅查看</option>
+                  <option value="edit">可编辑</option>
+                </Select>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="移除"
+                  onClick={() => setList(list.filter((x) => x.userId !== m.userId))}
+                >
+                  <X />
+                </Button>
+              </li>
+            ))}
+            {list.length === 0 && <li className="py-2 text-fg-subtle text-sm">还没有协作者。</li>}
+          </ul>
+          <Button className="self-end" onClick={() => onSave(list)}>
+            保存
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

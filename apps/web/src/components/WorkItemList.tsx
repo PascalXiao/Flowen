@@ -1,5 +1,5 @@
 import { type Condition, conditionFields, evaluate, PASTEABLE_FIELD_TYPES, parseFieldText } from "@fp/engine";
-import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
+import { compactFilter, mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDownUp, Download, Group, Palette, Pin, Plus, Rows3, Star, Trash2, X } from "lucide-react";
@@ -53,6 +53,8 @@ export interface ListDisplay {
   summary?: Record<string, SummaryKind>;
   /** 看板：泳道（creator、role:角色键、field:字段键）和卡片上显示的字段。 */
   board?: BoardDisplay;
+  /** 快捷筛选：显示在筛选条上的字段键。 */
+  quick?: string[];
 }
 export interface BoardDisplay {
   lanes?: string | null;
@@ -151,7 +153,10 @@ export function WorkItemList({
   onDisplay,
   toolbar,
   onRows,
+  fixedViews = [],
 }: {
+  /** 自己能编辑的固定视图（批量加入、移出用）。 */
+  fixedViews?: readonly { id: string; name: string }[];
   space: SpaceLike;
   filter: WorkItemFilterArgs;
   display: ListDisplay;
@@ -489,7 +494,7 @@ export function WorkItemList({
     gridRows.push({ kind: "item", item, index });
   });
 
-  const filtered = !!search || Object.values(filter).some((v) => v?.length);
+  const filtered = !!search || Object.keys(compactFilter(filter)).length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -598,6 +603,8 @@ export function WorkItemList({
           fields={[...fields.values()]}
           members={space.members.map((m) => ({ userId: m.userId, name: m.user?.name ?? m.userId }))}
           links={batchLinks(space)}
+          fixedViews={fixedViews.filter((v) => v.id !== filter.viewId)}
+          inView={fixedViews.find((v) => v.id === filter.viewId)}
           onClear={() => setSelected([])}
         />
       )}

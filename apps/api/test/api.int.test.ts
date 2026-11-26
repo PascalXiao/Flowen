@@ -1087,6 +1087,44 @@ describe("saved views", () => {
     await services.zero.run("view.delete", { id }, admin.userId);
     expect(await viewsOf()).toEqual([]);
   });
+
+  it("keeps personal views to the creator and collaborators, and fixed views to their items", async () => {
+    const id = randomUUID();
+    await services.zero.run(
+      "view.create",
+      { id, spaceId, name: "我的", filter: {}, visibility: "personal", description: "只给自己看" },
+      admin.userId,
+    );
+    await expect(services.zero.run("view.update", { id, name: "改名" }, member.userId)).rejects.toThrow(
+      "能编辑的协作者",
+    );
+    await services.zero.run(
+      "view.setMembers",
+      { id, members: [{ userId: member.userId, role: "edit" }] },
+      admin.userId,
+    );
+    await services.zero.run("view.update", { id, name: "我们的" }, member.userId);
+    await expect(services.zero.run("view.update", { id, visibility: "public" }, member.userId)).rejects.toThrow(
+      "可见范围",
+    );
+    await expect(services.zero.run("view.setMembers", { id, members: [] }, member.userId)).rejects.toThrow(
+      "设置协作者",
+    );
+    expect(await viewsOf()).toMatchObject([{ name: "我们的", visibility: "personal", description: "只给自己看" }]);
+
+    // 别人的个人视图不同步给看不到的人
+    const body = JSON.stringify(["transform", [{ id: "q1", name: "spaces.byId", args: [{ id: spaceId }] }]]);
+    const res = await app.request("/api/zero/query?schema=zero_0&appID=zero", {
+      method: "POST",
+      body,
+      headers: { cookie: member.cookie },
+    });
+    const ast = JSON.stringify(((await res.json()) as { queries: { ast: unknown }[] }).queries[0]?.ast);
+    for (const part of ['"visibility"', '"public"', "saved_view_member"]) expect(ast).toContain(part);
+
+    await expect(services.zero.run("view.addItems", { id, itemIds: ["x"] }, admin.userId)).rejects.toThrow("固定视图");
+    await services.zero.run("view.delete", { id }, admin.userId);
+  });
 });
 
 describe("comments and notifications", () => {
@@ -2358,6 +2396,44 @@ describe("typed field values", () => {
     });
     const ast = JSON.stringify(((await res.json()) as { queries: { ast: unknown }[] }).queries[0]?.ast);
     for (const part of ["field_value_item", "后端", '"num"', "ILIKE", "%wiki%"]) expect(ast).toContain(part);
+  });
+
+  it("puts condition groups into the synced list query", async () => {
+    const filter = {
+      conds: {
+        conj: "or",
+        groups: [
+          {
+            conj: "and",
+            items: [
+              { field: "标签", op: "notIn", values: ["后端"] },
+              { field: "文档", op: "empty" },
+            ],
+          },
+          {
+            conj: "or",
+            items: [
+              { field: "截止", op: "date", date: { preset: "thisWeek" } },
+              { field: "$node:plannedEnd:*", op: "date", date: { preset: "pastDays", n: 3 } },
+              { field: "$createdBy", op: "in", values: ["$me"] },
+            ],
+          },
+        ],
+      },
+      clock: { today: "2026-11-26", offset: 480 },
+    };
+    const body = JSON.stringify(["transform", [{ id: "q1", name: "workItems.bySpace", args: [{ spaceId, filter }] }]]);
+    const res = await app.request("/api/zero/query?schema=zero_0&appID=zero", {
+      method: "POST",
+      body,
+      headers: { cookie: admin.cookie },
+    });
+    const ast = JSON.stringify(((await res.json()) as { queries: { ast: unknown }[] }).queries[0]?.ast);
+    // 2026-11-26 是周四，本周从 11-23 起；节点排期按东八区的 0 点
+    const monday = Date.parse("2026-11-23T00:00:00Z") / 86_400_000;
+    const since = Date.parse("2026-11-24T00:00:00+08:00");
+    for (const part of ["NOT EXISTS", '"or"', "node_instance", String(monday), String(since), admin.userId])
+      expect(ast).toContain(part);
   });
 });
 

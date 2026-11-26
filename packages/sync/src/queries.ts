@@ -140,7 +140,9 @@ function condition(eb: ItemExpr, c: FilterCondArgs, userID: string, clock: Clock
       return c.op === "in" || c.op === "notIn" ? wrap(eb.cmp("status", "IN", values as never)) : none;
     case c.field === "$stage":
       if (c.op === "in" || c.op === "notIn")
-        return negate ? eb.or(eb.cmp("stage", "IS", null), eb.not(eb.cmp("stage", "IN", values))) : eb.cmp("stage", "IN", values);
+        return negate
+          ? eb.or(eb.cmp("stage", "IS", null), eb.not(eb.cmp("stage", "IN", values)))
+          : eb.cmp("stage", "IN", values);
       return wrap(eb.cmp("stage", "IS NOT", null));
     case c.field === "$name":
       return c.op === "contains" || c.op === "notContains" ? wrap(eb.cmp("name", "ILIKE", pattern)) : none;
@@ -194,7 +196,9 @@ function condition(eb: ItemExpr, c: FilterCondArgs, userID: string, clock: Clock
           return fv.where("str", "ILIKE", pattern);
         case "empty":
         case "notEmpty":
-          return fv.where(({ or, cmp, exists }) => or(cmp("num", "IS NOT", null), cmp("str", "IS NOT", null), exists("items")));
+          return fv.where(({ or, cmp, exists }) =>
+            or(cmp("num", "IS NOT", null), cmp("str", "IS NOT", null), exists("items")),
+          );
         case "range": {
           const days = condDays(c, clock);
           let r = fv.where("num", "IS NOT", null);

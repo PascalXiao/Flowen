@@ -68,25 +68,33 @@ test("number, date, multi-select and people fields can be edited and filtered", 
   await nav.getByRole("link", { name: "任务" }).click();
   await createItem(page, "写文档", { label: "任务名称" });
 
-  // 按字段筛选：标签包含“后端”，工时不少于 5
+  // 条件组筛选：标签属于“后端”
   await nav.getByRole("link", { name: "任务" }).click();
   const rows = page.getByRole("main").getByRole("row");
   await expect(rows.filter({ hasText: "写文档" })).toHaveCount(1);
-  await page.getByRole("button", { name: "字段筛选" }).click();
-  await choose(page.getByLabel("筛选字段"), "标签");
-  await page.getByRole("list", { name: "筛选值" }).getByLabel("后端").check();
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  await choose(page.getByLabel("条件 1-1 对象"), "标签");
+  await page.getByLabel("条件 1-1 值", { exact: true }).click();
+  await page.getByRole("list", { name: "条件 1-1 值 选项" }).getByLabel("后端").check();
+  await page.getByLabel("条件 1-1 值", { exact: true }).click();
   await page.getByRole("button", { name: "应用" }).click();
-  await expect(page.getByText("标签：后端")).toBeVisible();
+  await expect(page.getByRole("button", { name: "筛选 · 1" })).toBeVisible();
   await expect(rows.filter({ hasText: "接口联调" })).toHaveCount(1);
   await expect(rows.filter({ hasText: "写文档" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "字段筛选" }).click();
-  await choose(page.getByLabel("筛选字段"), "工时");
-  await page.getByLabel("最小值").fill("10");
+  // 再加一组「或」：工时不少于 10 的也算；改成「所有」条件组时就都不满足
+  await page.getByRole("button", { name: "筛选 · 1" }).click();
+  await page.getByRole("button", { name: "添加条件组" }).click();
+  await choose(page.getByLabel("条件 2-1 对象"), "工时");
+  await page.getByLabel("条件 2-1 起").fill("10");
   await page.getByRole("button", { name: "应用" }).click();
-  await expect(page.getByText("工时 ≥ 10")).toBeVisible();
   await expect(rows.filter({ hasText: "接口联调" })).toHaveCount(0);
-  await page.getByRole("button", { name: "去掉条件 工时 ≥ 10" }).click();
+  await page.getByRole("button", { name: "筛选 · 2" }).click();
+  await choose(page.getByLabel("条件组之间"), "任一");
+  await page.getByRole("button", { name: "应用" }).click();
+  await expect(rows.filter({ hasText: "接口联调" })).toHaveCount(1);
+  await page.getByRole("button", { name: "筛选 · 2" }).click();
+  await page.getByRole("button", { name: "清空条件" }).click();
   await expect(rows.filter({ hasText: "接口联调" })).toHaveCount(1);
 });
 

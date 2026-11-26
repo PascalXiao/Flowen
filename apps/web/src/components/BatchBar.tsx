@@ -1,7 +1,7 @@
 import type { FieldDataType } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
-import { Ban, Eye, GitBranchPlus, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { Ban, Eye, GitBranchPlus, ListMinus, ListPlus, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
@@ -42,12 +42,18 @@ export function BatchBar({
   fields,
   members,
   links = [],
+  fixedViews = [],
+  inView,
   onClear,
 }: {
   items: BatchItem[];
   fields: readonly FieldConfig[];
   members: readonly FieldMember[];
   links?: readonly BatchLink[];
+  /** 自己能编辑的固定视图：可以把选中的工作项加进去。 */
+  fixedViews?: readonly { id: string; name: string }[];
+  /** 当前打开的固定视图：可以把选中的移出去。 */
+  inView?: { id: string; name: string };
   onClear: () => void;
 }) {
   const usable = links.filter((l) => items.some((i) => i.typeId === l.itemTypeId));
@@ -66,6 +72,17 @@ export function BatchBar({
   const field = editable.find((f) => f.key === fieldKey);
   const running = items.filter((i) => i.status !== "terminated");
   const terminated = items.filter((i) => i.status === "terminated");
+
+  /** 一次提交的操作（如加入视图）：成功提示，失败报原因。 */
+  async function once(verb: string, request: Parameters<typeof zero.mutate>[0]) {
+    const { client, server } = zero.mutate(request);
+    for (const outcome of [await client, await server])
+      if (outcome.type === "error") {
+        Toast.warning({ content: `${verb}没成功：${outcome.error.message}`, duration: 4 });
+        return;
+      }
+    Toast.success({ content: `已${verb} ${items.length} 项`, duration: 2 });
+  }
 
   /** 逐条执行，等服务端确认；返回成功条数并提示失败原因。 */
   async function each(list: BatchItem[], verb: string, run: (item: BatchItem) => Parameters<typeof zero.mutate>[0]) {
@@ -207,6 +224,45 @@ export function BatchBar({
             {syncPanel}
           </PopoverContent>
         </Popover>
+      )}
+      {fixedViews.length > 0 && (
+        <Popover>
+          <PopoverTrigger className={barButton}>
+            <ListPlus />
+            加入视图
+          </PopoverTrigger>
+          <PopoverContent align="center" side="top" className="flex w-56 flex-col p-1">
+            <span className="px-2 pt-1.5 pb-1 text-fg-subtle text-xs">加入固定视图</span>
+            {fixedViews.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className="flex h-7 cursor-pointer items-center rounded-md px-2 text-left hover:bg-hover"
+                onClick={() =>
+                  once(`加入「${v.name}」`, mutators.view.addItems({ id: v.id, itemIds: items.map((i) => i.id) }))
+                }
+              >
+                {v.name}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
+      {inView && (
+        <button
+          type="button"
+          className={barButton}
+          onClick={async () => {
+            await once(
+              `移出「${inView.name}」`,
+              mutators.view.removeItems({ id: inView.id, itemIds: items.map((i) => i.id) }),
+            );
+            onClear();
+          }}
+        >
+          <ListMinus />
+          移出视图
+        </button>
       )}
       <button
         type="button"

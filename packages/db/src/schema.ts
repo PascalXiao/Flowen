@@ -551,6 +551,8 @@ export interface ViewDisplay {
   summary?: Record<string, SummaryKind>;
   /** 看板：泳道（creator、role:角色键、field:字段键）和卡片上显示的字段。 */
   board?: { lanes?: string | null; cardFields?: string[] };
+  /** 快捷筛选：显示在筛选条上的字段键。 */
+  quick?: string[];
 }
 /** 汇总行的统计方式：计数、已填写、未填写、已填写百分比、求和、平均、最大、最小。 */
 export type SummaryKind = "count" | "filled" | "empty" | "filledPct" | "sum" | "avg" | "max" | "min";

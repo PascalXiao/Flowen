@@ -124,9 +124,7 @@ export const workItemFilter = z.object({
   conds: z
     .object({
       conj: z.enum(["and", "or"]),
-      groups: z
-        .array(z.object({ conj: z.enum(["and", "or"]), items: z.array(filterCond).max(20) }))
-        .max(10),
+      groups: z.array(z.object({ conj: z.enum(["and", "or"]), items: z.array(filterCond).max(20) })).max(10),
     })
     .optional(),
   clock: z.object({ today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), offset: z.number().int() }).optional(),
@@ -160,6 +158,7 @@ export const viewDisplay = z.object({
       cardFields: z.array(z.string().max(100)).max(8).optional(),
     })
     .optional(),
+  quick: z.array(z.string().max(100)).max(10).optional(),
 });
 
 /** 只存有值的条件；clock 是查询时才带的，不存。 */

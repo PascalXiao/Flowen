@@ -1,4 +1,4 @@
-import { mutators, queries, type WorkItemFilterArgs } from "@fp/sync";
+import { clockFor, mutators, queries, usesClock, type WorkItemFilterArgs } from "@fp/sync";
 import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
@@ -181,10 +181,12 @@ function ViewList({
   onOpen: (viewId: string) => void;
 }) {
   const zero = useZero();
-  const [scope, setScope] = useState<"all" | "mine">("all");
+  const [scope, setScope] = useState<"all" | "public" | "personal" | "mine">("all");
   const [q, setQ] = useState("");
   const shown = views.filter(
-    (v) => (scope === "all" || v.createdBy === zero.userID) && v.name.toLowerCase().includes(q.trim().toLowerCase()),
+    (v) =>
+      (scope === "all" || (scope === "mine" ? v.createdBy === zero.userID : (v.visibility ?? "public") === scope)) &&
+      v.name.toLowerCase().includes(q.trim().toLowerCase()),
   );
   return (
     <div className="flex flex-col gap-3">
@@ -195,6 +197,8 @@ function ViewList({
           onChange={setScope}
           items={[
             ["all", "全部视图"],
+            ["public", "公共视图"],
+            ["personal", "个人视图"],
             ["mine", "我创建的"],
           ]}
         />
@@ -214,6 +218,9 @@ function ViewList({
           <thead>
             <tr className="border-b border-line-subtle text-left text-xs text-fg-muted">
               <th className="py-2 font-normal">视图名称</th>
+              <th className="py-2 font-normal">说明</th>
+              <th className="py-2 font-normal">类型</th>
+              <th className="py-2 font-normal">可见范围</th>
               <th className="py-2 font-normal">创建者</th>
               <th className="py-2 font-normal">创建时间</th>
               <th className="w-16" />
@@ -230,6 +237,15 @@ function ViewList({
                   >
                     {v.name}
                   </button>
+                </td>
+                <td className="max-w-80 truncate py-2 text-fg-muted" title={v.description ?? undefined}>
+                  {v.description || "—"}
+                </td>
+                <td className="py-2 text-fg-muted">{v.kind === "fixed" ? "固定视图" : "条件视图"}</td>
+                <td className="py-2 text-fg-muted">
+                  {v.visibility === "personal"
+                    ? `个人${v.members.length ? `（${v.members.length} 位协作者）` : ""}`
+                    : "公共"}
                 </td>
                 <td className="py-2 text-fg-muted">{members.find((m) => m.userId === v.createdBy)?.name ?? "—"}</td>
                 <td className="py-2 text-fg-muted">
@@ -278,6 +294,7 @@ function WorkItems({
     typeIds: [type.id],
   });
   const zero = useZero();
+  const [rows, setRows] = useState<readonly string[]>([]);
   const [view, setView] = useState<"table" | "tree" | "board" | "gantt">("table");
   // 列表的显示设置（列、排序、分组、着色）：没套用视图时记在本机，下次打开还是这样
   const displayKey = `flowen.list.${space.id}.${type.id}`;
@@ -305,8 +322,11 @@ function WorkItems({
       name: type.name,
       definitions: type.flowTemplates.flatMap((f) => (f.currentVersion ? [f.currentVersion.definition] : [])),
       fields: type.fields,
+      roles: type.roles,
     },
   ];
+  // 动态时间（本周、过去 N 天…）按空间时区的今天算，查询时带上
+  const queryFilter = usesClock(filter) ? { ...filter, clock: clockFor(space.timezone ?? "Asia/Shanghai") } : filter;
   const viewSwitch = (
     <Segmented
       label="显示方式"
@@ -353,9 +373,13 @@ function WorkItems({
       members={members.map((m) => ({ id: m.userId, name: m.name }))}
       views={views.map((v) => ({ ...v, filter: v.filter ?? {} }))}
       isAdmin={isAdmin}
+      isGuest={space.members.find((m) => m.userId === zero.userID)?.role === "guest"}
       fixedTypeId={type.id}
-      display={view === "table" ? display : undefined}
-      onView={(v) => view === "table" && v.display && setDisplay(v.display as ListDisplay)}
+      quick={display.quick ?? []}
+      onQuick={(quick) => setDisplay({ ...display, quick })}
+      rowIds={rows}
+      display={display}
+      onView={(v) => v.display && setDisplay(v.display as ListDisplay)}
       actions={viewSwitch}
       tools={slots?.tools}
       search={slots?.search}
@@ -368,7 +392,7 @@ function WorkItems({
       {view === "tree" ? (
         <TreeView
           spaceId={space.id}
-          filter={filter}
+          filter={queryFilter}
           relationDefs={spaceRelationDefs(space).map((d) => {
             const name = (id: string) =>
               [...space.workItemTypes, ...foreignTypes(space)].find((x) => x.id === id)?.name ?? "?";
@@ -381,7 +405,7 @@ function WorkItems({
       ) : view === "board" ? (
         <Board
           spaceId={space.id}
-          filter={filter}
+          filter={queryFilter}
           types={types}
           fields={withLineOptions(type.fields, space.businessLines)}
           roles={type.roles}
@@ -396,17 +420,27 @@ function WorkItems({
             spaceId={space.id}
             timeZone={space.timezone ?? "Asia/Shanghai"}
             calendar={space.calendar ?? NO_CALENDAR}
-            filter={filter}
+            filter={queryFilter}
           />
         </div>
       ) : (
         <WorkItemList
           space={space}
-          filter={filter}
+          filter={queryFilter}
           display={display}
           onDisplay={setDisplay}
           toolbar={filterBar}
-          onRows={onRows}
+          fixedViews={views.filter(
+            (v) =>
+              v.kind === "fixed" &&
+              (isAdmin ||
+                v.createdBy === zero.userID ||
+                v.members.some((m) => m.userId === zero.userID && m.role === "edit")),
+          )}
+          onRows={(ids) => {
+            setRows(ids);
+            onRows?.(ids);
+          }}
         />
       )}
     </div>
