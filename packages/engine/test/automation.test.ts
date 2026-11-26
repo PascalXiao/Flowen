@@ -10,6 +10,7 @@ import {
   renderTemplate,
   resolveRecipients,
   ruleApplies,
+  type ScheduleTrigger,
   scheduleDue,
   triggerMatches,
 } from "../src/index.ts";
@@ -123,11 +124,11 @@ describe("time triggers", () => {
     expect(scheduleDue({ ...day, endDate: "2026-11-02" }, slot)).toBe(false);
     expect(scheduleDue({ ...day, startDate: "2026-11-03", endDate: "2026-11-03" }, slot)).toBe(true);
     // 2026-10-27 是上一周的周二：隔一周的话本周不触发，隔两周的从 10-20 那周算起本周触发
-    const week = { kind: "schedule", frequency: "week", weekdays: [2], hour: 9 } as const;
+    const week: ScheduleTrigger = { kind: "schedule", frequency: "week", weekdays: [2], hour: 9 };
     expect(scheduleDue({ ...week, every: 2, startDate: "2026-10-27" }, slot)).toBe(false);
     expect(scheduleDue({ ...week, every: 2, startDate: "2026-10-20" }, slot)).toBe(true);
     expect(scheduleDue({ ...week, every: 2, startDate: "2026-11-02" }, slot)).toBe(true);
-    const month = { kind: "schedule", frequency: "month", monthDays: [3], hour: 9 } as const;
+    const month: ScheduleTrigger = { kind: "schedule", frequency: "month", monthDays: [3], hour: 9 };
     expect(scheduleDue({ ...month, every: 3, startDate: "2026-08-15" }, slot)).toBe(true);
     expect(scheduleDue({ ...month, every: 3, startDate: "2026-09-15" }, slot)).toBe(false);
   });
