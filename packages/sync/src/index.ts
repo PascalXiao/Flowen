@@ -14,6 +14,7 @@ export * from "./handover.ts";
 export * from "./hierarchies.ts";
 export * from "./lifecycle.ts";
 export * from "./link-rules.ts";
+export * from "./linked-items.ts";
 export * from "./marks.ts";
 export * from "./mutators.ts";
 export * from "./nudge.ts";

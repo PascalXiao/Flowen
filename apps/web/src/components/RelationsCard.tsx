@@ -1,9 +1,12 @@
 import { mutators, queries } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
-import { useState } from "react";
-import { Select } from "@/components/ui/input";
+import { Plus, X } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Field, Input, Select } from "@/components/ui/input";
 import { Panel } from "@/components/ui/page";
 import { newId } from "@/lib/utils";
 
@@ -40,6 +43,7 @@ interface Linked {
  */
 export function RelationsCard({
   workItemId,
+  itemName = "",
   spaceId,
   defs,
   reverseDefs = [],
@@ -49,6 +53,8 @@ export function RelationsCard({
 }: {
   title?: string;
   workItemId: string;
+  /** 同步创建时新工作项的默认名称。 */
+  itemName?: string;
   spaceId: string;
   defs: readonly Def[];
   reverseDefs?: readonly ReverseDef[];
@@ -83,6 +89,20 @@ export function RelationsCard({
               run(mutators.relation.add({ id: newId(), relationDefId: def.id, fromId: workItemId, toId }))
             }
             onRemove={(id) => run(mutators.relation.remove({ id }))}
+            onCreate={(name, copyFields) =>
+              run(
+                mutators.relation.createItem({
+                  id: newId(),
+                  relationId: newId(),
+                  relationDefId: def.id,
+                  itemId: workItemId,
+                  side: "to",
+                  name,
+                  copyFields,
+                }),
+              )
+            }
+            itemName={itemName}
           />
         ))}
         {reverseDefs.map((def) => (
@@ -102,6 +122,20 @@ export function RelationsCard({
               run(mutators.relation.add({ id: newId(), relationDefId: def.id, fromId: otherId, toId: workItemId }))
             }
             onRemove={(id) => run(mutators.relation.remove({ id }))}
+            onCreate={(name, copyFields) =>
+              run(
+                mutators.relation.createItem({
+                  id: newId(),
+                  relationId: newId(),
+                  relationDefId: def.id,
+                  itemId: workItemId,
+                  side: "from",
+                  name,
+                  copyFields,
+                }),
+              )
+            }
+            itemName={itemName}
           />
         ))}
         {backlinks.length > 0 && (
@@ -130,6 +164,8 @@ function RelationGroup({
   linked,
   onAdd,
   onRemove,
+  onCreate,
+  itemName,
 }: {
   def: Def;
   spaceId: string;
@@ -137,7 +173,10 @@ function RelationGroup({
   linked: Linked[];
   onAdd: (toId: string) => void;
   onRemove: (relationId: string) => void;
+  onCreate: (name: string, copyFields: boolean) => Promise<void>;
+  itemName: string;
 }) {
+  const [creating, setCreating] = useState(false);
   // 候选：目标类型所在空间（跨空间关联是另一个空间）里的工作项，去掉自己和已经关联的
   const [candidates] = useQuery(
     queries.workItems.bySpace({ spaceId: def.otherSpaceId ?? spaceId, filter: { typeIds: [def.toTypeId] } }),
@@ -169,14 +208,38 @@ function RelationGroup({
             ),
         )}
       </ul>
-      <Select aria-label={`添加${def.name}`} value="" onChange={(e) => e.target.value && onAdd(e.target.value)}>
-        <option value="">{def.cardinality === "one" && linked.length > 0 ? "更换为…" : "添加…"}</option>
-        {options.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </Select>
+      <div className="flex items-center gap-1.5">
+        <Select
+          aria-label={`添加${def.name}`}
+          className="min-w-0 flex-1"
+          value=""
+          onChange={(e) => e.target.value && onAdd(e.target.value)}
+        >
+          <option value="">{def.cardinality === "one" && linked.length > 0 ? "更换为…" : "添加…"}</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+        <Button variant="outline" aria-label={`新建${def.name}`} onClick={() => setCreating(true)}>
+          <Plus />
+          新建
+        </Button>
+      </div>
+      {creating && (
+        <CreateLinked
+          title={`新建${def.name}`}
+          crossSpace={!!def.otherSpaceId && def.otherSpaceId !== spaceId}
+          defaultName={itemName}
+          onClose={() => setCreating(false)}
+          onCreate={async (name, copyFields) => {
+            // 不等服务端确认：浏览器里乐观建好就关掉，出错时提示在卡片下面
+            setCreating(false);
+            await onCreate(name, copyFields);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -186,5 +249,69 @@ function ItemLink({ item }: { item: ItemRef }) {
     <Link to="/items/$itemId" params={{ itemId: item.id }} className="truncate text-accent hover:text-accent">
       {item.name}
     </Link>
+  );
+}
+
+/**
+ * 同步创建：在关联的另一端新建一个工作项并直接关联上（跨空间关联就建在对方空间里）。
+ * 默认带上同键、同类型的字段值；这条关联上的字段同步规则也会照常同步。
+ */
+function CreateLinked({
+  title,
+  crossSpace,
+  defaultName,
+  onClose,
+  onCreate,
+}: {
+  title: string;
+  crossSpace: boolean;
+  defaultName: string;
+  onClose: () => void;
+  onCreate: (name: string, copyFields: boolean) => Promise<void>;
+}) {
+  const [name, setName] = useState(defaultName);
+  const [copyFields, setCopyFields] = useState(true);
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await onCreate(name.trim(), copyFields);
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={title}>
+        <form className="flex flex-col gap-3" onSubmit={submit}>
+          {crossSpace && (
+            <p className="text-sm text-fg-muted">
+              这条关联的另一端在别的空间，新工作项会建在那个空间里，并和当前工作项关联。
+            </p>
+          )}
+          <Field label="名称">
+            <Input
+              aria-label="新工作项名称"
+              required
+              maxLength={200}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              aria-label="带上同名字段"
+              checked={copyFields}
+              onChange={(e) => setCopyFields(e.target.checked)}
+            />
+            带上同名字段的值
+            <span className="text-xs text-fg-subtle">（字段键和类型都相同的才带）</span>
+          </label>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" type="button" onClick={onClose}>
+              取消
+            </Button>
+            <Button type="submit" disabled={!name.trim()}>
+              创建并关联
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
