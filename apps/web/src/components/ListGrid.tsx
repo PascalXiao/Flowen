@@ -12,6 +12,8 @@ export interface GridColumn<T> {
   header: ReactNode;
   width: number;
   frozen?: boolean;
+  /** 表头分组：相邻同名的列在表头上方合并成一格。 */
+  group?: string;
   /** 设了就能拖表头右边缘改列宽，松手时回调新宽度。 */
   onResize?: (width: number) => void;
   cell: (row: T, index: number) => ReactNode;
@@ -39,6 +41,7 @@ export function ListGrid<T extends { id: string }>({
   selected,
   onSelect,
   rowTint,
+  cellTint,
   footer,
   empty,
 }: {
@@ -50,6 +53,8 @@ export function ListGrid<T extends { id: string }>({
   selected: readonly string[];
   onSelect: (ids: string[]) => void;
   rowTint?: (item: T) => string | undefined;
+  /** 单元格着色：只给这一格上色（压过行的颜色）。 */
+  cellTint?: (item: T, key: string) => string | undefined;
   /** 底部汇总行：每列下面放什么。 */
   footer?: { label: string; cell: (key: string) => ReactNode };
   empty?: ReactNode;
@@ -131,6 +136,25 @@ export function ListGrid<T extends { id: string }>({
   }
 
   const rowStyle = { width: layout.total, minWidth: "100%" };
+  // 表头分组：把相邻同组的列并成一段；没有分组的列上方留空
+  const bands: {
+    key: string;
+    name: string | undefined;
+    width: number;
+    left: number | undefined;
+    span: number;
+    edge: boolean;
+  }[] = [];
+  if (layout.cols.some((c) => c.col.group))
+    layout.cols.forEach(({ col, width, left }, i) => {
+      const last = bands[bands.length - 1];
+      const sameFrozen = !!col.frozen === (last?.left !== undefined);
+      if (last && col.group && last.name === col.group && sameFrozen) {
+        last.width += width;
+        last.span += 1;
+        last.edge = i === layout.lastFrozen;
+      } else bands.push({ key: col.key, name: col.group, width, left, span: 1, edge: i === layout.lastFrozen });
+    });
 
   return (
     <div
@@ -143,6 +167,36 @@ export function ListGrid<T extends { id: string }>({
     >
       {/* 表头 */}
       <div role="rowgroup" className="sticky top-0 z-[3]" style={rowStyle}>
+        {bands.length > 0 && (
+          <div role="row" aria-label="表头分组" className="flex text-fg-muted" style={{ height: HEADER_HEIGHT - 6 }}>
+            <div
+              aria-hidden
+              className={cn(cellBase, paint, "border-b-0")}
+              style={{ width: SELECT_WIDTH, ...frozenStyle(0) }}
+            />
+            {bands.map((b) => (
+              <div
+                key={b.key}
+                role="columnheader"
+                aria-colspan={b.span}
+                className={cn(
+                  cellBase,
+                  paint,
+                  pad,
+                  "justify-center",
+                  b.name
+                    ? "border-line font-medium text-fg shadow-[inset_-1px_0_0_var(--fl-line-subtle)]"
+                    : "border-b-0",
+                  b.edge && "shadow-[inset_-1px_0_0_var(--fl-line)]",
+                )}
+                style={{ width: b.width, ...frozenStyle(b.left) }}
+              >
+                {b.name && <span className="min-w-0 truncate">{b.name}</span>}
+              </div>
+            ))}
+            <div aria-hidden className={cn(cellBase, paint, "flex-1 border-b-0")} />
+          </div>
+        )}
         <div role="row" className="flex text-fg-muted" style={{ height: HEADER_HEIGHT }}>
           <div
             role="columnheader"
@@ -240,16 +294,19 @@ export function ListGrid<T extends { id: string }>({
                   }
                 />
               </div>
-              {layout.cols.map(({ col, width, left }, i) => (
-                <div
-                  key={col.key}
-                  role="gridcell"
-                  className={cn(cellBase, paint, pad, edge(i))}
-                  style={{ width, ...frozenStyle(left) }}
-                >
-                  {col.cell(r.item, r.index)}
-                </div>
-              ))}
+              {layout.cols.map(({ col, width, left }, i) => {
+                const own = isOn ? undefined : cellTint?.(r.item, col.key);
+                return (
+                  <div
+                    key={col.key}
+                    role="gridcell"
+                    className={cn(cellBase, paint, pad, edge(i))}
+                    style={{ width, ...frozenStyle(left), ...(own && ({ "--row-tint": own } as CSSProperties)) }}
+                  >
+                    {col.cell(r.item, r.index)}
+                  </div>
+                );
+              })}
               <div aria-hidden className={cn(cellBase, paint, "flex-1")} />
             </div>
           );

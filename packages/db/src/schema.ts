@@ -538,11 +538,12 @@ export type FieldFilter =
 /** 列表视图的显示设置：列、排序、分组、行着色。 */
 export interface ViewDisplay {
   /** 显示的列（列键，见前端的列定义）和列宽，按顺序。 */
-  columns?: { key: string; width?: number }[];
+  /** group：表头分组的名称，相邻同名的列在表头上合并成一组。 */
+  columns?: { key: string; width?: number; group?: string }[];
   sort?: { key: string; desc?: boolean }[];
   groupBy?: string | null;
-  /** 行着色：满足条件的行用这个颜色。 */
-  colors?: { when: Condition; color: string }[];
+  /** 着色：满足条件的行（cells 为空）或这几列的单元格用这个颜色。 */
+  colors?: { when: Condition; color: string; cells?: string[] }[];
   /** 名称列之外再冻结前几列（横向滚动时固定在左边）。 */
   frozen?: number;
   /** 行高：低、中、高、超高。 */

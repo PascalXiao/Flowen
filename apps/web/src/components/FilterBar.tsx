@@ -332,7 +332,8 @@ export function FilterBar({
               choices={choices(f)}
               value={current?.op === "in" ? current.values : []}
               onChange={(values) => setFieldFilter(key, values)}
-              placeholder={f.name}
+              placeholder={`全部${f.name}`}
+              placeholderClass="text-fg"
             />,
           ];
         })}
@@ -410,18 +411,24 @@ export function FilterBar({
           <SaveView
             isGuest={!!isGuest}
             rowCount={rowIds.length}
-            onSave={(v) => {
+            onSave={async (v) => {
               const { viewId: _v, ...rest } = filter;
-              return run(
+              const id = newId();
+              const fixed = v.kind === "fixed";
+              const base = filter.typeIds ? { typeIds: filter.typeIds } : {};
+              const ok = await run(
                 mutators.view.create({
-                  id: newId(),
+                  id,
                   spaceId,
-                  filter: v.kind === "fixed" ? { typeIds: filter.typeIds } : rest,
+                  filter: fixed ? base : rest,
                   ...(display ? { display: display as never } : {}),
                   ...v,
-                  ...(v.kind === "fixed" && { itemIds: rowIds.slice(0, 500) }),
+                  ...(fixed && { itemIds: rowIds.slice(0, 500) }),
                 }),
               );
+              // 固定视图存的是工作项，保存后切到这个视图
+              if (ok && fixed) change({ ...base, viewId: id });
+              return ok;
             }}
           />
         )}

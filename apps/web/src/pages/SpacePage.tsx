@@ -3,7 +3,7 @@ import type { QueryResultType } from "@rocicorp/zero";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, Columns3, GanttChartSquare, List, ListTree } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
 import { Board } from "@/components/Board";
 import { CreateWorkItem } from "@/components/CreateWorkItem";
@@ -295,6 +295,13 @@ function WorkItems({
   });
   const zero = useZero();
   const [rows, setRows] = useState<readonly string[]>([]);
+  const reportRows = useCallback(
+    (ids: readonly string[]) => {
+      setRows(ids);
+      onRows?.(ids);
+    },
+    [onRows],
+  );
   const [view, setView] = useState<"table" | "tree" | "board" | "gantt">("table");
   // 列表的显示设置（列、排序、分组、着色）：没套用视图时记在本机，下次打开还是这样
   const displayKey = `flowen.list.${space.id}.${type.id}`;
@@ -437,10 +444,7 @@ function WorkItems({
                 v.createdBy === zero.userID ||
                 v.members.some((m) => m.userId === zero.userID && m.role === "edit")),
           )}
-          onRows={(ids) => {
-            setRows(ids);
-            onRows?.(ids);
-          }}
+          onRows={reportRows}
         />
       )}
     </div>

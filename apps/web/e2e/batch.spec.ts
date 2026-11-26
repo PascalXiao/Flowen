@@ -58,6 +58,19 @@ test("batch edit a field, terminate and restore selected rows", async ({ page })
   await expect(page.getByText("已恢复 2 项")).toBeVisible();
   await expect(bar.getByRole("button", { name: "终止" })).toBeVisible();
 
+  // 批量改角色：在已有成员上添加
+  await bar.getByRole("button", { name: "改角色" }).click();
+  await page.getByLabel("角色人员", { exact: true }).click();
+  await page.getByRole("list", { name: "角色人员 选项" }).getByLabel("Pascal").check();
+  await page.getByLabel("角色人员", { exact: true }).click();
+  await page.getByRole("button", { name: "应用" }).click();
+  await expect(page.getByText("已修改 2 项")).toBeVisible();
+
+  // 批量升级模板：已经是最新版本，逐条提示原因
+  await bar.getByRole("button", { name: "升级模板" }).click();
+  await page.locator("[data-popconfirm]").getByRole("button", { name: "升级" }).click();
+  await expect(page.getByText(/已经是最新版本了/)).toBeVisible();
+
   await bar.getByRole("button", { name: "取消选择" }).click();
   await expect(bar).toHaveCount(0);
 });

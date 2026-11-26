@@ -1,9 +1,24 @@
-import type { FieldDataType } from "@fp/engine";
+import { type FieldDataType, nodeFlowOf, statusFlowOf } from "@fp/engine";
 import { mutators } from "@fp/sync";
 import { useZero } from "@rocicorp/zero/react";
-import { Ban, Eye, GitBranchPlus, ListMinus, ListPlus, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Ban,
+  CircleFadingArrowUp,
+  Eye,
+  GitBranchPlus,
+  ListMinus,
+  ListPlus,
+  Pencil,
+  RotateCcw,
+  Star,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { type FieldConfig, FieldInput, type FieldInputValue, type FieldMember } from "@/components/FieldInput";
+import { MultiPick } from "@/components/FilterConditions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fieldSurface, Select } from "@/components/ui/input";
@@ -44,8 +59,15 @@ export function BatchBar({
   links = [],
   fixedViews = [],
   inView,
+  types = [],
   onClear,
 }: {
+  /** 工作项类型的角色和已发布的流程（批量流转、改角色用）。 */
+  types?: readonly {
+    id: string;
+    roles: readonly { key: string; name: string }[];
+    definitions: readonly unknown[];
+  }[];
   items: BatchItem[];
   fields: readonly FieldConfig[];
   members: readonly FieldMember[];
@@ -194,6 +216,133 @@ export function BatchBar({
     </div>
   );
 
+  // 批量流转：状态流选目标状态，节点流选要完成的节点；不适用的条目由服务端拒绝并提示
+  const chosenTypes = types.filter((t) => items.some((i) => i.typeId === t.id));
+  const statusTargets = [
+    ...new Map(
+      chosenTypes.flatMap((t) =>
+        t.definitions.flatMap((d) => statusFlowOf(d)?.statuses.map((x) => [x.key, x.name] as const) ?? []),
+      ),
+    ),
+  ];
+  const nodeTargets = [
+    ...new Map(
+      chosenTypes.flatMap((t) =>
+        t.definitions.flatMap((d) => nodeFlowOf(d)?.nodes.map((n) => [n.key, n.name] as const) ?? []),
+      ),
+    ),
+  ];
+  const flowTargets = [
+    ...statusTargets.map(([k, n]) => ({ value: `status:${k}`, label: `流转到「${n}」` })),
+    ...nodeTargets.map(([k, n]) => ({ value: `node:${k}`, label: `完成节点「${n}」` })),
+  ];
+  const [flowTarget, setFlowTarget] = useState("");
+  const [flowOpen, setFlowOpen] = useState(false);
+  const roles = [...new Map(chosenTypes.flatMap((t) => t.roles.map((r) => [r.key, r.name] as const)))];
+  const [roleKey, setRoleKey] = useState("");
+  const [roleMode, setRoleMode] = useState<"add" | "remove" | "set">("add");
+  const [roleUsers, setRoleUsers] = useState<string[]>([]);
+  const [roleOpen, setRoleOpen] = useState(false);
+
+  const flowPanel = (
+    <div className="flex w-80 flex-col gap-3 p-3">
+      <span className="font-medium">批量流转 {running.length} 项</span>
+      <p className="text-xs text-fg-muted">
+        状态流的工作项流转到选中的状态；节点流的完成选中的节点。走不了的会提示原因。
+      </p>
+      <Select
+        aria-label="流转到"
+        value={flowTarget || flowTargets[0]?.value || ""}
+        onChange={(e) => setFlowTarget(e.target.value)}
+      >
+        {flowTargets.map((t) => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </Select>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setFlowOpen(false)}>
+          取消
+        </Button>
+        <Button
+          size="sm"
+          onClick={async () => {
+            const target = flowTarget || flowTargets[0]?.value || "";
+            const [kind, ...rest] = target.split(":");
+            const key = rest.join(":");
+            setFlowOpen(false);
+            await each(running, "流转", (i) =>
+              kind === "status"
+                ? mutators.workItem.transition({ workItemId: i.id, to: key })
+                : mutators.node.confirm({ workItemId: i.id, nodeKey: key }),
+            );
+          }}
+        >
+          流转
+        </Button>
+      </div>
+    </div>
+  );
+
+  const rolePanel = (
+    <div className="flex w-80 flex-col gap-3 p-3">
+      <span className="font-medium">批量修改角色 {items.length} 项</span>
+      <div className="flex gap-2">
+        <Select aria-label="角色" value={roleKey || roles[0]?.[0] || ""} onChange={(e) => setRoleKey(e.target.value)}>
+          {roles.map(([k, n]) => (
+            <option key={k} value={k}>
+              {n}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="修改方式"
+          className="w-28 shrink-0"
+          value={roleMode}
+          onChange={(e) => setRoleMode(e.target.value as typeof roleMode)}
+        >
+          <option value="add">添加</option>
+          <option value="remove">移除</option>
+          <option value="set">替换为</option>
+        </Select>
+      </div>
+      <MultiPick
+        label="角色人员"
+        placeholder="选人"
+        choices={members.map((m) => ({ value: m.userId, label: m.name }))}
+        value={roleUsers}
+        onChange={setRoleUsers}
+      />
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setRoleOpen(false)}>
+          取消
+        </Button>
+        <Button
+          size="sm"
+          disabled={roleMode !== "set" && roleUsers.length === 0}
+          onClick={async () => {
+            const key = roleKey || roles[0]?.[0];
+            if (!key) return;
+            setRoleOpen(false);
+            await each(items, "修改", (i) =>
+              roleMode === "set"
+                ? mutators.role.set({ workItemId: i.id, roleKey: key, userIds: roleUsers })
+                : mutators.role.adjust({
+                    workItemId: i.id,
+                    roleKey: key,
+                    ...(roleMode === "add" ? { add: roleUsers } : { remove: roleUsers }),
+                  }),
+            );
+            setRoleUsers([]);
+          }}
+        >
+          应用
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     // biome-ignore lint/a11y/useSemanticElements: 只是给一组按钮起名，fieldset 会带上表单的默认样式
     <div
@@ -213,6 +362,42 @@ export function BatchBar({
             {editPanel}
           </PopoverContent>
         </Popover>
+      )}
+      {flowTargets.length > 0 && running.length > 0 && (
+        <Popover open={flowOpen} onOpenChange={setFlowOpen}>
+          <PopoverTrigger className={barButton}>
+            <ArrowRightLeft />
+            流转
+          </PopoverTrigger>
+          <PopoverContent align="center" side="top" className="p-0">
+            {flowPanel}
+          </PopoverContent>
+        </Popover>
+      )}
+      {roles.length > 0 && (
+        <Popover open={roleOpen} onOpenChange={setRoleOpen}>
+          <PopoverTrigger className={barButton}>
+            <Users />
+            改角色
+          </PopoverTrigger>
+          <PopoverContent align="center" side="top" className="p-0">
+            {rolePanel}
+          </PopoverContent>
+        </Popover>
+      )}
+      {running.length > 0 && (
+        <Popconfirm
+          title={`把 ${running.length} 个工作项升级到流程模板的最新版本？`}
+          content="已是最新版本的会提示不用升级；新版本里去掉的节点会从工作项上移除。"
+          okText="升级"
+          cancelText="取消"
+          onConfirm={() => each(running, "升级", (i) => mutators.node.upgrade({ workItemId: i.id }))}
+        >
+          <button type="button" className={barButton}>
+            <CircleFadingArrowUp />
+            升级模板
+          </button>
+        </Popconfirm>
       )}
       {syncPanel && (
         <Popover open={syncOpen} onOpenChange={setSyncOpen}>

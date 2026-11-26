@@ -128,6 +128,14 @@ import {
   removeRelationArgs,
 } from "./relations.ts";
 import { zql } from "./schema.gen.ts";
+
+const adjustRoleArgs = z.object({
+  workItemId: z.string(),
+  roleKey: z.string(),
+  add: z.array(z.string()).max(100).optional(),
+  remove: z.array(z.string()).max(100).optional(),
+});
+
 import { setBusinessLines, setBusinessLinesArgs, setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
 import { transitionArgs, transitionStatus } from "./status.ts";
 import { createNodeSubItem, createNodeSubItemArgs, createSubItem, createSubItemArgs } from "./subitems.ts";
@@ -509,6 +517,14 @@ export const mutators = defineMutators({
   role: {
     set: defineMutator(setRoleArgs, async ({ tx, args, ctx }) => {
       await setRoleMembers(tx, args, ctx.userID);
+    }),
+    /** 在现有成员上加人、减人（批量改角色用），权限和校验同 set。 */
+    adjust: defineMutator(adjustRoleArgs, async ({ tx, args, ctx }) => {
+      const current = await tx.run(zql.roleMember.where("workItemId", args.workItemId).where("roleKey", args.roleKey));
+      const ids = new Set(current.map((m) => m.userId));
+      for (const id of args.add ?? []) ids.add(id);
+      for (const id of args.remove ?? []) ids.delete(id);
+      await setRoleMembers(tx, { workItemId: args.workItemId, roleKey: args.roleKey, userIds: [...ids] }, ctx.userID);
     }),
     setPresence: defineMutator(setRolePresenceArgs, async ({ tx, args, ctx }) => {
       await setRolePresence(tx, args, ctx.userID);

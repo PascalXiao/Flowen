@@ -1,6 +1,6 @@
 import { nodeFlowOf } from "@fp/engine";
 import type { FilterCondArgs, WorkItemFilterArgs } from "@fp/sync";
-import { Filter, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, Filter, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { FieldConfig } from "@/components/FieldInput";
 import { Button } from "@/components/ui/button";
@@ -315,7 +315,7 @@ export function FilterConditions({
           <span className="text-fg-muted">符合以下</span>
           <Select
             aria-label="条件组之间"
-            className="w-20"
+            className="w-24"
             value={draft.conj}
             onChange={(e) => setDraft({ ...draft, conj: e.target.value as "and" | "or" })}
           >
@@ -590,6 +590,7 @@ export function MultiPick({
   onChange,
   className,
   placeholder = "请选择",
+  placeholderClass = "text-fg-subtle",
 }: {
   label: string;
   choices: readonly Choice[];
@@ -597,6 +598,7 @@ export function MultiPick({
   onChange: (next: string[]) => void;
   className?: string;
   placeholder?: string;
+  placeholderClass?: string;
 }) {
   const [q, setQ] = useState("");
   const names = value.map((v) => choices.find((c) => c.value === v)?.label ?? v);
@@ -606,11 +608,14 @@ export function MultiPick({
       <PopoverTrigger
         aria-label={label}
         className={cn(
-          "flex h-7 min-w-32 flex-1 cursor-pointer items-center truncate rounded-md border border-line bg-surface px-2 text-left text-sm hover:border-line-strong",
+          "flex h-7 min-w-32 flex-1 cursor-pointer items-center gap-1 rounded-md border border-line bg-surface pr-1.5 pl-2 text-left text-sm hover:border-line-strong",
           className,
         )}
       >
-        {names.length > 0 ? names.join("、") : <span className="text-fg-subtle">{placeholder}</span>}
+        <span className="min-w-0 flex-1 truncate">
+          {names.length > 0 ? names.join("、") : <span className={placeholderClass}>{placeholder}</span>}
+        </span>
+        <ChevronDown className="size-3.5 shrink-0 text-fg-subtle" />
       </PopoverTrigger>
       <PopoverContent className="flex w-60 flex-col gap-1 p-2">
         {choices.length > 8 && (

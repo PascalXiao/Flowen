@@ -135,7 +135,13 @@ export type WorkItemFilterArgs = z.output<typeof workItemFilter>;
 /** 列表视图的显示设置：列、排序、分组、行着色（见 db 的 ViewDisplay）。 */
 export const viewDisplay = z.object({
   columns: z
-    .array(z.object({ key: z.string().min(1).max(100), width: z.number().int().min(40).max(1000).optional() }))
+    .array(
+      z.object({
+        key: z.string().min(1).max(100),
+        width: z.number().int().min(40).max(1000).optional(),
+        group: z.string().trim().max(30).optional(),
+      }),
+    )
     .max(100)
     .optional(),
   sort: z
@@ -144,7 +150,9 @@ export const viewDisplay = z.object({
     .optional(),
   groupBy: z.string().nullable().optional(),
   colors: z
-    .array(z.object({ when: z.json(), color: z.string().max(32) }))
+    .array(
+      z.object({ when: z.json(), color: z.string().max(32), cells: z.array(z.string().max(100)).max(50).optional() }),
+    )
     .max(20)
     .optional(),
   frozen: z.number().int().min(0).max(10).optional(),
