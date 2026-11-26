@@ -4115,7 +4115,7 @@ describe("automation on related items, across spaces and calling external APIs",
         .orderBy(desc(schema.eventLog.id))
         .limit(1)
     )[0];
-  const valueOf = async (workItemId: string, fieldKey: string) =>
+  const storedValue = async (workItemId: string, fieldKey: string) =>
     (
       await services.database.db
         .select()
@@ -4152,8 +4152,8 @@ describe("automation on related items, across spaces and calling external APIs",
     expect(await matchRules(services.database, changed?.id as number)).toContain(ruleId);
     expect(await runRule(runner(), ruleId, changed?.id as number, "wf-x1")).toBe("succeeded");
 
-    expect(await valueOf(sku1, "brand")).toBe("北极星");
-    expect(await valueOf(sku2, "brand")).toBeUndefined();
+    expect(await storedValue(sku1, "brand")).toBe("北极星");
+    expect(await storedValue(sku2, "brand")).toBeUndefined();
     // 动作在 SKU 空间写出事件，带着起因
     expect(await lastEvent(sku1, "fieldChanged")).toMatchObject({ spaceId: spaceB, causedBy: changed?.id });
     const comments = await services.database.db
@@ -4197,7 +4197,7 @@ describe("automation on related items, across spaces and calling external APIs",
     const changed = await lastEvent(sku, "fieldChanged");
     expect(await matchRules(services.database, changed?.id as number)).toEqual([ruleId]);
     expect(await runRule(runner(), ruleId, changed?.id as number, "wf-x2")).toBe("succeeded");
-    expect(await valueOf(project, "note")).toBe("停产");
+    expect(await storedValue(project, "note")).toBe("停产");
     const owners = await services.database.db
       .select()
       .from(schema.roleMember)
@@ -4233,8 +4233,8 @@ describe("automation on related items, across spaces and calling external APIs",
       .from(schema.workItem)
       .where(eq(schema.workItem.name, "新品 3 跟进"));
     expect(follow).toBeTruthy();
-    expect(await valueOf(follow?.id as string, "brand")).toBe("南十字");
-    expect(await valueOf(follow?.id as string, "note")).toBe("由 新品 3 创建");
+    expect(await storedValue(follow?.id as string, "brand")).toBe("南十字");
+    expect(await storedValue(follow?.id as string, "note")).toBe("由 新品 3 创建");
     await disable(ruleId, rule);
   });
 

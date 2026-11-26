@@ -223,7 +223,11 @@ async function notifyAction(action: Extract<AutomationAction, { type: "notify" }
   });
   if (members.length === 0) return;
   // 文本里的 {{...}} 总是指触发的工作项：作用到关联工作项上时，说的也是「谁引起了这件事」
-  const text = renderTemplate(action.text, c.trigger, c.item.id === c.trigger.id ? fields : await fieldsOf(c, c.trigger.id));
+  const text = renderTemplate(
+    action.text,
+    c.trigger,
+    c.item.id === c.trigger.id ? fields : await fieldsOf(c, c.trigger.id),
+  );
   await db
     .insert(schema.notification)
     .values(

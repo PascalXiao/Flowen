@@ -401,8 +401,7 @@ export function resolveRecipients(
     else if (r.startsWith("node:")) add(context.nodes?.[r.slice(5)]?.owners);
     else if (r === "currentNodeOwners") {
       for (const n of Object.values(context.nodes ?? {})) if (n.state === "inProgress") add(n.owners);
-    }
-    else if (r.startsWith("user:")) add(r.slice(5));
+    } else if (r.startsWith("user:")) add(r.slice(5));
   }
   // 没有显式选触发人时，不通知做出这次改动的人自己
   if (context.actor && !to.includes("actor")) ids.delete(context.actor);

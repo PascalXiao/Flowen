@@ -1465,7 +1465,8 @@ function RuleForm({
             <h4 className="text-sm font-medium text-fg">动作</h4>
             <p className="text-xs text-fg-subtle">
               文本里可以写 {"{{name}}"}（名称）、{"{{id}}"}、{"{{status}}"}、{"{{field:字段 key}}"}
-              ，执行时换成触发工作项的值（作用到关联工作项上时也是）。 动作可以作用到关联的工作项上（包括别的空间的），以规则创建人的身份执行。
+              ，执行时换成触发工作项的值（作用到关联工作项上时也是）。
+              动作可以作用到关联的工作项上（包括别的空间的），以规则创建人的身份执行。
             </p>
             {renderActions(actions, setActions)}
           </div>
