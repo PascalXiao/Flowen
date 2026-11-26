@@ -417,11 +417,16 @@ export const queries = defineQueries({
     ),
   },
   automations: {
-    /** 空间的自动化规则和每条规则最近的执行记录。 */
+    /**
+     * 空间的自动化规则、每条规则最近的执行记录和外部接口调用记录。
+     * 规则里可能有外部接口的请求头（鉴权令牌），只给空间管理员，和 Webhook 一样。
+     */
     bySpace: defineQuery(z.object({ spaceId: z.string() }), ({ args, ctx }) =>
       zql.automationRule
         .where("spaceId", args.spaceId)
-        .whereExists("space", (s) => s.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .whereExists("space", (s) =>
+          s.whereExists("members", (m) => m.where("userId", ctx.userID).where("role", "admin")),
+        )
         .related("creator")
         .related("runs", (r) =>
           r
@@ -429,6 +434,7 @@ export const queries = defineQueries({
             .limit(10)
             .related("event", (e) => e.where(visibleEvent(ctx.userID)).related("workItem")),
         )
+        .related("requests", (r) => r.orderBy("createdAt", "desc").limit(10).related("workItem"))
         .orderBy("createdAt", "asc"),
     ),
   },

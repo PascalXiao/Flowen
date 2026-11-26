@@ -6,11 +6,14 @@ import {
   createMutatorRunner,
   type DeliverOptions,
   deliverWebhook,
+  failAutomationRequest,
   failWebhookDelivery,
   matchRules,
   matchWebhooks,
   notify,
+  pendingRequests,
   runRule,
+  sendAutomationRequest,
   tickAutomations,
   WebhookBlockedError,
 } from "@fp/server";
@@ -73,9 +76,34 @@ export function createActivities(
       return tickAutomations(database, slot);
     },
 
-    /** 执行一条规则。执行记录和动作在同一个事务里提交，重试时不会重复执行。 */
-    async runRule(ruleId: string, eventId: number): Promise<string> {
-      return runRule(runner, ruleId, eventId, Context.current().info.workflowExecution?.workflowId ?? "unknown");
+    /**
+     * 执行一条规则。执行记录和动作在同一个事务里提交，重试时不会重复执行。
+     * 返回规则登记的、还没发出的外部接口请求，由 workflow 逐个发出。
+     */
+    async runRule(ruleId: string, eventId: number): Promise<{ status: string; requestIds: string[] }> {
+      const status = await runRule(
+        runner,
+        ruleId,
+        eventId,
+        Context.current().info.workflowExecution?.workflowId ?? "unknown",
+      );
+      return { status, requestIds: status === "succeeded" ? await pendingRequests(database, ruleId, eventId) : [] };
+    },
+
+    /** 发一次自动化的外部接口请求。失败时抛出，由 workflow 按退避重试；地址被拦截时不再重试。 */
+    async sendAutomationRequest(requestId: string): Promise<string> {
+      try {
+        return await sendAutomationRequest(database, requestId, webhookOptions);
+      } catch (error) {
+        if (error instanceof WebhookBlockedError)
+          throw ApplicationFailure.nonRetryable(error.message, "WebhookBlocked");
+        throw error;
+      }
+    },
+
+    /** 重试用完仍然失败，记为失败。 */
+    async failAutomationRequest(requestId: string): Promise<void> {
+      await failAutomationRequest(database, requestId);
     },
   };
 }
