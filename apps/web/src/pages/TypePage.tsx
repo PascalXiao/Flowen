@@ -490,12 +490,52 @@ function TypeConfig({ typeId, tab }: { typeId: string; tab: TypeMenuTab }) {
           <FieldConfigSheet
             templates={type.flowTemplates.map((t) => t.name)}
             roles={type.roles}
-            key={field.id}
+            // 复用选项后选项和联动状态变了，重新载入抽屉
+            key={`${field.id}:${field.config?.optionSource ?? ""}:${JSON.stringify(field.options)}`}
             field={field}
             fields={fields}
             members={members}
             canManage={isAdmin}
             onClose={() => setConfiguring(null)}
+            reuse={{
+              sources: (space?.workItemTypes ?? []).flatMap((t) =>
+                t.fields
+                  .filter(
+                    (f) =>
+                      f.id !== field.id &&
+                      !f.config?.optionSource &&
+                      OPTION_FIELD_TYPES.includes(f.dataType as FieldDataType) &&
+                      CASCADE_FIELD_TYPES.includes(f.dataType as FieldDataType) ===
+                        CASCADE_FIELD_TYPES.includes(field.dataType as FieldDataType),
+                  )
+                  .map((f) => ({ id: f.id, label: `${t.name} · ${f.name}` })),
+              ),
+              linkedTo: field.config?.optionSource ?? null,
+              onReuse: async (sourceId, mode) => {
+                const outcome = await zero.mutate(
+                  mutators.fieldDef.reuseOptions({ id: field.id, mode, ...(sourceId && { sourceId }) }),
+                ).client;
+                return outcome.type === "error" ? outcome.error.message : null;
+              },
+            }}
+            copy={{
+              targets: (space?.workItemTypes ?? [])
+                .filter((t) => t.id !== type.id)
+                .map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  taken: t.fields.some((f) => f.key === field.key || f.name === field.name),
+                })),
+              onCopy: async (typeIds) => {
+                const outcome = await zero.mutate(
+                  mutators.fieldDef.copyTo({
+                    id: field.id,
+                    targets: typeIds.map((typeId) => ({ typeId, id: newId() })),
+                  }),
+                ).client;
+                return outcome.type === "error" ? outcome.error.message : null;
+              },
+            }}
             onSave={async (patch: FieldPatch) => {
               // 默认值里的值是 JSON，配置的类型比 mutator 参数宽，交给 mutator 校验
               const outcome = await zero.mutate(

@@ -142,6 +142,8 @@ import {
   updateTaskArgs,
 } from "./tasks.ts";
 import {
+  copyField,
+  copyFieldArgs,
   createField,
   createFieldArgs,
   createRole,
@@ -154,6 +156,8 @@ import {
   publishVersion,
   reorderRoles,
   reorderRolesArgs,
+  reuseOptions,
+  reuseOptionsArgs,
   saveDraft,
   saveDraftArgs,
   setDefaultDisplay,
@@ -382,6 +386,8 @@ export const mutators = defineMutators({
     setAccess: defineMutator(setFieldAccessArgs, ({ tx, args, ctx }) => setFieldAccess(tx, args, ctx.userID)),
     setFormula: defineMutator(setFormulaArgs, ({ tx, args, ctx }) => setFormula(tx, args, ctx.userID)),
     update: defineMutator(updateFieldArgs, ({ tx, args, ctx }) => updateField(tx, args, ctx.userID)),
+    reuseOptions: defineMutator(reuseOptionsArgs, ({ tx, args, ctx }) => reuseOptions(tx, args, ctx.userID)),
+    copyTo: defineMutator(copyFieldArgs, ({ tx, args, ctx }) => copyField(tx, args, ctx.userID)),
   },
   flowTemplate: {
     create: defineMutator(createTemplateArgs, ({ tx, args, ctx }) => createTemplate(tx, args, ctx.userID)),
