@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { type Database, schema } from "@fp/db";
+import { writeAudit } from "@fp/server";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 
@@ -65,6 +66,7 @@ export function tokenRoutes(database: Database, userID: (headers: Headers) => Pr
       await database.db
         .insert(schema.apiToken)
         .values({ id, userId: me, name, tokenHash: hash(token), prefix: token.slice(0, 10) });
+      await writeAudit(database.db, { actor: me, action: "account.createToken", targetId: id, targetName: name });
       return c.json({ id, name, token }, 201);
     })
     .delete("/api/tokens/:id", async (c) => {
@@ -73,8 +75,14 @@ export function tokenRoutes(database: Database, userID: (headers: Headers) => Pr
       const deleted = await database.db
         .delete(schema.apiToken)
         .where(and(eq(schema.apiToken.id, c.req.param("id")), eq(schema.apiToken.userId, me)))
-        .returning({ id: schema.apiToken.id });
+        .returning({ id: schema.apiToken.id, name: schema.apiToken.name });
       if (deleted.length === 0) return c.json({ error: "令牌不存在。" }, 404);
+      await writeAudit(database.db, {
+        actor: me,
+        action: "account.deleteToken",
+        targetId: deleted[0]?.id,
+        targetName: deleted[0]?.name,
+      });
       return c.body(null, 204);
     });
 }

@@ -24,6 +24,25 @@ export async function signUp(page: Page, name: string, email: string) {
   await expect(page.getByRole("heading", { name: "我的空间" })).toBeVisible();
 }
 
+/** 端到端测试里的企业管理员（CI 用 ORG_ADMIN_EMAILS 指定这个邮箱）。 */
+export const ORG_ADMIN_EMAIL = process.env.ORG_ADMIN_EMAIL ?? "org-admin@e2e.flowen.test";
+
+/** 以企业管理员登录：第一次注册，之后直接登录，停在“我的空间”。 */
+export async function signInOrgAdmin(page: Page) {
+  const api = await request.newContext({
+    baseURL: API_URL,
+    extraHTTPHeaders: { origin: process.env.WEB_URL ?? "http://localhost:5173" },
+  });
+  await api.post("/api/auth/sign-up/email", {
+    data: { email: ORG_ADMIN_EMAIL, password: PASSWORD, name: "企业管理员" },
+  });
+  await page.goto("/login");
+  await page.getByLabel("邮箱").fill(ORG_ADMIN_EMAIL);
+  await page.getByLabel("密码").fill(PASSWORD);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "我的空间" })).toBeVisible();
+}
+
 /** 新建空间并进入它的仪表盘。等自己的管理员身份同步下来，否则客户端会先以为自己不是管理员。 */
 export async function createSpace(page: Page, name: string) {
   await page.getByRole("button", { name: "新建空间" }).first().click();
@@ -90,7 +109,7 @@ export async function openItems(page: Page, typeName?: string) {
   await expect(page.getByRole("tab", { name: "工作项列表" })).toHaveAttribute("aria-selected", "true");
 }
 
-type SettingTab = "空间信息" | "工作项" | "权限" | "空间关联" | "自动化" | "回收站";
+type SettingTab = "空间信息" | "工作项" | "权限" | "空间关联" | "自动化" | "回收站" | "操作记录";
 /** 左侧导航进空间配置，切到某个页签（默认「工作项」）。 */
 export async function openSettings(page: Page, tab: SettingTab = "工作项") {
   await nav(page).getByRole("link", { name: "空间配置" }).click();

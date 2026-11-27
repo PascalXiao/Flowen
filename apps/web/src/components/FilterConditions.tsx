@@ -116,6 +116,7 @@ export function filterTargets({
   types,
   members,
   stages,
+  teams = [],
 }: {
   types: readonly {
     id: string;
@@ -126,8 +127,10 @@ export function filterTargets({
   }[];
   members: readonly { id: string; name: string }[];
   stages: readonly string[];
+  /** 团队（team:<id>）：人员类条件可以选整个团队。 */
+  teams?: readonly Choice[];
 }): FilterTarget[] {
-  const people = members.map((m) => ({ value: m.id, label: m.name }));
+  const people = [...members.map((m) => ({ value: m.id, label: m.name })), ...teams];
   const sys = (key: string, name: string, kind: Kind, extra: Partial<FilterTarget> = {}): FilterTarget => ({
     key,
     name,

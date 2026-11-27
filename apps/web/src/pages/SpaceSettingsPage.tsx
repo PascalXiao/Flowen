@@ -4,11 +4,13 @@ import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
+import { AuditLog } from "@/components/AuditLog";
 import { BusinessLinesCard } from "@/components/BusinessLinesCard";
 import { CalendarCard } from "@/components/CalendarCard";
 import { HandoverCard } from "@/components/HandoverCard";
 import { LinkRulesCard } from "@/components/LinkRulesCard";
 import { RecycleBinCard } from "@/components/RecycleBinCard";
+import { SpaceInfoCard } from "@/components/SpaceInfoCard";
 import { UserGroupsCard } from "@/components/UserGroupsCard";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -36,12 +38,14 @@ const SETTING_TABS = [
   ["spaceLink", "空间关联"],
   ["automation", "自动化"],
   ["recycleBin", "回收站"],
+  ["auditLog", "操作记录"],
 ] as const;
 type SettingTab = (typeof SETTING_TABS)[number][0];
 
 /**
  * 空间配置：空间信息（业务线、工作日历）、工作项（类型卡片，点进去是全屏配置页）、权限（成员、用户组）、
- * 空间关联（关联工作项之间的联动规则）、自动化（规则和 Webhook）、回收站（删除的工作项）。只有管理员能改，成员只读。
+ * 空间关联（关联工作项之间的联动规则）、自动化（规则和 Webhook）、回收站（删除的工作项）、
+ * 操作记录（这个空间的审计日志，管理员可见）。只有管理员能改，成员只读。
  */
 export function SpaceSettingsPage() {
   const { spaceId, tab: rawTab } = useParams({ from: "/app/spaces/$spaceId/setting/$tab" });
@@ -70,9 +74,10 @@ export function SpaceSettingsPage() {
           />
         }
       />
-      <PageBody className={tab === "workObjectSetting" ? "max-w-6xl" : "max-w-4xl"}>
+      <PageBody className={tab === "workObjectSetting" || tab === "auditLog" ? "max-w-6xl" : "max-w-4xl"}>
         {tab === "basicInfo" && (
           <>
+            <SpaceInfoCard space={space} canManage={isAdmin} />
             <BusinessLinesCard
               key={JSON.stringify(space.businessLines)}
               spaceId={spaceId}
@@ -117,6 +122,15 @@ export function SpaceSettingsPage() {
           </>
         )}
         {tab === "recycleBin" && <RecycleBinCard spaceId={spaceId} isAdmin={isAdmin} />}
+        {tab === "auditLog" &&
+          (isAdmin ? (
+            <AuditLog
+              spaceId={spaceId}
+              people={space.members.map((m) => ({ id: m.userId, name: m.user?.name ?? m.userId }))}
+            />
+          ) : (
+            <p className="text-fg-subtle text-sm">只有空间管理员可以查看操作记录。</p>
+          ))}
       </PageBody>
     </>
   );

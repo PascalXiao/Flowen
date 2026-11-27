@@ -11,4 +11,9 @@ export const config = {
   authRateLimit: process.env.AUTH_RATE_LIMIT !== "off",
   /** 附件等文件的存放目录。Docker Compose 部署时挂卷。 */
   filesDir: process.env.FILES_DIR ?? "./data/files",
+  /** 注册时直接成为企业管理员的邮箱，逗号分隔。不设时第一个注册的人是企业管理员。 */
+  orgAdminEmails: (process.env.ORG_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };

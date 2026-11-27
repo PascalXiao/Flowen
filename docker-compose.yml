@@ -22,6 +22,8 @@ x-app: &app
     AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-on}
     # Webhook 默认不推送到内网和本机地址；全内网部署、接收方也在内网时设成 true
     WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-false}
+    # 注册时直接成为企业管理员的邮箱（逗号分隔）；不设时第一个注册的人是企业管理员
+    ORG_ADMIN_EMAILS: ${ORG_ADMIN_EMAILS:-}
 
 services:
   postgres:

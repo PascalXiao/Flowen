@@ -1,5 +1,6 @@
 /** Zero 同步层：schema（由 drizzle-zero 从 @fp/db 生成）、查询和 mutator。前端和服务端共用。 */
 export * from "./access.ts";
+export * from "./audit.ts";
 export * from "./automations.ts";
 export * from "./baselines.ts";
 export * from "./charts.ts";
@@ -25,10 +26,12 @@ export * from "./queries.ts";
 export * from "./relations.ts";
 export * from "./rich-text.ts";
 export * from "./schema.gen.ts";
+export * from "./space-templates.ts";
 export * from "./spaces.ts";
 export * from "./status.ts";
 export * from "./subitems.ts";
 export * from "./tasks.ts";
+export * from "./teams.ts";
 export * from "./templates.ts";
 export * from "./views.ts";
 export * from "./vote.ts";

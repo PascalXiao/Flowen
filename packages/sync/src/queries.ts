@@ -3,6 +3,7 @@ import { type Condition, defineQueries, defineQuery, type ExpressionBuilder } fr
 import { z } from "zod";
 import { itemVisible } from "./permissions.ts";
 import { type Schema, zql } from "./schema.gen.ts";
+import { TEAM_PREFIX } from "./teams.ts";
 import { dayOf, type FilterCondArgs, presetDays, workItemFilter } from "./views.ts";
 
 /*
@@ -100,7 +101,7 @@ function applyFilter(query: ItemQuery, filter: z.output<typeof workItemFilter>, 
     const clock = filter.clock ?? { today: new Date().toISOString().slice(0, 10), offset: 0 };
     q = q.where((eb) => {
       const parts = groups.map((g) => {
-        const items = g.items.map((c) => condition(eb, c, userID, clock));
+        const items = g.items.map((c) => condition(eb, c, userID, clock, filter.teams));
         return g.conj === "or" ? eb.or(...items) : eb.and(...items);
       });
       return conds.conj === "or" ? eb.or(...parts) : eb.and(...parts);
@@ -129,12 +130,28 @@ function tsBounds([a, b]: [number | null, number | null], offset: number) {
   return parts;
 }
 
-/** 人员值里的 $me 换成当前登录的人。 */
-const people = (values: readonly string[] | undefined, userID: string) =>
-  (values ?? []).map((v) => (v === "$me" ? userID : v));
+/** 人员值里的 $me 换成当前登录的人，team:<id> 换成查询带来的团队成员。 */
+const peopleOf = (
+  values: readonly string[] | undefined,
+  userID: string,
+  teams: Record<string, string[]> | undefined,
+) => [
+  ...new Set(
+    (values ?? []).flatMap((v) =>
+      v === "$me" ? [userID] : v.startsWith(TEAM_PREFIX) ? (teams?.[v.slice(TEAM_PREFIX.length)] ?? []) : [v],
+    ),
+  ),
+];
 
 /** 一个条件对应的查询表达式（见 db 的 FilterCond）。 */
-function condition(eb: ItemExpr, c: FilterCondArgs, userID: string, clock: Clock): Condition {
+function condition(
+  eb: ItemExpr,
+  c: FilterCondArgs,
+  userID: string,
+  clock: Clock,
+  teams?: Record<string, string[]>,
+): Condition {
+  const people = (values: readonly string[] | undefined, id: string) => peopleOf(values, id, teams);
   const negate = c.op === "notIn" || c.op === "notContains" || c.op === "empty";
   const wrap = (x: Condition) => (negate ? eb.not(x) : x);
   const values = c.values ?? [];
@@ -908,6 +925,30 @@ export const queries = defineQueries({
     /** 自己最近的通知。 */
     mine: defineQuery(({ ctx }) =>
       zql.notification.where("userId", ctx.userID).related("workItem").orderBy("createdAt", "desc").limit(50),
+    ),
+  },
+  org: {
+    /** 企业里所有注册的人（团队选成员、企业管理页用）。一个部署就是一个企业，大家互相可见。 */
+    users: defineQuery(() => zql.user.orderBy("name", "asc")),
+    /** 企业管理员。 */
+    admins: defineQuery(() => zql.orgAdmin.related("user").orderBy("createdAt", "asc")),
+  },
+  teams: {
+    /** 所有团队和成员。 */
+    all: defineQuery(() =>
+      zql.team
+        .related("members", (m) => m.related("user"))
+        .orderBy("sort", "asc")
+        .orderBy("createdAt", "asc"),
+    ),
+  },
+  spaceTemplates: {
+    /** 模板中心：企业模板和自己的个人模板。 */
+    visible: defineQuery(({ ctx }) =>
+      zql.spaceTemplate
+        .where(({ or, cmp }) => or(cmp("scope", "org"), cmp("createdBy", ctx.userID)))
+        .related("creator")
+        .orderBy("updatedAt", "desc"),
     ),
   },
 });

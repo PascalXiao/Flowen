@@ -3,6 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { FlowDemo } from "@/flow-demo/FlowDemo";
 import { authClient } from "@/lib/auth";
 import { ZeroRoot } from "@/lib/zero";
+import { AdminPage } from "@/pages/AdminPage";
 import { AdvancedConfigPage } from "@/pages/AdvancedConfigPage";
 import { ApiTokensPage } from "@/pages/ApiTokensPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -14,7 +15,9 @@ import { SchedulePage } from "@/pages/SchedulePage";
 import { WorkItemHomePage } from "@/pages/SpacePage";
 import { SpaceSettingsPage } from "@/pages/SpaceSettingsPage";
 import { SpacesPage } from "@/pages/SpacesPage";
+import { TeamsPage } from "@/pages/TeamsPage";
 import { TemplateEditorPage } from "@/pages/TemplateEditorPage";
+import { TemplatesPage } from "@/pages/TemplatesPage";
 import { TYPE_MENU_TABS, type TypeMenuTab, TypePage } from "@/pages/TypePage";
 import { ItemRedirect, WorkItemPage } from "@/pages/WorkItemPage";
 
@@ -137,6 +140,15 @@ const panoramaRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { types?: string[] } =>
     Array.isArray(search.types) ? { types: search.types.filter((t): t is string => typeof t === "string") } : {},
 });
+const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates", component: TemplatesPage });
+const teamsRoute = createRoute({ getParentRoute: () => appRoute, path: "/teams", component: TeamsPage });
+const adminIndexRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/admin",
+  component: () => <Navigate to="/admin/$tab" params={{ tab: "members" }} replace />,
+});
+/** 企业管理：/admin/members 成员和企业管理员，/admin/audit 审计日志。 */
+const adminRoute = createRoute({ getParentRoute: () => appRoute, path: "/admin/$tab", component: AdminPage });
 const apiTokensRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings/api", component: ApiTokensPage });
 /** 只知道工作项 id 的链接（通知、搜索、旧地址）：查到所属空间和类型后跳到详情页。 */
 const itemByIdRoute = createRoute({ getParentRoute: () => appRoute, path: "/items/$itemId", component: ItemRedirect });
@@ -149,6 +161,10 @@ const routeTree = rootRoute.addChildren([
     myWorkRoute,
     panoramaRoute,
     apiTokensRoute,
+    templatesRoute,
+    teamsRoute,
+    adminIndexRoute,
+    adminRoute,
     spaceIndexRoute,
     dashboardRoute,
     metricsRoute,

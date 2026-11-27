@@ -70,5 +70,6 @@ Temporal 的库没有备份。恢复后，备份时还在重试中的 Webhook �
 - **查看 Temporal**：Temporal UI 只监听服务器本机。先在自己电脑上运行 `ssh -L 8080:localhost:8080 服务器`，再打开 http://localhost:8080 。
 - **没有域名，先在内网试用**：在 `deploy/.env` 里设 `SITE_ADDRESS=:80`、`PUBLIC_URL=http://服务器IP`，`DOMAIN` 填服务器 IP。这时只走 HTTP，不要用于正式环境。
 - **Webhook 推送到内网**：默认会拦截内网和本机地址。全内网部署时设 `WEBHOOK_ALLOW_PRIVATE=true`。
+- **企业管理员**：部署后第一个注册的人自动成为企业管理员（管理团队、发布企业模板、看审计日志），之后在「账号 → 企业管理」里再指定别人；也可以用 `ORG_ADMIN_EMAILS=a@x.com,b@x.com` 让这些邮箱注册时直接成为企业管理员。
 - **从旧名称 feishu-project 迁过来**：compose 项目名、数据库名和用户名都已改成 flowen，旧部署直接 `up` 会建一套空的新卷。迁移步骤：先 `pg_dumpall` 备份；`down` 掉旧容器；把 `feishu-project_pgdata`、`_files`、`_caddy_data`、`_caddy_config` 逐个复制到对应的 `flowen_*` 卷（`docker run --rm -v 旧卷:/from:ro -v 新卷:/to alpine cp -a /from/. /to/`），zerodata 不用复制；用新卷临时起一个 postgres（带 `-c wal_level=logical`），删掉 Zero 的复制槽并重建 zero 库，建一个临时超级用户，用它执行 `alter database feishu rename to flowen`、`alter role feishu rename to flowen` 和重设密码，再删掉临时用户；最后 `fp up -d --build`。确认数据无误后再删旧卷。
 - **改数据库密码**：`POSTGRES_PASSWORD` 只在数据库第一次初始化时生效。之后要改，先执行 `fp exec postgres psql -U flowen -c "alter user flowen password '新密码'"`，再改 `deploy/.env`，然后执行 `fp up -d`。

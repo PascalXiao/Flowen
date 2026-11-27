@@ -42,6 +42,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
 import { Popconfirm } from "@/components/ui/popconfirm";
 import { Segmented } from "@/components/ui/tabs";
+import { useTeamChoices, useWithTeams } from "@/lib/org";
 import { cn, newId } from "@/lib/utils";
 
 type Space = NonNullable<ReturnType<typeof useSpace>>;
@@ -124,11 +125,12 @@ function syncedFields(config: ChartConfig): string[] | undefined {
 /** 图表数据：同步命中数据来源的工作项（服务端已按权限过滤），在前端按设置汇总。 */
 function useChart(space: Space, filter: WorkItemFilterArgs, config: ChartConfig) {
   const timeZone = space.timezone ?? "Asia/Shanghai";
+  const withTeams = useWithTeams();
   const dims = [config.dimension, config.dimension2, config.series].flatMap((d) => (d?.key ? [d] : []));
   const [rows] = useQuery(
     queries.workItems.forChart({
       spaceId: space.id,
-      filter: withClock(filter, timeZone),
+      filter: withTeams(withClock(filter, timeZone)),
       fields: syncedFields(config),
       roles: [...new Set(dims.filter((d) => d.by === "role").map((d) => d.key as string))],
       nodes: config.object === "node",
@@ -437,6 +439,7 @@ function ChartEditor({ space, chart, onClose }: { space: Space; chart: ChartRow 
   const numericFields = allFields.filter((f) => NUMERIC_TYPES.includes(f.dataType));
   const groupFields = allFields.filter((f) => !NO_GROUP_TYPES.includes(f.dataType) && !f.key.startsWith("$node."));
   const members = space.members.map((m) => ({ id: m.userId, name: m.user?.name ?? "—" }));
+  const teams = useTeamChoices(space.id);
   const stages = [
     ...new Set(
       scope.types.flatMap((t) =>
@@ -631,7 +634,7 @@ function ChartEditor({ space, chart, onClose }: { space: Space; chart: ChartRow 
                     <span className="text-sm">筛选条件</span>
                     <div>
                       <FilterConditions
-                        targets={filterTargets({ types: scope.types, members, stages })}
+                        targets={filterTargets({ types: scope.types, members, stages, teams })}
                         nodes={scope.nodes}
                         value={filter.conds}
                         onChange={(conds) => setFilter((f) => ({ ...f, conds }))}

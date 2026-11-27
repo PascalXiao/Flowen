@@ -128,6 +128,8 @@ export const workItemFilter = z.object({
     })
     .optional(),
   clock: z.object({ today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), offset: z.number().int() }).optional(),
+  /** 条件里用到的团队展开成的成员（team:<id> → 用户 id）：查询时由前端带上，不存进视图。 */
+  teams: z.record(z.string(), z.array(z.string()).max(1000)).optional(),
   viewId: z.string().optional(),
 });
 export type WorkItemFilterArgs = z.output<typeof workItemFilter>;
@@ -170,9 +172,9 @@ export const viewDisplay = z.object({
   quick: z.array(z.string().max(100)).max(10).optional(),
 });
 
-/** 只存有值的条件；clock 是查询时才带的，不存。 */
+/** 只存有值的条件；clock、teams 是查询时才带的，不存。 */
 export function compactFilter(filter: WorkItemFilterArgs): WorkItemFilter {
-  const { clock: _clock, conds, ...rest } = filter;
+  const { clock: _clock, teams: _teams, conds, ...rest } = filter;
   const groups = conds?.groups.filter((g) => g.items.length > 0) ?? [];
   return {
     ...(Object.fromEntries(Object.entries(rest).filter(([, v]) => v?.length)) as WorkItemFilter),

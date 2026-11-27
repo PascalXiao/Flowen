@@ -1,14 +1,12 @@
-import { mutators, queries } from "@fp/sync";
-import { useQuery, useZero } from "@rocicorp/zero/react";
+import { queries } from "@fp/sync";
+import { useQuery } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 import { useActiveSpace } from "@/components/AppShell";
+import { CreateSpaceDialog } from "@/components/CreateSpaceDialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { Field, Input } from "@/components/ui/input";
 import { EmptyState, PageBody, PageHeader } from "@/components/ui/page";
-import { newId } from "@/lib/utils";
 
 export function SpacesPage() {
   const [spaces, result] = useQuery(queries.spaces.mine());
@@ -48,39 +46,14 @@ export function SpacesPage() {
 }
 
 function CreateSpace() {
-  const zero = useZero();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-
-  function create(event: FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) return;
-    zero.mutate(mutators.space.create({ id: newId(), name: name.trim() }));
-    setName("");
-    setOpen(false);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          新建空间
-        </Button>
-      </DialogTrigger>
-      <DialogContent title="新建空间">
-        <form className="flex flex-col gap-5" onSubmit={create}>
-          <Field label="空间名称">
-            <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
-            </Button>
-            <Button type="submit">创建</Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <Plus />
+        新建空间
+      </Button>
+      <CreateSpaceDialog open={open} onOpenChange={setOpen} />
+    </>
   );
 }
