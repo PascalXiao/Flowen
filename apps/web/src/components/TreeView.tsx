@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/page";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StageTag, StatusTag, Tag } from "@/components/ui/tag";
+import { useTeamChoices, useWithTeams } from "@/lib/org";
 import { cn } from "@/lib/utils";
 
 /** 层级：null 按子工作项，否则按这个自定义关联。 */
@@ -413,7 +414,8 @@ function LayeredTree({
     hierarchy.rootTypeId === typeId ? filter : { statuses: filter.statuses, memberIds: filter.memberIds };
   const plans = useContext(TimelineContext) !== null;
   const { opts, timeZone } = useContext(LayerOptsContext);
-  const own = layerFilter(opts, 0, timeZone);
+  const withTeams = useWithTeams();
+  const own = withTeams(layerFilter(opts, 0, timeZone));
   const [rows, result] = useQuery(
     queries.workItems.layerRoots({
       spaceId,
@@ -516,7 +518,8 @@ function LayerChildren({
 function LayerDown({ id, level, step, next, render }: Parameters<typeof LayerChildren>[0]) {
   const plans = useContext(TimelineContext) !== null;
   const { opts, timeZone } = useContext(LayerOptsContext);
-  const filter = layerFilter(opts, level, timeZone);
+  const withTeams = useWithTeams();
+  const filter = withTeams(layerFilter(opts, level, timeZone));
   const [edges] = useQuery(queries.workItems.layerDown({ id, step, next, plans, ...(filter && { filter }) }));
   return sortLayer(
     edges.flatMap((e) => (e.to ? [e.to] : [])),
@@ -527,7 +530,8 @@ function LayerDown({ id, level, step, next, render }: Parameters<typeof LayerChi
 function LayerUp({ id, level, step, next, render }: Parameters<typeof LayerChildren>[0]) {
   const plans = useContext(TimelineContext) !== null;
   const { opts, timeZone } = useContext(LayerOptsContext);
-  const filter = layerFilter(opts, level, timeZone);
+  const withTeams = useWithTeams();
+  const filter = withTeams(layerFilter(opts, level, timeZone));
   const [edges] = useQuery(queries.workItems.layerUp({ id, step, next, plans, ...(filter && { filter }) }));
   return sortLayer(
     edges.flatMap((e) => (e.from ? [e.from] : [])),
@@ -550,6 +554,7 @@ function LayerOptions({
   onChange: (next: LayerOpts) => void;
 }) {
   const layerTypes = [hierarchy.rootTypeId, ...hierarchy.layers.map((l) => l.typeId)];
+  const teams = useTeamChoices(undefined);
   const active = Object.values(value).filter((o) => o.sort || o.conds?.groups.length).length;
   return (
     <Popover>
@@ -586,7 +591,7 @@ function LayerOptions({
                 第 {level + 1} 层 · {type?.name ?? "?"}
               </span>
               <FilterConditions
-                targets={filterTargets({ types: scoped, members, stages })}
+                targets={filterTargets({ types: scoped, members, stages, teams })}
                 nodes={flowNodes(scoped)}
                 value={opt.conds}
                 onChange={(conds) => set({ conds })}

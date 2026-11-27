@@ -2,6 +2,7 @@ import { queries } from "@fp/sync";
 import { useQuery } from "@rocicorp/zero/react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  Building2,
   CalendarRange,
   ChartColumn,
   ChartPie,
@@ -10,12 +11,14 @@ import {
   House,
   Inbox,
   KeyRound,
+  LayoutTemplate,
   LogOut,
   Monitor,
   Moon,
   Settings,
   Sun,
   Telescope,
+  Users,
   Workflow,
 } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
@@ -31,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth";
+import { useIsOrgAdmin } from "@/lib/org";
 import { visibleTypes } from "@/lib/permissions";
 import { setThemeMode, type ThemeMode, useThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -94,6 +98,7 @@ function Sidebar({
   const [space] = useQuery(spaceId ? queries.spaces.byId({ id: spaceId }) : undefined);
   const navigate = useNavigate();
   const themeMode = useThemeMode();
+  const orgAdmin = useIsOrgAdmin();
 
   return (
     <nav aria-label="主导航" className="flex w-57 shrink-0 flex-col pt-3 pb-2">
@@ -113,6 +118,14 @@ function Sidebar({
         <Link to="/panorama" className={navItem}>
           <Telescope />
           全景视图
+        </Link>
+        <Link to="/teams" className={navItem}>
+          <Users />
+          团队
+        </Link>
+        <Link to="/templates" className={navItem}>
+          <LayoutTemplate />
+          模板中心
         </Link>
       </div>
 
@@ -230,6 +243,12 @@ function Sidebar({
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            {orgAdmin && (
+              <DropdownMenuItem onSelect={() => navigate({ to: "/admin/$tab", params: { tab: "members" } })}>
+                <Building2 />
+                企业管理
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => navigate({ to: "/settings/api" })}>
               <KeyRound />
               开放接口

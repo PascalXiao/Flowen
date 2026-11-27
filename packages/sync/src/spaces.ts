@@ -91,3 +91,11 @@ export async function setBusinessLines(tx: Transaction, args: z.output<typeof se
       createdAt: existing.find((e) => e.id === l.id)?.createdAt ?? Date.now(),
     });
 }
+
+export const renameSpaceArgs = z.object({ spaceId: z.string(), name: z.string().trim().min(1).max(60) });
+
+/** 改空间名称。只有空间管理员可以。 */
+export async function renameSpace(tx: Transaction, args: z.output<typeof renameSpaceArgs>, userID: string) {
+  await requireAdmin(tx, args.spaceId, userID, "只有空间管理员可以修改空间信息。");
+  await tx.mutate.space.update({ id: args.spaceId, name: args.name });
+}

@@ -10,7 +10,7 @@ import {
   type ScheduleNode,
   WorkCalendar,
 } from "@fp/engine";
-import { mutators, queries } from "@fp/sync";
+import { mutators, queries, TEAM_PREFIX, teamMemberIds } from "@fp/sync";
 import { useQuery, useZero } from "@rocicorp/zero/react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -19,6 +19,7 @@ import { GanttChart, type GanttRow } from "@/components/GanttChart";
 import { Avatar } from "@/components/ui/avatar";
 import { Select } from "@/components/ui/input";
 import { EmptyState, ErrorBanner, PageBody, PageHeader } from "@/components/ui/page";
+import { useTeamChoices, useTeams } from "@/lib/org";
 
 const NO_CALENDAR = { holidays: [], extraWorkdays: [] };
 const fmt = (n: number) => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
@@ -35,6 +36,8 @@ export function SchedulePage() {
   const [space] = useQuery(queries.spaces.byId({ id: spaceId }));
   const [typeId, setTypeId] = useState("");
   const [person, setPerson] = useState("");
+  const teams = useTeams();
+  const teamChoices = useTeamChoices(spaceId);
   const [withCompleted, setWithCompleted] = useState("");
   const filter = useMemo(() => (typeId ? { typeIds: [typeId] } : {}), [typeId]);
   const [items] = useQuery(queries.workItems.plansBySpace({ spaceId, filter }));
@@ -75,7 +78,15 @@ export function SchedulePage() {
     }
     return peopleSchedule(nodes, { includeCompleted: !!withCompleted });
   }, [items, withCompleted]);
-  const shown = person ? people.filter((p) => p.userId === person) : people;
+  // 选了团队时看团队（含下级团队）的所有成员
+  const inTeam = person.startsWith(TEAM_PREFIX)
+    ? new Set(teamMemberIds(teams, person.slice(TEAM_PREFIX.length)))
+    : null;
+  const shown = inTeam
+    ? people.filter((p) => inTeam.has(p.userId))
+    : person
+      ? people.filter((p) => p.userId === person)
+      : people;
 
   const rows: GanttRow[] = [];
   for (const p of shown) {
@@ -140,11 +151,22 @@ export function SchedulePage() {
           <div className="flex items-center gap-2">
             <Select aria-label="人员" value={person} onChange={(e) => setPerson(e.target.value)} className="w-32">
               <option value="">全部人员</option>
-              {space.members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.userId === me ? `${m.user?.name ?? "我"}（我）` : (m.user?.name ?? "—")}
-                </option>
-              ))}
+              <optgroup label="人员">
+                {space.members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.userId === me ? `${m.user?.name ?? "我"}（我）` : (m.user?.name ?? "—")}
+                  </option>
+                ))}
+              </optgroup>
+              {teamChoices.length > 0 && (
+                <optgroup label="团队">
+                  {teamChoices.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label.replace(/^团队：/, "")}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </Select>
             <Select aria-label="数据来源" value={typeId} onChange={(e) => setTypeId(e.target.value)} className="w-32">
               <option value="">全部工作项</option>

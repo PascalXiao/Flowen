@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useTeamChoices } from "@/lib/org";
 import { cn, newId } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
@@ -130,7 +131,8 @@ export function FilterBar({
     ),
   ];
   const empty = Object.entries(compactFilter(filter)).every(([k]) => fixedTypeId && k === "typeIds");
-  const targets = filterTargets({ types: scoped, members, stages });
+  const teams = useTeamChoices(spaceId);
+  const targets = filterTargets({ types: scoped, members, stages, teams });
   const nodes = flowNodes(scoped);
   const quickFields = new Map(
     scoped

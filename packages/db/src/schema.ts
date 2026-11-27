@@ -194,6 +194,50 @@ export const userGroupMember = pgTable(
   (t) => [primaryKey({ columns: [t.groupId, t.userId] })],
 );
 
+/**
+ * 企业管理员：管理团队、企业模板，看审计日志，指定别的企业管理员。
+ * 部署后第一个注册的人自动成为企业管理员（也可以用环境变量 ORG_ADMIN_EMAILS 指定）。
+ */
+export const orgAdmin = pgTable("org_admin", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: createdAt(),
+});
+
+/**
+ * 团队：企业里的一组人，不属于某个空间。可以有多个上级团队（不成环）；
+ * 团队管理员能改团队信息和成员；spaceIds 是可用空间，为空表示所有空间都能用。
+ * 视图筛选、人员排期里可以按团队选人（取团队和它所有下级团队的成员）。
+ */
+export const team = pgTable("team", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  parentIds: jsonb("parent_ids").$type<string[]>().notNull().default([]),
+  admins: jsonb("admins").$type<string[]>().notNull().default([]),
+  spaceIds: jsonb("space_ids").$type<string[] | null>(),
+  sort: integer("sort").notNull().default(0),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => user.id),
+  createdAt: createdAt(),
+});
+
+export const teamMember = pgTable(
+  "team_member",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.userId] }), index("team_member_user").on(t.userId)],
+);
+
 /** 查看工作项的范围：全部、仅自己参与的（创建、担任角色、关注）、不可见。 */
 export type ViewLevel = "all" | "involved" | "none";
 /** 按类型授权的操作。 */
@@ -485,6 +529,8 @@ export interface WorkItemFilter {
   conds?: FilterConds;
   /** 动态时间按哪天算、时区偏移（分钟）：查询时由前端带上，不存进视图。 */
   clock?: { today: string; offset: number };
+  /** 条件里用到的团队展开成的成员：查询时由前端带上，不存进视图。 */
+  teams?: Record<string, string[]>;
   /** 固定视图：只看视图里手动加入的工作项。 */
   viewId?: string;
 }
@@ -1162,6 +1208,81 @@ export const automationRequest = pgTable(
   (t) => [index("automation_request_rule").on(t.ruleId, t.createdAt), index("automation_request_event").on(t.eventId)],
 );
 
+/** 空间模板里包含的内容。配置（工作项类型、字段、角色、流程、关联、自动化等）总是包含。 */
+export interface SpaceTemplateIncludes {
+  /** 公共视图（含固定视图里的工作项，需要同时带实例）。 */
+  views: boolean;
+  /** 度量图表。 */
+  charts: boolean;
+  /** 工作项实例（最多 MAX_TEMPLATE_ITEMS 条）。 */
+  items: boolean;
+}
+
+/** 模板卡片和预览用的概要。 */
+export interface SpaceTemplateSummary {
+  types: { name: string; flowMode: FlowMode; fields: number; roles: number; templates: number }[];
+  views: string[];
+  charts: string[];
+  items: number;
+  automations: number;
+}
+
+/**
+ * 空间模板（模板中心）：把一个空间的配置存成快照，新建空间时从它创建。
+ * 个人模板只有创建人能用，企业模板所有人都能用（企业管理员才能设成企业模板）。
+ * 快照存在 space_template_data，不同步到浏览器，预览看 summary。
+ */
+export const spaceTemplate = pgTable("space_template", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  scope: text("scope").$type<"personal" | "org">().notNull().default("personal"),
+  sourceSpaceId: text("source_space_id"),
+  includes: jsonb("includes").$type<SpaceTemplateIncludes>().notNull(),
+  summary: jsonb("summary").$type<SpaceTemplateSummary>().notNull(),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => user.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/** 模板的快照本体：可能很大，放在 infra，不进 Zero 的复制。 */
+export const spaceTemplateData = infra.table("space_template_data", {
+  templateId: text("template_id")
+    .primaryKey()
+    .references(() => spaceTemplate.id, { onDelete: "cascade" }),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+});
+
+/**
+ * 审计日志：谁在什么时候做了什么配置、成员、权限、空间和账号相关的操作。
+ * 不同步到浏览器，企业管理员看全部，空间管理员看自己空间的（接口查询）。保留 180 天。
+ * spaceId 不设外键：空间没了日志也要留着。
+ */
+export const auditLog = infra.table(
+  "audit_log",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    at: timestamp("at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    actor: text("actor"),
+    spaceId: text("space_id"),
+    /** 分类：space、member、config、view、automation、item、team、template、org、account。 */
+    category: text("category").notNull(),
+    /** 操作：mutator 名（如 fieldDef.update）或接口动作（如 space.copy、login）。 */
+    action: text("action").notNull(),
+    targetId: text("target_id"),
+    targetName: text("target_name"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    ip: text("ip"),
+  },
+  (t) => [
+    index("audit_log_at").on(t.at),
+    index("audit_log_space").on(t.spaceId, t.at),
+    index("audit_log_actor").on(t.actor, t.at),
+  ],
+);
+
 /**
  * 事务性 Outbox：和业务写入、event_log 在同一个事务里插入，中继程序把它按顺序交给 Temporal。
  * stream 决定顺序和归属：同一个 stream 的事件由同一个 Temporal workflow 依次处理。
@@ -1238,6 +1359,24 @@ export const spaceRelations = relations(space, ({ many }) => ({
   linkRules: many(linkRule),
   /** 别的空间指向本空间类型的跨空间关联（也包含本空间自己的，查询时按 spaceId 去掉）。 */
   incomingRelationDefs: many(relationDef, { relationName: "toSpace" }),
+}));
+
+export const orgAdminRelations = relations(orgAdmin, ({ one }) => ({
+  user: one(user, { fields: [orgAdmin.userId], references: [user.id] }),
+}));
+
+export const teamRelations = relations(team, ({ one, many }) => ({
+  members: many(teamMember),
+  creator: one(user, { fields: [team.createdBy], references: [user.id] }),
+}));
+
+export const teamMemberRelations = relations(teamMember, ({ one }) => ({
+  team: one(team, { fields: [teamMember.teamId], references: [team.id] }),
+  user: one(user, { fields: [teamMember.userId], references: [user.id] }),
+}));
+
+export const spaceTemplateRelations = relations(spaceTemplate, ({ one }) => ({
+  creator: one(user, { fields: [spaceTemplate.createdBy], references: [user.id] }),
 }));
 
 export const linkRuleRelations = relations(linkRule, ({ one }) => ({

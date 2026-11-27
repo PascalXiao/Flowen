@@ -71,6 +71,12 @@ export default drizzleZeroConfig(schema, {
     webhookDelivery: true,
     apiToken: false,
     outbox: false,
+    orgAdmin: true,
+    team: true,
+    teamMember: true,
+    spaceTemplate: true,
+    spaceTemplateData: false,
+    auditLog: false,
     workItemEmbedding: false,
   },
 });

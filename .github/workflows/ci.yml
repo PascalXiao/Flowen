@@ -42,6 +42,8 @@ jobs:
     env:
       ZERO_API_ORIGIN: http://api:3000
       AUTH_RATE_LIMIT: "off"
+      # 端到端测试里的企业管理员（见 e2e/helpers.ts 的 signInOrgAdmin）
+      ORG_ADMIN_EMAILS: org-admin@e2e.flowen.test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

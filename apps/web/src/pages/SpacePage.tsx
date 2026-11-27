@@ -20,6 +20,7 @@ import { Segmented, Tabs } from "@/components/ui/tabs";
 import { type ListDisplay, WorkItemList } from "@/components/WorkItemList";
 import { env } from "@/lib/env";
 import { withLineOptions } from "@/lib/fields";
+import { useWithTeams } from "@/lib/org";
 import { foreignTypes, spaceRelationDefs } from "@/lib/relations";
 import { WorkItemView } from "@/pages/WorkItemPage";
 
@@ -298,6 +299,7 @@ function WorkItems({
     typeIds: [type.id],
   });
   const zero = useZero();
+  const withTeams = useWithTeams();
   const [rows, setRows] = useState<readonly string[]>([]);
   const reportRows = useCallback(
     (ids: readonly string[]) => {
@@ -337,7 +339,10 @@ function WorkItems({
     },
   ];
   // 动态时间（本周、过去 N 天…）按空间时区的今天算，查询时带上
-  const queryFilter = usesClock(filter) ? { ...filter, clock: clockFor(space.timezone ?? "Asia/Shanghai") } : filter;
+  // 条件里选了团队时，带上团队成员名单
+  const queryFilter = withTeams(
+    usesClock(filter) ? { ...filter, clock: clockFor(space.timezone ?? "Asia/Shanghai") } : filter,
+  );
   const viewSwitch = (
     <Segmented
       label="显示方式"

@@ -1,5 +1,6 @@
 import { connect, type Database, schema } from "@fp/db";
 import { type FlowDefinition, validateFlow } from "@fp/engine";
+import { writeAudit } from "@fp/server";
 import { spaceRoles } from "@fp/sync";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -12,6 +13,7 @@ import { dashboardRoutes } from "./dashboard.ts";
 import { listStatsRoutes } from "./list-stats.ts";
 import { createOpenApiHandler, OPEN_API_PREFIX } from "./open-api.ts";
 import { importDemoTemplate } from "./seed/demo.ts";
+import { clientIp, spaceAdminRoutes } from "./space-admin.ts";
 import { tokenRoutes } from "./tokens.ts";
 import { createZeroHandlers } from "./zero/handlers.ts";
 
@@ -29,6 +31,7 @@ export function createServices(databaseUrl = config.databaseUrl, filesDir = conf
     secret: config.authSecret,
     trustedOrigins: config.webOrigins,
     rateLimit: config.authRateLimit,
+    orgAdminEmails: config.orgAdminEmails,
   });
   return { database, auth, zero: createZeroHandlers(database), blobs: fileBlobStore(filesDir) };
 }
@@ -58,6 +61,7 @@ export function createApp({ database, auth, zero, blobs }: Services) {
       .route("/", tokenRoutes(database, userID))
       .route("/", dashboardRoutes(database, userID))
       .route("/", listStatsRoutes(database, userID))
+      .route("/", spaceAdminRoutes(database, userID))
       // 开放接口给服务端调用，用令牌认证，不带 cookie，所以不需要 CORS 白名单
       .all(`${OPEN_API_PREFIX}/*`, async (c) => {
         const { matched, response } = await openApi.handle(c.req.raw, {
@@ -85,7 +89,16 @@ export function createApp({ database, auth, zero, blobs }: Services) {
         if (!(await isSpaceAdmin(spaceId, id))) return c.json({ error: "只有空间管理员可以导入模板。" }, 403);
         const existing = await database.db.$count(schema.workItemType, eq(schema.workItemType.spaceId, spaceId));
         if (existing > 0) return c.json({ error: "这个空间已经有工作项类型了。" }, 409);
-        return c.json(await importDemoTemplate(database.db, spaceId));
+        const result = await importDemoTemplate(database.db, spaceId);
+        await writeAudit(database.db, {
+          actor: id,
+          action: "space.importDemo",
+          spaceId,
+          targetId: result.typeId,
+          targetName: "项目",
+          ip: clientIp(c.req.raw.headers),
+        });
+        return c.json(result);
       })
       // 按邮箱把已注册的用户加进空间，可以指定空间角色（默认成员）。查用户要看全站的用户表，所以不走 Zero（浏览器只同步得到同空间成员的邮箱）。
       .post("/api/spaces/:spaceId/members", async (c) => {
@@ -106,6 +119,15 @@ export function createApp({ database, auth, zero, blobs }: Services) {
           .onConflictDoNothing()
           .returning();
         if (added.length === 0) return c.json({ error: "已经是空间成员了。" }, 409);
+        await writeAudit(database.db, {
+          actor: id,
+          action: "space.addMember",
+          spaceId,
+          targetId: found.id,
+          targetName: found.name,
+          detail: { role: added[0]?.role },
+          ip: clientIp(c.req.raw.headers),
+        });
         return c.json({ userId: found.id, name: found.name });
       })
       .post("/api/flows/validate", async (c) => {

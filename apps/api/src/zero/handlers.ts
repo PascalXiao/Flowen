@@ -1,7 +1,7 @@
 import type { Database } from "@fp/db";
-import { createMutatorRunner, serverMutators } from "@fp/server";
+import { createMutatorRunner, runServerMutator } from "@fp/server";
 import { queries, schema } from "@fp/sync";
-import { mustGetMutator, mustGetQuery } from "@rocicorp/zero";
+import { mustGetQuery } from "@rocicorp/zero";
 import { handleMutateRequest, handleQueryRequest } from "@rocicorp/zero/server";
 
 /**
@@ -27,7 +27,9 @@ export function createZeroHandlers(database: Database) {
         request,
         userID,
         handler: (transact) =>
-          transact((tx, name, args) => mustGetMutator(serverMutators, name).fn({ tx, args, ctx: { userID } })),
+          transact(async (tx, name, args) => {
+            await runServerMutator(tx, name, args, { userID });
+          }),
       });
     },
 

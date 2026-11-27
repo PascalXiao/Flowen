@@ -130,6 +130,24 @@ import {
   removeRelationArgs,
 } from "./relations.ts";
 import { zql } from "./schema.gen.ts";
+import {
+  deleteSpaceTemplate,
+  deleteSpaceTemplateArgs,
+  updateSpaceTemplate,
+  updateSpaceTemplateArgs,
+} from "./space-templates.ts";
+import {
+  createTeam,
+  createTeamArgs,
+  deleteTeam,
+  deleteTeamArgs,
+  setOrgAdmin,
+  setOrgAdminArgs,
+  setTeamMembers,
+  setTeamMembersArgs,
+  updateTeam,
+  updateTeamArgs,
+} from "./teams.ts";
 
 const adjustRoleArgs = z.object({
   workItemId: z.string(),
@@ -138,7 +156,14 @@ const adjustRoleArgs = z.object({
   remove: z.array(z.string()).max(100).optional(),
 });
 
-import { setBusinessLines, setBusinessLinesArgs, setCalendarArgs, setSpaceCalendar } from "./spaces.ts";
+import {
+  renameSpace,
+  renameSpaceArgs,
+  setBusinessLines,
+  setBusinessLinesArgs,
+  setCalendarArgs,
+  setSpaceCalendar,
+} from "./spaces.ts";
 import { transitionArgs, transitionStatus } from "./status.ts";
 import { createNodeSubItem, createNodeSubItemArgs, createSubItem, createSubItemArgs } from "./subitems.ts";
 import {
@@ -303,6 +328,7 @@ export const mutators = defineMutators({
       });
       await tx.mutate.spaceMember.insert({ spaceId: args.id, userId: ctx.userID, role: "admin" });
     }),
+    rename: defineMutator(renameSpaceArgs, ({ tx, args, ctx }) => renameSpace(tx, args, ctx.userID)),
     setCalendar: defineMutator(setCalendarArgs, async ({ tx, args, ctx }) => {
       await setSpaceCalendar(tx, args, ctx.userID);
     }),
@@ -314,6 +340,21 @@ export const mutators = defineMutators({
     handover: defineMutator(handoverArgs, async ({ tx, args, ctx }) => {
       await handover(tx, args, ctx.userID);
     }),
+  },
+  org: {
+    setAdmin: defineMutator(setOrgAdminArgs, ({ tx, args, ctx }) => setOrgAdmin(tx, args, ctx.userID)),
+  },
+  spaceTemplate: {
+    update: defineMutator(updateSpaceTemplateArgs, ({ tx, args, ctx }) => updateSpaceTemplate(tx, args, ctx.userID)),
+    delete: defineMutator(deleteSpaceTemplateArgs, ({ tx, args, ctx }) => deleteSpaceTemplate(tx, args, ctx.userID)),
+  },
+  team: {
+    create: defineMutator(createTeamArgs, ({ tx, args, ctx }) => createTeam(tx, args, ctx.userID)),
+    update: defineMutator(updateTeamArgs, ({ tx, args, ctx }) => updateTeam(tx, args, ctx.userID)),
+    setMembers: defineMutator(setTeamMembersArgs, async ({ tx, args, ctx }) => {
+      await setTeamMembers(tx, args, ctx.userID);
+    }),
+    delete: defineMutator(deleteTeamArgs, ({ tx, args, ctx }) => deleteTeam(tx, args, ctx.userID)),
   },
   automation: {
     create: defineMutator(createAutomationArgs, ({ tx, args, ctx }) => createAutomation(tx, args, ctx.userID)),
